@@ -1,0 +1,36 @@
+# Keil and compiler build outputs
+*.o
+*.obj
+*.d
+*.crf
+*.tra
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.lnp
+*.__i
+*.dep
+*.plg
+*.log
+*.htm
+*.iex
+*.bak
+*.uvgui.*
+*.uvoptx
+*.uvopt
+Objects/
+Listings/
+Debug/
+Release/
+_build/
+MDK-ARM/infantry _down/
+
+# Machine-specific editor and debugger settings
+.vscode/
+.idea/
+JLinkLog.txt
+JLinkSettings.ini
+*.swp
+*~

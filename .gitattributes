@@ -1,0 +1,2 @@
+# Preserve file bytes and existing line endings across Git operations.
+* -text
