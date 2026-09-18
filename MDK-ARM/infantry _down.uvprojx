@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;..\bottom_driven\telecontrol;..\bottom_driven\motor</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;..\bottom_driven\telecontrol;..\bottom_driven\motor;..\algorithms_library</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -948,14 +948,37 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>::CMSIS</GroupName>
-        </Group>
-      <Group>
           <GroupName>bottom_driven/motor</GroupName>
           <Files>
-            <File><FileName>motor3508.c</FileName><FileType>1</FileType><FilePath>..\bottom_driven\motor\motor3508.c</FilePath></File>
-            <File><FileName>motor3508.h</FileName><FileType>5</FileType><FilePath>..\bottom_driven\motor\motor3508.h</FilePath></File>
+            <File>
+              <FileName>motor3508.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\motor\motor3508.c</FilePath>
+            </File>
+            <File>
+              <FileName>motor3508.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\motor\motor3508.h</FilePath>
+            </File>
           </Files>
+        </Group>
+        <Group>
+          <GroupName>algorithms_library</GroupName>
+          <Files>
+            <File>
+              <FileName>PID.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\algorithms_library\PID.c</FilePath>
+            </File>
+            <File>
+              <FileName>PID.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\algorithms_library\PID.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>::CMSIS</GroupName>
         </Group>
       </Groups>
     </Target>

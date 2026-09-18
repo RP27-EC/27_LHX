@@ -116,20 +116,25 @@ void MX_FREERTOS_Init(void) {
 void StartRcTask(void *argument)
 {
   /* USER CODE BEGIN StartRcTask */ 
-     uint32_t next_tick = osKernelGetTickCount();
-
+    uint32_t next_tick = osKernelGetTickCount();
+    uint32_t received_ms;
     (void)argument;
   /* Infinite loop */
   for(;;)
   {
-
-      if (RC_TakeFrame(rc_task_frame))
+      if (RC_TakeFrame(rc_task_frame, &received_ms))
     {
         rc_task_frame_count++;
 
-        /* 只解析摇杆、拨轮和拨杆；不处理键鼠。 */
-        (void)RC_ParseFrame(rc_task_frame, &rc_ctrl);
+        if (RC_ParseFrame(rc_task_frame, &rc_ctrl))
+        {
+            RC_MarkValidFrame(received_ms);
+        }
+
     }
+
+      (void)RC_CheckOnline(HAL_GetTick());
+
         /* 每隔 15 tick执行一轮。 */
       next_tick += 15U;
 

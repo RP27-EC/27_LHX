@@ -21,7 +21,7 @@
 #define switch_is_mid(s)  ((s) == RC_SW_MID)
 #define switch_is_up(s)   ((s) == RC_SW_UP)
 
-/* ch[0..3] 为摇杆，ch[4] 为拨轮；均已减去中值 1024。 */
+/* ch[0，1] 为右摇杆0左右1上下，ch[2，3] 为左摇杆，ch[4] 为拨轮；均已减去中值 1024。 */
 typedef struct
 {
     struct
@@ -39,8 +39,18 @@ extern volatile uint16_t rc_rx_last_size;
 void control_usart_init(uint8_t *rx_1buff, uint8_t *rx_2buff, uint16_t dma_buf_num);
 void RC_UART5_IdleHandler(void);
 /* 成功取出最新快照返回 true；没有新帧返回 false。 */
-bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN]);
+bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN],
+                  uint32_t *received_ms);
 /* 传入完整 18 字节；有效返回 true，异常摇杆/拨杆返回 false 并归零输出。 */
 bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control);
+/*超时检测*/
+bool RC_CheckOnline(uint32_t now_ms);
+
+/*记录时间状态更新*/
+void RC_MarkValidFrame(uint32_t received_ms);
+
+//在线检测回调，在线回1否则回0
+uint8_t RC_online_return(void);
+
 
 #endif

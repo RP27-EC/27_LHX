@@ -1,10 +1,18 @@
 #include "telecontrol.h"
+#include <stdbool.h>
 #include <string.h>
 
 /* 中断写入，task 读取；不让 task 直接读取正在接收的 DMA 缓冲区。 */
 static uint8_t rc_frame_snapshot[RC_FRAME_LEN];
 static volatile bool rc_frame_ready = false;
 
+#define RC_TIMEOUT_MS 100U                  //超时时间
+
+static volatile uint32_t rc_last_valid_rx_ms = 0U;   //最近有效帧接收时间
+static volatile bool rc_has_valid_frame = false;     //上电后是否接到有效帧
+static volatile bool rc_online = false;              //遥控是否在线
+
+static uint32_t rc_frame_received_ms = 0U;
 /* 用于调试器观察。 */
 volatile uint32_t rc_rx_frame_count = 0;
 volatile uint16_t rc_rx_last_size = 0;
@@ -13,9 +21,18 @@ uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM];//接收数据储存数值
 
 RC_ctrl_t rc_ctrl = { .rc = { .ch = {0}, .s = {RC_SW_MID, RC_SW_MID} } };
 
-//串口DMA接收初始化
+//串口DMA接收以及标志变量初始化初始化
 void control_usart_init(uint8_t *rx_1buff,uint8_t *rx_2buff,uint16_t dma_buf_num)
 {
+    rc_frame_received_ms = 0U;
+    rc_last_valid_rx_ms = 0U;
+    rc_has_valid_frame = false;
+    rc_online = false;
+
+    memset(&rc_ctrl, 0, sizeof(rc_ctrl));
+    rc_ctrl.rc.s[0] = RC_SW_MID;
+    rc_ctrl.rc.s[1] = RC_SW_MID;
+
     DMA_HandleTypeDef *dma = huart5.hdmarx;
     DMA_Stream_TypeDef *stream;
 
@@ -159,6 +176,7 @@ void RC_UART5_IdleHandler(void)
         memcpy(rc_frame_snapshot, completed_buffer, RC_FRAME_LEN);
         rc_rx_frame_count++;
         rc_frame_ready = true;
+        rc_frame_received_ms = HAL_GetTick();
     }
 
     /* 下次从另一个缓冲区重新接收。 */
@@ -180,14 +198,16 @@ void RC_UART5_IdleHandler(void)
                          UART_CLEAR_FEF);
 
     __HAL_DMA_ENABLE(dma);
+
 }
 
-bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN])
+bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN],
+                  uint32_t *received_ms)
 {
     uint32_t saved_primask;
     bool available;
 
-    if (frame == NULL)
+    if ((frame == NULL) || (received_ms == NULL))
     {
         return false;
     }
@@ -200,6 +220,7 @@ bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN])
     if (available)
     {
         memcpy(frame, rc_frame_snapshot, RC_FRAME_LEN);
+        *received_ms = rc_frame_received_ms;
         rc_frame_ready = false;
     }
 
@@ -267,4 +288,42 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
 
     *control = decoded;
     return true;
+}
+
+/*超时检测*/
+bool RC_CheckOnline(uint32_t now_ms)
+{
+    bool online;
+
+    online = rc_has_valid_frame &&
+             ((uint32_t)(now_ms - rc_last_valid_rx_ms)
+              < RC_TIMEOUT_MS);
+
+    rc_online = online;
+
+    if (!online)
+    {
+        /* 离线时清除旧指令，避免继续使用最后一次摇杆值。 */
+        memset(&rc_ctrl, 0, sizeof(rc_ctrl));
+        rc_ctrl.rc.s[0] = RC_SW_MID;
+        rc_ctrl.rc.s[1] = RC_SW_MID;
+    }
+
+    return online;
+}
+
+/*记录接收有效帧时间，更新状态*/
+void RC_MarkValidFrame(uint32_t received_ms)
+{
+    rc_last_valid_rx_ms = received_ms;
+    rc_has_valid_frame = true;
+}
+
+//遥控在线检测回传
+uint8_t RC_online_return(void){
+    if(rc_online==true){
+        return 1;
+    }else{
+        return 0;
+    }
 }

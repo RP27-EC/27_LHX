@@ -23,14 +23,17 @@ typedef struct
 
 /* 在 MX_FDCAN1_Init 后调用；配置过滤器、启动总线和接收中断。 */
 HAL_StatusTypeDef Motor3508_Init(void);
+
 /* 一帧同时设置 ID 1~4 的电流指令，自动限制到 -16384~16384。
  * HAL_OK 只表示成功入队；调用方应周期发送并检查返回值。
  * 正负方向由电机安装和接线决定，不自动修正轮子方向。
  */
 HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,
                                       int16_t id3, int16_t id4);
+
 /* 发送一帧四电机零电流指令，不是机械刹车或周期发送任务。 */
 HAL_StatusTypeDef Motor3508_Stop(void);
+
 /* motor_id 为 1~4；原子复制反馈，未收到反馈或参数错误返回 false。 */
 bool Motor3508_GetFeedback(uint8_t motor_id, Motor3508_Feedback *feedback);
 
