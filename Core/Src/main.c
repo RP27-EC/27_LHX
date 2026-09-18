@@ -27,7 +27,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "telecontrol.h"
+#include "motor3508.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -96,7 +97,11 @@ int main(void)
   MX_FDCAN1_Init();
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
-
+  if (Motor3508_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  control_usart_init(sbus_rx_buf[0], sbus_rx_buf[1], SBUS_RX_BUF_NUM);
   /* USER CODE END 2 */
 
   /* Init scheduler */
