@@ -1,9 +1,16 @@
 #include "motor3508.h"
 #include "fdcan.h"
 #include <string.h>
+#include "PID.h"
 
 /* 仅复用模板 RM_motor/drv_can 的 C620 报文逻辑，不引入其设备对象。 */
 static Motor3508_Feedback motor_feedback[MOTOR3508_COUNT];
+PID_Controller_t motor3508_1_pid;
+PID_Controller_t motor3508_2_pid;
+PID_Controller_t motor3508_3_pid;
+PID_Controller_t motor3508_4_pid;
+
+float kp=8,ki=2;
 
 HAL_StatusTypeDef Motor3508_Init(void)
 {
@@ -33,6 +40,10 @@ HAL_StatusTypeDef Motor3508_Init(void)
     status = HAL_FDCAN_ActivateNotification(&hfdcan1,
                                            FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0U);
     if (status != HAL_OK) { (void)HAL_FDCAN_Stop(&hfdcan1); }
+    PID_Init(&motor3508_1_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
+    PID_Init(&motor3508_2_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
+    PID_Init(&motor3508_3_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
+    PID_Init(&motor3508_4_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
     return status;
 }
 
@@ -71,8 +82,20 @@ HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,
     return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &header, data);
 }
 
+    HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16_t speed_3,int16_t speed_4){
+    int16_t id1 = PID_Calc(&motor3508_1_pid,speed_1,motor_feedback[0].speed_rpm);
+    int16_t id2 = PID_Calc(&motor3508_2_pid,speed_2,motor_feedback[1].speed_rpm);
+    int16_t id3 = PID_Calc(&motor3508_3_pid,speed_3,motor_feedback[2].speed_rpm);
+    int16_t id4 = PID_Calc(&motor3508_4_pid,speed_4*10,motor_feedback[3].speed_rpm);
+    return Motor3508_SendCurrent(id1,id2,id3,id4);
+}
+
 HAL_StatusTypeDef Motor3508_Stop(void)
 {
+    PID_Reset(&motor3508_1_pid);
+    PID_Reset(&motor3508_2_pid);
+    PID_Reset(&motor3508_3_pid);
+    PID_Reset(&motor3508_4_pid);
     return Motor3508_SendCurrent(0, 0, 0, 0);
 }
 

@@ -102,6 +102,7 @@ int main(void)
     Error_Handler();
   }
   control_usart_init(sbus_rx_buf[0], sbus_rx_buf[1], SBUS_RX_BUF_NUM);
+  HAL_GPIO_WritePin(GPIOC,GPIO_PIN_14,GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Init scheduler */

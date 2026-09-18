@@ -27,6 +27,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "telecontrol.h"
+#include "motor3508.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +57,13 @@ const osThreadAttr_t Control_Parsing_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityHigh,
 };
+/* Definitions for motor3508 */
+osThreadId_t motor3508Handle;
+const osThreadAttr_t motor3508_attributes = {
+  .name = "motor3508",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityHigh7,
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -63,6 +71,7 @@ const osThreadAttr_t Control_Parsing_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void StartRcTask(void *argument);
+void motor3508_speed_control(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -96,6 +105,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of Control_Parsing */
   Control_ParsingHandle = osThreadNew(StartRcTask, NULL, &Control_Parsing_attributes);
 
+  /* creation of motor3508 */
+  motor3508Handle = osThreadNew(motor3508_speed_control, NULL, &motor3508_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -115,7 +127,7 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartRcTask */
 void StartRcTask(void *argument)
 {
-  /* USER CODE BEGIN StartRcTask */ 
+  /* USER CODE BEGIN StartRcTask */
     uint32_t next_tick = osKernelGetTickCount();
     uint32_t received_ms;
     (void)argument;
@@ -146,6 +158,29 @@ void StartRcTask(void *argument)
 
   }
   /* USER CODE END StartRcTask */
+}
+
+/* USER CODE BEGIN Header_motor3508_speed_control */
+/**
+* @brief Function implementing the motor3508 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_motor3508_speed_control */
+void motor3508_speed_control(void *argument)
+{
+  /* USER CODE BEGIN motor3508_speed_control */
+  /* Infinite loop */
+  for(;;)
+  {
+    if(RC_online_return()){
+      //Motor_3508_speed_control(0,0,0,0);//(rc_ctrl.rc.ch[3])
+    }else {
+      Motor3508_Stop();
+    }
+    osDelay(1);
+  }
+  /* USER CODE END motor3508_speed_control */
 }
 
 /* Private application code --------------------------------------------------*/

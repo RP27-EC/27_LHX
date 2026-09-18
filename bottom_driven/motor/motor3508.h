@@ -30,6 +30,8 @@ HAL_StatusTypeDef Motor3508_Init(void);
  */
 HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,
                                       int16_t id3, int16_t id4);
+/*转速PID控制*/
+HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16_t speed_3,int16_t speed_4);
 
 /* 发送一帧四电机零电流指令，不是机械刹车或周期发送任务。 */
 HAL_StatusTypeDef Motor3508_Stop(void);
