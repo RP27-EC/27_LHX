@@ -28,19 +28,15 @@ HAL_StatusTypeDef Motor3508_control(uint8_t mode,int16_t id1,int16_t id2,int16_t
 {
     switch (mode) {
         case 0:
-        select_control_mode(mode);
         return Motor3508_Stop();
-        break;
 
         case 1:
         select_control_mode(mode);
         return Motor_3508_speed_control(id1,id2,id3,id4);
-        break;
 
         case 2:
         select_control_mode(mode);
         return Motor3508_PositionControl(id1,id2,id3,id4);
-        break;
 
         default:
         return Motor3508_Stop();
@@ -172,17 +168,6 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
         }
     }
 
-    now = HAL_GetTick();
-    for (index = 0U; index < MOTOR3508_COUNT; ++index)
-    {
-        if ((uint32_t)(now - feedback[index].last_rx_ms) >= 100U)
-        {
-            (void)Motor3508_Stop();
-            return HAL_ERROR;
-        }
-    }
-
-    select_control_mode(2U);
     for (index = 0U; index < MOTOR3508_COUNT; ++index)
     {
         target_speed = PID_Calc(&motor3508_position_pid[index], target_angles[index],
@@ -212,6 +197,28 @@ bool Motor3508_GetFeedback(uint8_t motor_id, Motor3508_Feedback *feedback)
     *feedback = motor_feedback[motor_id - 1U];
     __set_PRIMASK(saved_primask);
     return feedback->received;
+}
+
+bool Motor3508_OnlineCheck(void){
+    Motor3508_Feedback feedback;
+    uint32_t now;
+    uint8_t motor_id;
+
+    now = HAL_GetTick();
+
+    for (motor_id = 1U; motor_id <= MOTOR3508_COUNT; motor_id++)
+    {
+        if (!Motor3508_GetFeedback(motor_id, &feedback))
+        {
+            return false;
+        }
+        if ((uint32_t)(now - feedback.last_rx_ms) >=
+            MOTOR3508_OFFLINE_TIMEOUT_MS)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)

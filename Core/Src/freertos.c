@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "telecontrol.h"
 #include "motor3508.h"
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -178,12 +179,13 @@ void motor3508_speed_control(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    if(RC_online_return()){
-	Motor3508_control(0,0,0,0,0);
+    if(RC_online_return()&&Motor3508_OnlineCheck()){
+	  Motor3508_control(1,rc_ctrl.rc.ch[3]*5,0,rc_ctrl.rc.ch[2]*5,0);
     }else {
       Motor3508_Stop();
     }
 
+    next_tick += 1U;
       if (osDelayUntil(next_tick) != osOK)
     {
         next_tick = osKernelGetTickCount();

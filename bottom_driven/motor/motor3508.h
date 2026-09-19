@@ -9,6 +9,9 @@
 #define MOTOR3508_COMMAND_ID     0x200U
 #define MOTOR3508_CURRENT_LIMIT  16384
 
+#define MOTOR3508_OFFLINE_TIMEOUT_MS  100U
+#define MOTOR3508_OFFLINE_TIMEOUT_CNT 50U
+
 /* 反馈值均来自 C620 原始报文，不包含 PID 或底盘解算。 */
 typedef struct
 {
@@ -55,6 +58,8 @@ bool Motor3508_PositionPIDInit(uint8_t motor_id, float kp, float ki, float kd,
 
 /* 发送一帧四电机零电流指令*/
 HAL_StatusTypeDef Motor3508_Stop(void);
+
+bool Motor3508_OnlineCheck(void);
 
 /* motor_id 为 1~4；原子复制反馈，未收到反馈或参数错误返回 false。 */
 bool Motor3508_GetFeedback(uint8_t motor_id, Motor3508_Feedback *feedback);
