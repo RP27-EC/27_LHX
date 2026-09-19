@@ -29,6 +29,7 @@
 #include "telecontrol.h"
 #include "motor3508.h"
 #include <stdbool.h>
+#include "chassis.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -180,7 +181,7 @@ void motor3508_speed_control(void *argument)
   for(;;)
   {
     if(RC_online_return()&&Motor3508_OnlineCheck()){
-	  Motor3508_control(1,rc_ctrl.rc.ch[3]*5,0,rc_ctrl.rc.ch[2]*5,0);
+    Chassis_MecanumInverse(rc_ctrl.rc.ch[3]*5,-rc_ctrl.rc.ch[2]*5,-rc_ctrl.rc.ch[0]*5);
     }else {
       Motor3508_Stop();
     }
