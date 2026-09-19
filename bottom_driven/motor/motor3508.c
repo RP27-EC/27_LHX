@@ -2,19 +2,58 @@
 #include "fdcan.h"
 #include <string.h>
 #include "PID.h"
+#include <float.h>
 
-/* 仅复用模板 RM_motor/drv_can 的 C620 报文逻辑，不引入其设备对象。 */
 static Motor3508_Feedback motor_feedback[MOTOR3508_COUNT];
-PID_Controller_t motor3508_1_pid;
-PID_Controller_t motor3508_2_pid;
-PID_Controller_t motor3508_3_pid;
-PID_Controller_t motor3508_4_pid;
+static PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];
+static PID_Controller_t motor3508_position_pid[MOTOR3508_COUNT];
+static uint8_t control_mode = 0U; /* 0 停止，1 速度，2 位置。 */
 
-float kp=8,ki=2;
+//模式切换清零积分
+static void select_control_mode(uint8_t mode)
+{
+    uint32_t i;
+    if (control_mode != mode)
+    {
+        for (i = 0U; i < MOTOR3508_COUNT; i++)
+        {
+            PID_Reset(&motor3508_speed_pid[i]);
+            PID_Reset(&motor3508_position_pid[i]);
+        }
+        control_mode = mode;
+    }
+}
 
+HAL_StatusTypeDef Motor3508_control(uint8_t mode,int16_t id1,int16_t id2,int16_t id3,int16_t id4)
+{
+    switch (mode) {
+        case 0:
+        select_control_mode(mode);
+        return Motor3508_Stop();
+        break;
+
+        case 1:
+        select_control_mode(mode);
+        return Motor_3508_speed_control(id1,id2,id3,id4);
+        break;
+
+        case 2:
+        select_control_mode(mode);
+        return Motor3508_PositionControl(id1,id2,id3,id4);
+        break;
+
+        default:
+        return Motor3508_Stop();
+    }
+}
+
+
+
+//can以及PID参数初始化
 HAL_StatusTypeDef Motor3508_Init(void)
 {
     FDCAN_FilterTypeDef filter = {0};
+    uint32_t i;
     HAL_StatusTypeDef status;
 
     /* 当前 FDCAN1 专用于四个底盘电机：只接收 0x201~0x204。 */
@@ -33,6 +72,11 @@ HAL_StatusTypeDef Motor3508_Init(void)
     if (status != HAL_OK) { return status; }
 
     memset(motor_feedback, 0, sizeof(motor_feedback));
+    control_mode = 0U;
+    for (i = 0U; i < MOTOR3508_COUNT; i++)
+    {
+        PID_Init(&motor3508_position_pid[i], 2.5f, 2.0f, 0.0f,500.0f, 3500.0f, 0.001f);
+    }
     status = HAL_FDCAN_Start(&hfdcan1);
     if (status != HAL_OK) { return status; }
 
@@ -40,13 +84,15 @@ HAL_StatusTypeDef Motor3508_Init(void)
     status = HAL_FDCAN_ActivateNotification(&hfdcan1,
                                            FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0U);
     if (status != HAL_OK) { (void)HAL_FDCAN_Stop(&hfdcan1); }
-    PID_Init(&motor3508_1_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
-    PID_Init(&motor3508_2_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
-    PID_Init(&motor3508_3_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
-    PID_Init(&motor3508_4_pid,kp,ki,0.0f,1000.0f,10000.0f,0.001f);
+        
+    for (i = 0U; i < MOTOR3508_COUNT; i++)
+    {
+        PID_Init(&motor3508_speed_pid[i],8.0f,2.0f,0.0f,1000.0f,10000.0f,0.001f);
+    }
     return status;
 }
 
+//限幅
 static int16_t limit_current(int16_t value)
 {
     if (value > MOTOR3508_CURRENT_LIMIT) { return MOTOR3508_CURRENT_LIMIT; }
@@ -54,8 +100,8 @@ static int16_t limit_current(int16_t value)
     return value;
 }
 
-HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,
-                                      int16_t id3, int16_t id4)
+//4电机力矩控制
+HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,int16_t id3, int16_t id4)
 {
     FDCAN_TxHeaderTypeDef header = {0};
     int16_t values[4] = {id1, id2, id3, id4};
@@ -82,23 +128,77 @@ HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,
     return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &header, data);
 }
 
-    HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16_t speed_3,int16_t speed_4){
-    int16_t id1 = PID_Calc(&motor3508_1_pid,speed_1,motor_feedback[0].speed_rpm);
-    int16_t id2 = PID_Calc(&motor3508_2_pid,speed_2,motor_feedback[1].speed_rpm);
-    int16_t id3 = PID_Calc(&motor3508_3_pid,speed_3,motor_feedback[2].speed_rpm);
-    int16_t id4 = PID_Calc(&motor3508_4_pid,speed_4*10,motor_feedback[3].speed_rpm);
+//PID控速
+HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16_t speed_3,int16_t speed_4){
+    select_control_mode(1U);
+    int16_t id1 = PID_Calc(&motor3508_speed_pid[0],speed_1,motor_feedback[0].speed_rpm);
+    int16_t id2 = PID_Calc(&motor3508_speed_pid[1],speed_2,motor_feedback[1].speed_rpm);
+    int16_t id3 = PID_Calc(&motor3508_speed_pid[2],speed_3,motor_feedback[2].speed_rpm);
+    int16_t id4 = PID_Calc(&motor3508_speed_pid[3],speed_4,motor_feedback[3].speed_rpm);
     return Motor3508_SendCurrent(id1,id2,id3,id4);
 }
 
+//4电机强制泄力
 HAL_StatusTypeDef Motor3508_Stop(void)
 {
-    PID_Reset(&motor3508_1_pid);
-    PID_Reset(&motor3508_2_pid);
-    PID_Reset(&motor3508_3_pid);
-    PID_Reset(&motor3508_4_pid);
+    uint32_t i;
+    control_mode = 0U;
+    for (i = 0U; i < MOTOR3508_COUNT; i++) { PID_Reset(&motor3508_position_pid[i]); }
+    for (i = 0U; i < MOTOR3508_COUNT; i++) { PID_Reset(&motor3508_speed_pid[i]); }
     return Motor3508_SendCurrent(0, 0, 0, 0);
 }
 
+//4电机控角度
+HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,float angle_3_deg,float angle_4_deg)
+{
+    const float target_angles[MOTOR3508_COUNT] = {
+        angle_1_deg, angle_2_deg, angle_3_deg, angle_4_deg
+    };
+    Motor3508_Feedback feedback[MOTOR3508_COUNT];
+    int16_t currents[MOTOR3508_COUNT] = {0, 0, 0, 0};
+    uint32_t index;
+    uint32_t now;
+    float target_speed;
+    float current;
+
+    for (index = 0U; index < MOTOR3508_COUNT; ++index)
+    {
+        if (!(target_angles[index] >= -FLT_MAX &&
+              target_angles[index] <= FLT_MAX) ||
+            !Motor3508_GetFeedback((uint8_t)(index + 1U), &feedback[index]))
+        {
+            (void)Motor3508_Stop();
+            return HAL_ERROR;
+        }
+    }
+
+    now = HAL_GetTick();
+    for (index = 0U; index < MOTOR3508_COUNT; ++index)
+    {
+        if ((uint32_t)(now - feedback[index].last_rx_ms) >= 100U)
+        {
+            (void)Motor3508_Stop();
+            return HAL_ERROR;
+        }
+    }
+
+    select_control_mode(2U);
+    for (index = 0U; index < MOTOR3508_COUNT; ++index)
+    {
+        target_speed = PID_Calc(&motor3508_position_pid[index], target_angles[index],
+                                feedback[index].position_deg);
+        current = PID_Calc(&motor3508_speed_pid[index], target_speed,
+                           (float)feedback[index].speed_rpm);
+
+        if (current > MOTOR3508_CURRENT_LIMIT) { current = MOTOR3508_CURRENT_LIMIT; }
+        if (current < -MOTOR3508_CURRENT_LIMIT) { current = -MOTOR3508_CURRENT_LIMIT; }
+        currents[index] = (int16_t)current;
+    }
+
+    return Motor3508_SendCurrent(currents[0], currents[1],currents[2], currents[3]);
+}
+
+//反馈报文获取
 bool Motor3508_GetFeedback(uint8_t motor_id, Motor3508_Feedback *feedback)
 {
     uint32_t saved_primask;
@@ -121,6 +221,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)
     uint8_t data[64];
     Motor3508_Feedback *motor;
     uint16_t encoder;
+    int32_t delta;
 
     if ((hfdcan != &hfdcan1) ||
         ((interrupts & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == 0U)) { return; }
@@ -144,6 +245,22 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)
         encoder = ((uint16_t)data[0] << 8) | data[1];
         if (encoder > 8191U) { continue; }
         motor = &motor_feedback[header.Identifier - MOTOR3508_FEEDBACK_BASE];
+        /* 从模板提取跨圈累计逻辑；8192 个计数为转子一圈。
+         * 相邻两次有效反馈运动须小于半圈，否则方向/圈数存在歧义。
+         * 首帧建立相对零点，不能提供断电保持的绝对位置。
+         */
+        if (motor->received)
+        {
+            delta = (int32_t)encoder - (int32_t)motor->encoder;
+            if (delta > 4096) { delta -= 8192; }
+            else if (delta < -4096) { delta += 8192; }
+            motor->encoder_total += delta;
+        }
+        else
+        {
+            motor->encoder_total = 0;
+        }
+        motor->position_deg = (float)motor->encoder_total * (360.0f / 8192.0f);
         motor->encoder = encoder;
         motor->speed_rpm = (int16_t)(((uint16_t)data[2] << 8) | data[3]);
         motor->current_raw = (int16_t)(((uint16_t)data[4] << 8) | data[5]);

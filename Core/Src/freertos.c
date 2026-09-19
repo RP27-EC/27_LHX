@@ -170,15 +170,24 @@ void StartRcTask(void *argument)
 void motor3508_speed_control(void *argument)
 {
   /* USER CODE BEGIN motor3508_speed_control */
+  uint32_t next_tick;
+  HAL_StatusTypeDef status;
+
+  (void)argument;
+  next_tick = osKernelGetTickCount();
   /* Infinite loop */
   for(;;)
   {
     if(RC_online_return()){
-      //Motor_3508_speed_control(0,0,0,0);//(rc_ctrl.rc.ch[3])
+	Motor3508_control(0,0,0,0,0);
     }else {
       Motor3508_Stop();
     }
-    osDelay(1);
+
+      if (osDelayUntil(next_tick) != osOK)
+    {
+        next_tick = osKernelGetTickCount();
+    }
   }
   /* USER CODE END motor3508_speed_control */
 }
