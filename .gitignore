@@ -1,0 +1,25 @@
+# Keil build outputs and local user state
+MDK-ARM/infantry_up/
+MDK-ARM/*.uvguix.*
+MDK-ARM/*.uvoptx
+MDK-ARM/*.scvd
+
+# Object, dependency, listing and firmware artifacts
+*.o
+*.d
+*.crf
+*.lst
+*.map
+*.lnp
+*.axf
+*.hex
+*.bin
+*.htm
+*.build_log.htm
+
+# Editor and operating-system state
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
