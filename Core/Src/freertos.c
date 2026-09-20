@@ -232,7 +232,7 @@ void up_down_communication(void *argument)
     /* rc_task_frame 由遥控解析任务更新。复制时禁止任务切换，防止
      * 18 字节复制到一半时被新帧覆盖，导致三条 CAN 报文不属于同一帧。
      */
-    /*taskENTER_CRITICAL();
+    taskENTER_CRITICAL();
     frame_count_snapshot = rc_task_frame_count;
     if (frame_count_snapshot > 0U)
     {
@@ -241,11 +241,11 @@ void up_down_communication(void *argument)
     taskEXIT_CRITICAL();
 
     if (frame_count_snapshot > 0U)
-    {*/
+    {
       /* 经典 CAN 一帧最多 8 字节，把 DBUS 的 18 字节原始帧依次拆分：
        * D1 = byte 0~7，D2 = byte 8~15，D3 = byte 16~17 + 六字节 0。
        */
-      /*memcpy(tx_d1, &raw_frame[0], COMMUNICATION_FRAME_SIZE);
+      memcpy(tx_d1, &raw_frame[0], COMMUNICATION_FRAME_SIZE);
       memcpy(tx_d2, &raw_frame[8], COMMUNICATION_FRAME_SIZE);
       memset(tx_d3, 0, sizeof(tx_d3));
       memcpy(tx_d3, &raw_frame[16], RC_FRAME_LEN - 16U);
@@ -253,13 +253,13 @@ void up_down_communication(void *argument)
       (void)Communication_Send(COMMUNICATION_TX_ID_D1, tx_d1);
       (void)Communication_Send(COMMUNICATION_TX_ID_D2, tx_d2);
       (void)Communication_Send(COMMUNICATION_TX_ID_D3, tx_d3);
-    }*/
+    }
 
-    /*next_tick += 1U;
+    next_tick += 1U;
     if (osDelayUntil(next_tick) != osOK)
     {
       next_tick = osKernelGetTickCount();
-    }*/
+    }
   }
   /* USER CODE END up_down_communication */
 }
