@@ -6,9 +6,100 @@
 #define COMM_CAN_SLAVE_START_BANK   14U
 #define COMM_CAN_STD_ID_TO_FILTER(id) ((uint32_t)(id) << 5U)
 #define COMM_CAN_RX_FRAME_COUNT     4U
+#define COMM_RC_PART_D1             0x01U
+#define COMM_RC_PART_D2             0x02U
 
 static volatile Communication_CanRxFrame_t
     communication_rx_frames[COMM_CAN_RX_FRAME_COUNT];
+static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE];
+static volatile uint8_t communication_rc_assembly_mask;
+static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE];
+static volatile bool communication_rc_snapshot_ready;
+static volatile uint32_t communication_rc_snapshot_ms;
+
+Communication_RcControl_t communication_rc;
+volatile bool communication_rc_online = false;
+volatile uint32_t communication_rc_valid_count = 0U;
+volatile uint32_t communication_rc_last_valid_ms = 0U;
+volatile uint32_t communication_rc_assembly_error_count = 0U;
+
+static void Communication_RC_SetSafe(void)
+{
+    uint32_t saved_primask;
+
+    saved_primask = __get_PRIMASK();
+    __disable_irq();
+    memset(&communication_rc, 0, sizeof(communication_rc));
+    communication_rc.rc.s[0] = COMM_RC_SW_MID;
+    communication_rc.rc.s[1] = COMM_RC_SW_MID;
+    communication_rc_online = false;
+    __set_PRIMASK(saved_primask);
+}
+
+static bool Communication_RC_D3PaddingIsZero(
+    const uint8_t data[COMM_CAN_FRAME_SIZE])
+{
+    uint32_t index;
+
+    for (index = 2U; index < COMM_CAN_FRAME_SIZE; index++)
+    {
+        if (data[index] != 0U)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* 中断中只做分包拼接和快照提交，不在这里进行业务解析。 */
+static void Communication_RC_AcceptFragment(
+    uint16_t std_id,
+    const uint8_t data[COMM_CAN_FRAME_SIZE])
+{
+    if (std_id == COMM_CAN_RX_ID_D1)
+    {
+        memcpy(&communication_rc_assembly[0], data, COMM_CAN_FRAME_SIZE);
+        communication_rc_assembly_mask = COMM_RC_PART_D1;
+        return;
+    }
+
+    if (std_id == COMM_CAN_RX_ID_D2)
+    {
+        if (communication_rc_assembly_mask != COMM_RC_PART_D1)
+        {
+            communication_rc_assembly_mask = 0U;
+            communication_rc_assembly_error_count++;
+            return;
+        }
+
+        memcpy(&communication_rc_assembly[8], data, COMM_CAN_FRAME_SIZE);
+        communication_rc_assembly_mask |= COMM_RC_PART_D2;
+        return;
+    }
+
+    if (std_id == COMM_CAN_RX_ID_D3)
+    {
+        if ((communication_rc_assembly_mask !=
+             (COMM_RC_PART_D1 | COMM_RC_PART_D2)) ||
+            !Communication_RC_D3PaddingIsZero(data))
+        {
+            communication_rc_assembly_mask = 0U;
+            communication_rc_assembly_error_count++;
+            return;
+        }
+
+        communication_rc_assembly[16] = data[0];
+        communication_rc_assembly[17] = data[1];
+        memcpy(communication_rc_snapshot, communication_rc_assembly,
+               COMM_RC_FRAME_SIZE);
+        communication_rc_snapshot_ms = HAL_GetTick();
+        communication_rc_snapshot_ready = true;
+        communication_rc_assembly_mask = 0U;
+    }
+
+    /* D4 暂未使用，仍由通用 CAN 快照接口保留原始数据。 */
+}
 
 static int32_t Communication_CAN_RxIndex(uint16_t std_id)
 {
@@ -49,6 +140,15 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
 
     memset((void *)communication_rx_frames, 0,
            sizeof(communication_rx_frames));
+    memset(communication_rc_assembly, 0, sizeof(communication_rc_assembly));
+    memset(communication_rc_snapshot, 0, sizeof(communication_rc_snapshot));
+    communication_rc_assembly_mask = 0U;
+    communication_rc_snapshot_ready = false;
+    communication_rc_snapshot_ms = 0U;
+    communication_rc_valid_count = 0U;
+    communication_rc_last_valid_ms = 0U;
+    communication_rc_assembly_error_count = 0U;
+    Communication_RC_SetSafe();
 
     status = HAL_CAN_Start(&hcan2);
     if (status != HAL_OK)
@@ -133,6 +233,136 @@ bool Communication_CAN_GetLatest(uint16_t std_id,
     return frame->received;
 }
 
+bool Communication_RC_Parse(
+    const uint8_t frame[COMM_RC_FRAME_SIZE],
+    Communication_RcControl_t *control)
+{
+    Communication_RcControl_t decoded = {0};
+    uint32_t index;
+
+    if ((frame == NULL) || (control == NULL))
+    {
+        return false;
+    }
+
+    decoded.rc.ch[0] = (int16_t)(((uint16_t)frame[0] |
+                                  ((uint16_t)frame[1] << 8)) & 0x07FFU) - 1024;
+    decoded.rc.ch[1] = (int16_t)(((uint16_t)frame[1] >> 3 |
+                                  ((uint16_t)frame[2] << 5)) & 0x07FFU) - 1024;
+    decoded.rc.ch[2] = (int16_t)(((uint16_t)frame[2] >> 6 |
+                                  ((uint16_t)frame[3] << 2) |
+                                  ((uint16_t)frame[4] << 10)) & 0x07FFU) - 1024;
+    decoded.rc.ch[3] = (int16_t)(((uint16_t)frame[4] >> 1 |
+                                  ((uint16_t)frame[5] << 7)) & 0x07FFU) - 1024;
+    decoded.rc.ch[4] = (int16_t)(((uint16_t)frame[16] |
+                                  ((uint16_t)frame[17] << 8)) & 0x07FFU) - 1024;
+    decoded.rc.s[0] = (frame[5] >> 6) & 0x03U;
+    decoded.rc.s[1] = (frame[5] >> 4) & 0x03U;
+
+    for (index = 0U; index < 4U; index++)
+    {
+        if ((decoded.rc.ch[index] < -660) ||
+            (decoded.rc.ch[index] > 660))
+        {
+            memset(control, 0, sizeof(*control));
+            control->rc.s[0] = COMM_RC_SW_MID;
+            control->rc.s[1] = COMM_RC_SW_MID;
+            return false;
+        }
+    }
+
+    if ((decoded.rc.s[0] == 0U) || (decoded.rc.s[0] > COMM_RC_SW_MID) ||
+        (decoded.rc.s[1] == 0U) || (decoded.rc.s[1] > COMM_RC_SW_MID))
+    {
+        memset(control, 0, sizeof(*control));
+        control->rc.s[0] = COMM_RC_SW_MID;
+        control->rc.s[1] = COMM_RC_SW_MID;
+        return false;
+    }
+
+    if ((decoded.rc.ch[4] < -660) || (decoded.rc.ch[4] > 660))
+    {
+        decoded.rc.ch[4] = 0;
+    }
+
+    *control = decoded;
+    return true;
+}
+
+void Communication_Process(void)
+{
+    uint8_t frame[COMM_RC_FRAME_SIZE];
+    Communication_RcControl_t decoded;
+    uint32_t received_ms = 0U;
+    uint32_t now_ms;
+    uint32_t saved_primask;
+    bool frame_available;
+
+    saved_primask = __get_PRIMASK();
+    __disable_irq();
+    frame_available = communication_rc_snapshot_ready;
+    if (frame_available)
+    {
+        memcpy(frame, communication_rc_snapshot, COMM_RC_FRAME_SIZE);
+        received_ms = communication_rc_snapshot_ms;
+        communication_rc_snapshot_ready = false;
+    }
+    __set_PRIMASK(saved_primask);
+
+    if (frame_available)
+    {
+        if (Communication_RC_Parse(frame, &decoded))
+        {
+            saved_primask = __get_PRIMASK();
+            __disable_irq();
+            communication_rc = decoded;
+            communication_rc_last_valid_ms = received_ms;
+            communication_rc_valid_count++;
+            communication_rc_online = true;
+            __set_PRIMASK(saved_primask);
+        }
+        else
+        {
+            saved_primask = __get_PRIMASK();
+            __disable_irq();
+            communication_rc = decoded;
+            __set_PRIMASK(saved_primask);
+        }
+    }
+
+    now_ms = HAL_GetTick();
+    if ((!communication_rc_online) ||
+        ((uint32_t)(now_ms - communication_rc_last_valid_ms) >=
+         COMM_RC_TIMEOUT_MS))
+    {
+        Communication_RC_SetSafe();
+    }
+}
+
+bool Communication_RC_Get(Communication_RcControl_t *control)
+{
+    uint32_t saved_primask;
+    bool online;
+
+    if (control == NULL)
+    {
+        return false;
+    }
+
+    saved_primask = __get_PRIMASK();
+    __disable_irq();
+    *control = communication_rc;
+    online = communication_rc_online;
+    __set_PRIMASK(saved_primask);
+
+    return online;
+}
+
+bool Communication_RC_IsOnline(void)
+{
+    return communication_rc_online;
+}
+
 __weak void Communication_CAN_OnReceive(
     uint16_t std_id,
     const uint8_t data[COMM_CAN_FRAME_SIZE])
@@ -180,6 +410,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         communication_rx_frames[index].rx_count++;
         communication_rx_frames[index].received = true;
 
+        Communication_RC_AcceptFragment((uint16_t)header.StdId, data);
         Communication_CAN_OnReceive((uint16_t)header.StdId, data);
     }
 }

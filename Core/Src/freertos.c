@@ -25,6 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "communication.h"
 
 /* USER CODE END Includes */
 
@@ -47,12 +48,12 @@
 /* USER CODE BEGIN Variables */
 
 /* USER CODE END Variables */
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+/* Definitions for communication */
+osThreadId_t communicationHandle;
+const osThreadAttr_t communication_attributes = {
+  .name = "communication",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,7 +61,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* USER CODE END FunctionPrototypes */
 
-void StartDefaultTask(void *argument);
+void up__down_communication(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -91,8 +92,8 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* creation of communication */
+  communicationHandle = osThreadNew(up__down_communication, NULL, &communication_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -104,22 +105,32 @@ void MX_FREERTOS_Init(void) {
 
 }
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_up__down_communication */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the communication thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_up__down_communication */
+void up__down_communication(void *argument)
 {
-  /* USER CODE BEGIN StartDefaultTask */
+  /* USER CODE BEGIN up__down_communication */
+  uint32_t next_tick;
+
+  (void)argument;
+  next_tick = osKernelGetTickCount();
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    Communication_Process();
+
+    next_tick += 1U;
+    if (osDelayUntil(next_tick) != osOK)
+    {
+      next_tick = osKernelGetTickCount();
+    }
   }
-  /* USER CODE END StartDefaultTask */
+  /* USER CODE END up__down_communication */
 }
 
 /* Private application code --------------------------------------------------*/
