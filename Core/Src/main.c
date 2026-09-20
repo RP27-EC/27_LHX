@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "communication.h"
+#include "motor4310.h"
 
 /* USER CODE END Includes */
 
@@ -93,6 +94,11 @@ int main(void)
   MX_CAN1_Init();
   MX_CAN2_Init();
   /* USER CODE BEGIN 2 */
+  if (Motor4310_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+
   if (Communication_CAN_Init() != HAL_OK)
   {
     Error_Handler();

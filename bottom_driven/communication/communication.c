@@ -1,5 +1,6 @@
 #include "communication.h"
 #include "can.h"
+#include "motor4310.h"
 #include <string.h>
 
 #define COMM_CAN_FILTER_BANK        14U
@@ -150,19 +151,22 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
     communication_rc_assembly_error_count = 0U;
     Communication_RC_SetSafe();
 
-    status = HAL_CAN_Start(&hcan2);
-    if (status != HAL_OK)
+    /* Yaw 电机与板间通信共用 CAN2，允许 Motor4310_Init 已启动总线。 */
+    if (HAL_CAN_GetState(&hcan2) == HAL_CAN_STATE_READY)
     {
-        return status;
+        status = HAL_CAN_Start(&hcan2);
+        if (status != HAL_OK)
+        {
+            return status;
+        }
+    }
+    else if (HAL_CAN_GetState(&hcan2) != HAL_CAN_STATE_LISTENING)
+    {
+        return HAL_ERROR;
     }
 
     status = HAL_CAN_ActivateNotification(&hcan2,
                                           CAN_IT_RX_FIFO0_MSG_PENDING);
-    if (status != HAL_OK)
-    {
-        (void)HAL_CAN_Stop(&hcan2);
-    }
-
     return status;
 }
 
@@ -378,7 +382,12 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     uint8_t data[COMM_CAN_FRAME_SIZE];
     int32_t index;
 
-    if ((hcan == NULL) || (hcan->Instance != CAN2))
+    if (hcan == NULL)
+    {
+        return;
+    }
+
+    if (hcan->Instance != CAN2)
     {
         return;
     }
@@ -395,6 +404,14 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
             (header.RTR != CAN_RTR_DATA) ||
             (header.DLC != COMM_CAN_FRAME_SIZE))
         {
+            continue;
+        }
+
+        if ((header.StdId == MOTOR4310_FEEDBACK_CAN_ID) &&
+            ((data[0] & 0x0FU) ==
+             (MOTOR4310_CONTROL_CAN_ID & 0x0FU)))
+        {
+            Motor4310_ParseFeedback(data);
             continue;
         }
 

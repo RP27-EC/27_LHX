@@ -26,7 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "communication.h"
-
+#include "motor4310.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +55,13 @@ const osThreadAttr_t communication_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityHigh,
 };
+/* Definitions for myTask02 */
+osThreadId_t myTask02Handle;
+const osThreadAttr_t myTask02_attributes = {
+  .name = "myTask02",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityHigh7,
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -62,6 +69,7 @@ const osThreadAttr_t communication_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void up__down_communication(void *argument);
+void motor_control(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -94,6 +102,9 @@ void MX_FREERTOS_Init(void) {
   /* Create the thread(s) */
   /* creation of communication */
   communicationHandle = osThreadNew(up__down_communication, NULL, &communication_attributes);
+
+  /* creation of myTask02 */
+  myTask02Handle = osThreadNew(motor_control, NULL, &myTask02_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -131,6 +142,40 @@ void up__down_communication(void *argument)
     }
   }
   /* USER CODE END up__down_communication */
+}
+
+/* USER CODE BEGIN Header_motor_control */
+/**
+* @brief Function implementing the myTask02 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_motor_control */
+void motor_control(void *argument)
+{
+  /* USER CODE BEGIN motor_control */
+  uint32_t next_tick;
+
+  (void)argument;
+  next_tick = osKernelGetTickCount();
+  /* Infinite loop */
+  
+  for(;;)
+  {
+    if(Communication_RC_IsOnline()&&communication_rc.rc.s[0]==1){
+      Motor4310_Enable();
+      Motor4310_PositionControl(Motor4310_PositionToEcd(0,communication_rc.rc.ch[0]));
+    }else{
+      Motor4310_Disable();
+    }
+
+    next_tick += 10U;
+    if (osDelayUntil(next_tick) != osOK)
+    {
+      next_tick = osKernelGetTickCount();
+    }
+  }
+  /* USER CODE END motor_control */
 }
 
 /* Private application code --------------------------------------------------*/
