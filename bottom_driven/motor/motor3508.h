@@ -64,4 +64,8 @@ bool Motor3508_OnlineCheck(void);
 /* motor_id 为 1~4；原子复制反馈，未收到反馈或参数错误返回 false。 */
 bool Motor3508_GetFeedback(uint8_t motor_id, Motor3508_Feedback *feedback);
 
+/* 由统一 HAL FDCAN FIFO0 回调分发，仅处理 FDCAN1 的 3508 反馈。 */
+void Motor3508_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
+                                   uint32_t interrupts);
+
 #endif

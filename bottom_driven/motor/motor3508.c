@@ -153,7 +153,6 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
     Motor3508_Feedback feedback[MOTOR3508_COUNT];
     int16_t currents[MOTOR3508_COUNT] = {0, 0, 0, 0};
     uint32_t index;
-    uint32_t now;
     float target_speed;
     float current;
 
@@ -221,7 +220,7 @@ bool Motor3508_OnlineCheck(void){
     return true;
 }
 
-void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)
+void Motor3508_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)
 {
     FDCAN_RxHeaderTypeDef header;
     /* 用 64 字节暂存区，防止意外 FD 帧在校验前超出数组容量。 */

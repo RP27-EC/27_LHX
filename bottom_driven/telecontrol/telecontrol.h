@@ -21,7 +21,7 @@
 #define switch_is_mid(s)  ((s) == RC_SW_MID)
 #define switch_is_up(s)   ((s) == RC_SW_UP)
 
-/* ch[0，1] 为右摇杆0左右1上下，ch[2，3] 为左摇杆，ch[4] 为拨轮；均已减去中值 1024。 */
+/* ch[0，1] 为右摇杆0左右1上下，ch[2，3] 为左摇杆，ch[4] 为拨轮；均已减去中值 1024。s为拨杆开关 */
 typedef struct
 {
     struct
