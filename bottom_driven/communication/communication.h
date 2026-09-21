@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "stm32f4xx_hal.h"
+#include "parameter.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -23,7 +24,6 @@ extern "C" {
 
 /* 下板传来的 DJI DBUS 原始遥控帧长度。 */
 #define COMM_RC_FRAME_SIZE   18U
-#define COMM_RC_TIMEOUT_MS   100U
 
 /* 三档拨杆原始编码：上 1，中 3，下 2。 */
 #define COMM_RC_SW_UP        1U

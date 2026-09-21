@@ -26,7 +26,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "communication.h"
-#include "motor4310.h"
+#include "cloud_terrace.h"
+#include "parameter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,7 +60,7 @@ const osThreadAttr_t communication_attributes = {
 osThreadId_t myTask02Handle;
 const osThreadAttr_t myTask02_attributes = {
   .name = "myTask02",
-  .stack_size = 128 * 4,
+  .stack_size = CLOUD_TASK_STACK_BYTES,
   .priority = (osPriority_t) osPriorityHigh7,
 };
 
@@ -157,19 +158,14 @@ void motor_control(void *argument)
   uint32_t next_tick;
 
   (void)argument;
+  CloudTerrace_Init();
   next_tick = osKernelGetTickCount();
-  /* Infinite loop */
-  
   for(;;)
   {
-    if(Communication_RC_IsOnline()&&communication_rc.rc.s[0]==1){
-      Motor4310_Enable();
-      Motor4310_PositionControl(Motor4310_PositionToEcd(0,communication_rc.rc.ch[0]));
-    }else{
-      Motor4310_Disable();
-    }
+    /* 控制策略全部由云台模块负责，任务只提供固定节拍。 */
+    CloudTerrace_Update();
 
-    next_tick += 10U;
+    next_tick += CLOUD_CONTROL_PERIOD_TICKS;
     if (osDelayUntil(next_tick) != osOK)
     {
       next_tick = osKernelGetTickCount();

@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../bottom_driven/communication;../bottom_driven/motor4310;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../bottom_driven/communication;../bottom_driven/motor4310;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -539,6 +539,26 @@
               <FileName>motor4310.h</FileName>
               <FileType>5</FileType>
               <FilePath>../bottom_driven/motor4310/motor4310.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>user/cloud_terrace</GroupName>
+          <Files>
+            <File>
+              <FileName>cloud_terrace.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/cloud_terrace.c</FilePath>
+            </File>
+            <File>
+              <FileName>cloud_terrace.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/cloud_terrace.h</FilePath>
+            </File>
+            <File>
+              <FileName>parameter.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/parameter.h</FilePath>
             </File>
           </Files>
         </Group>

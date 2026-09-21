@@ -356,7 +356,9 @@ bool Communication_RC_Get(Communication_RcControl_t *control)
     saved_primask = __get_PRIMASK();
     __disable_irq();
     *control = communication_rc;
-    online = communication_rc_online;
+    online = communication_rc_online &&
+             (uint32_t)(HAL_GetTick() - communication_rc_last_valid_ms) <
+             COMM_RC_TIMEOUT_MS;
     __set_PRIMASK(saved_primask);
 
     return online;
@@ -364,7 +366,9 @@ bool Communication_RC_Get(Communication_RcControl_t *control)
 
 bool Communication_RC_IsOnline(void)
 {
-    return communication_rc_online;
+    return communication_rc_online &&
+           (uint32_t)(HAL_GetTick() - communication_rc_last_valid_ms) <
+           COMM_RC_TIMEOUT_MS;
 }
 
 __weak void Communication_CAN_OnReceive(
@@ -384,6 +388,12 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
     if (hcan == NULL)
     {
+        return;
+    }
+
+    if (hcan->Instance == CAN1)
+    {
+        Motor4310_CAN_RxFifo0Callback(hcan);
         return;
     }
 
@@ -407,11 +417,9 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
             continue;
         }
 
-        if ((header.StdId == MOTOR4310_FEEDBACK_CAN_ID) &&
-            ((data[0] & 0x0FU) ==
-             (MOTOR4310_CONTROL_CAN_ID & 0x0FU)))
+        if (header.StdId == MOTOR4310_FEEDBACK_CAN_ID)
         {
-            Motor4310_ParseFeedback(data);
+            Motor4310_ProcessCanFrame(hcan, header.StdId, data);
             continue;
         }
 
