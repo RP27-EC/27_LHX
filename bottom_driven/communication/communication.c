@@ -2,6 +2,8 @@
 
 #include "fdcan.h"
 #include "motor3508.h"
+#include "parameter.h"
+#include <float.h>
 #include <string.h>
 
 static Communication_RxFrame communication_rx_c1;
@@ -102,6 +104,41 @@ bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame)
     *frame = *source;
     __set_PRIMASK(saved_primask);
     return frame->received;
+}
+
+bool Communication_GetYawAngle(float *angle_deg)
+{
+    Communication_RxFrame frame;
+    int16_t encoded;
+
+    if (angle_deg == NULL ||
+        !Communication_GetRxFrame(COMMUNICATION_RX_ID_C1, &frame) ||
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
+            CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS ||
+        (frame.data[2] & 0x01U) == 0U)
+    {
+        return false;
+    }
+    encoded = (int16_t)((uint16_t)frame.data[0] |
+                        ((uint16_t)frame.data[1] << 8));
+    *angle_deg = (float)encoded * 0.01f;
+    return true;
+}
+
+HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s)
+{
+    uint8_t data[COMMUNICATION_FRAME_SIZE] = {0};
+    int16_t encoded;
+
+    if (!(rate_deg_s >= -FLT_MAX && rate_deg_s <= FLT_MAX))
+    { return HAL_ERROR; }
+    if (rate_deg_s > 327.67f) { rate_deg_s = 327.67f; }
+    else if (rate_deg_s < -327.68f) { rate_deg_s = -327.68f; }
+    encoded = (int16_t)(rate_deg_s * 100.0f);
+    data[0] = (uint8_t)(uint16_t)encoded;
+    data[1] = (uint8_t)((uint16_t)encoded >> 8);
+    data[2] = 0x01U;
+    return Communication_Send(COMMUNICATION_TX_ID_D4, data);
 }
 
 void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,

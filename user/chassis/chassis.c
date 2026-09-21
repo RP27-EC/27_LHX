@@ -1,4 +1,9 @@
 #include "chassis.h"
+#include "communication.h"
+#include "imu.h"
+
+static float chassis_follow_cycle_rpm;
+static uint32_t chassis_follow_last_rate_tx_ms;
 
 
 static float Chassis_Abs(float value)
@@ -47,5 +52,74 @@ void Chassis_MecanumInverse(float front,float left,float cycle)
                             (int16_t)motor[1],
                             (int16_t)motor[2],
                             (int16_t)motor[3]);
+}
+
+void Chassis_FollowReset(void)
+{
+    chassis_follow_cycle_rpm = 0.0f;
+    chassis_follow_last_rate_tx_ms = 0U;
+}
+
+void Chassis_FollowUpdate(float front, float left, float yaw_input)
+{
+    float angle_deg, error_deg, feedforward_rpm;
+    float target_rpm, step, rate_deg_s;
+    uint32_t now_ms;
+
+    if (!Communication_GetYawAngle(&angle_deg) ||
+        !ChassisImu_GetYawRate(&rate_deg_s))
+    {
+        Chassis_FollowReset();
+        (void)Motor3508_Stop();
+        return;
+    }
+
+    /* 连续软死区：10 度内不追，越过边界时从零速平滑起步。 */
+    if (angle_deg > CHASSIS_FOLLOW_DEADBAND_DEG)
+    { error_deg = angle_deg - CHASSIS_FOLLOW_DEADBAND_DEG; }
+    else if (angle_deg < -CHASSIS_FOLLOW_DEADBAND_DEG)
+    { error_deg = angle_deg + CHASSIS_FOLLOW_DEADBAND_DEG; }
+    else { error_deg = 0.0f; }
+
+    /* 使用与上板Yaw相同的遥控输入作为前馈。底盘无需等待云台偏出
+     * 机械角死区才开始转动；松杆后前馈归零，仍由角度闭环归中。 */
+    if (yaw_input > CHASSIS_FOLLOW_RC_DEADBAND)
+    {
+        feedforward_rpm =
+            (yaw_input - CHASSIS_FOLLOW_RC_DEADBAND) *
+            CHASSIS_FOLLOW_FF_RPM_PER_RC;
+    }
+    else if (yaw_input < -CHASSIS_FOLLOW_RC_DEADBAND)
+    {
+        feedforward_rpm =
+            (yaw_input + CHASSIS_FOLLOW_RC_DEADBAND) *
+            CHASSIS_FOLLOW_FF_RPM_PER_RC;
+    }
+    else
+    {
+        feedforward_rpm = 0.0f;
+    }
+
+    target_rpm = (error_deg * CHASSIS_FOLLOW_KP_RPM_PER_DEG +
+                  feedforward_rpm) * CHASSIS_FOLLOW_ROTATE_SIGN;
+    if (target_rpm > CHASSIS_FOLLOW_MAX_ROTATE_RPM)
+    { target_rpm = CHASSIS_FOLLOW_MAX_ROTATE_RPM; }
+    else if (target_rpm < -CHASSIS_FOLLOW_MAX_ROTATE_RPM)
+    { target_rpm = -CHASSIS_FOLLOW_MAX_ROTATE_RPM; }
+    step = target_rpm - chassis_follow_cycle_rpm;
+    if (step > CHASSIS_FOLLOW_SLEW_RPM_PER_TICK)
+    { step = CHASSIS_FOLLOW_SLEW_RPM_PER_TICK; }
+    else if (step < -CHASSIS_FOLLOW_SLEW_RPM_PER_TICK)
+    { step = -CHASSIS_FOLLOW_SLEW_RPM_PER_TICK; }
+    chassis_follow_cycle_rpm += step;
+
+    Chassis_MecanumInverse(front, left, chassis_follow_cycle_rpm);
+    now_ms = HAL_GetTick();
+    if ((uint32_t)(now_ms - chassis_follow_last_rate_tx_ms) >=
+            CHASSIS_FOLLOW_RATE_TX_PERIOD_MS &&
+        Communication_SendChassisYawRate(rate_deg_s) == HAL_OK)
+    {
+        chassis_follow_last_rate_tx_ms = now_ms;
+    }
 }
 

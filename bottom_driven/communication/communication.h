@@ -40,6 +40,11 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
 /* 原子复制 C1 或 C2 的最近接收结果；尚未收到或 ID 非法时返回 false。 */
 bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame);
 
+/* 跟随协议：C1 为归中 Yaw 角度，D4 为 BMI088 实测底盘角速度；
+ * [0:1] 有符号小端 0.01 度(每秒)，[2] bit0 表示数据有效。 */
+bool Communication_GetYawAngle(float *angle_deg);
+HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
+
 /* 由统一 HAL FDCAN FIFO0 回调调用，不应由任务代码直接调用。 */
 void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
                                         uint32_t interrupts);

@@ -30,6 +30,7 @@
 #include "telecontrol.h"
 #include "motor3508.h"
 #include "communication.h"
+#include "imu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -108,6 +109,10 @@ int main(void)
     Error_Handler();
   }
   if (Communication_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (ChassisImu_Init() != HAL_OK)
   {
     Error_Handler();
   }

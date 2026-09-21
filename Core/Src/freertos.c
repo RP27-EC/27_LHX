@@ -33,6 +33,7 @@
 #include "chassis.h"
 #include "communication.h"
 #include "parameter.h"
+#include "imu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -192,13 +193,34 @@ void motor3508_speed_control(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    if(RC_online_return()&&Motor3508_OnlineCheck()&&
-       rc_ctrl.rc.s[0]==CHASSIS_ENABLE_SWITCH_POSITION){
-    Chassis_MecanumInverse(rc_ctrl.rc.ch[3]*CHASSIS_FORWARD_SCALE,
-                          rc_ctrl.rc.ch[2]*CHASSIS_LEFT_SCALE,
-                          rc_ctrl.rc.ch[0]*CHASSIS_ROTATE_SCALE);
-    }else {
-      Motor3508_Stop();
+    /* BMI088 角速度与姿态保持 1 ms 更新，跟随模式直接使用 Z 轴角速度。 */
+    (void)ChassisImu_Update();
+    if (RC_online_return() && Motor3508_OnlineCheck())
+    {
+      if (rc_ctrl.rc.s[0] == CHASSIS_FOLLOW_SWITCH_POSITION)
+      {
+        /* 上档由云台相对车头角度驱动旋转，左右摇杆只控制 Yaw。 */
+        Chassis_FollowUpdate(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
+                             rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
+                             (float)rc_ctrl.rc.ch[0]);
+      }
+      else if (rc_ctrl.rc.s[0] == CHASSIS_ENABLE_SWITCH_POSITION)
+      {
+        Chassis_FollowReset();
+        Chassis_MecanumInverse(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
+                              rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
+                              rc_ctrl.rc.ch[0] * CHASSIS_ROTATE_SCALE);
+      }
+      else
+      {
+        Chassis_FollowReset();
+        (void)Motor3508_Stop();
+      }
+    }
+    else
+    {
+      Chassis_FollowReset();
+      (void)Motor3508_Stop();
     }
 
     next_tick += CHASSIS_TASK_PERIOD_TICKS;
