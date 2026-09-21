@@ -71,7 +71,10 @@ HAL_StatusTypeDef Motor3508_Init(void)
     control_mode = 0U;
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        PID_Init(&motor3508_position_pid[i], 2.5f, 2.0f, 0.0f,500.0f, 3500.0f, 0.001f);
+        PID_Init(&motor3508_position_pid[i], MOTOR3508_POSITION_KP,
+                 MOTOR3508_POSITION_KI, MOTOR3508_POSITION_KD,
+                 MOTOR3508_POSITION_INTEGRAL_LIMIT,
+                 MOTOR3508_POSITION_OUTPUT_LIMIT, MOTOR3508_PID_CONTROL_TIME_S);
     }
     status = HAL_FDCAN_Start(&hfdcan1);
     if (status != HAL_OK) { return status; }
@@ -83,7 +86,10 @@ HAL_StatusTypeDef Motor3508_Init(void)
         
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        PID_Init(&motor3508_speed_pid[i],8.0f,2.0f,0.0f,1000.0f,10000.0f,0.001f);
+        PID_Init(&motor3508_speed_pid[i], MOTOR3508_SPEED_KP,
+                 MOTOR3508_SPEED_KI, MOTOR3508_SPEED_KD,
+                 MOTOR3508_SPEED_INTEGRAL_LIMIT,
+                 MOTOR3508_SPEED_OUTPUT_LIMIT, MOTOR3508_PID_CONTROL_TIME_S);
     }
     return status;
 }

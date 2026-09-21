@@ -1,12 +1,11 @@
 #include "telecontrol.h"
+#include "parameter.h"
 #include <stdbool.h>
 #include <string.h>
 
 /* 中断写入，task 读取；不让 task 直接读取正在接收的 DMA 缓冲区。 */
 static uint8_t rc_frame_snapshot[RC_FRAME_LEN];
 static volatile bool rc_frame_ready = false;
-
-#define RC_TIMEOUT_MS 100U                  //超时时间
 
 static volatile uint32_t rc_last_valid_rx_ms = 0U;   //最近有效帧接收时间
 static volatile bool rc_has_valid_frame = false;     //上电后是否接到有效帧

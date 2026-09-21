@@ -32,6 +32,7 @@
 #include <string.h>
 #include "chassis.h"
 #include "communication.h"
+#include "parameter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -162,8 +163,8 @@ void StartRcTask(void *argument)
 
       (void)RC_CheckOnline(HAL_GetTick());
 
-        /* 每隔 15 tick执行一轮。 */
-      next_tick += 15U;
+        /* 按配置周期执行遥控解析和在线检测。 */
+      next_tick += RC_TASK_PERIOD_TICKS;
 
       /* 如果本轮超时，重新建立时间基准，避免连续追赶。 */
       if (osDelayUntil(next_tick) != osOK)
@@ -191,13 +192,16 @@ void motor3508_speed_control(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    if(RC_online_return()&&Motor3508_OnlineCheck()&&rc_ctrl.rc.s[0]==2){
-    Chassis_MecanumInverse(rc_ctrl.rc.ch[3]*5,-rc_ctrl.rc.ch[2]*5,-rc_ctrl.rc.ch[0]*5);
+    if(RC_online_return()&&Motor3508_OnlineCheck()&&
+       rc_ctrl.rc.s[0]==CHASSIS_ENABLE_SWITCH_POSITION){
+    Chassis_MecanumInverse(rc_ctrl.rc.ch[3]*CHASSIS_FORWARD_SCALE,
+                          rc_ctrl.rc.ch[2]*CHASSIS_LEFT_SCALE,
+                          rc_ctrl.rc.ch[0]*CHASSIS_ROTATE_SCALE);
     }else {
       Motor3508_Stop();
     }
 
-    next_tick += 1U;
+    next_tick += CHASSIS_TASK_PERIOD_TICKS;
       if (osDelayUntil(next_tick) != osOK)
     {
         next_tick = osKernelGetTickCount();
@@ -255,7 +259,7 @@ void up_down_communication(void *argument)
       (void)Communication_Send(COMMUNICATION_TX_ID_D3, tx_d3);
     }
 
-    next_tick += 1U;
+    next_tick += COMMUNICATION_TASK_PERIOD_TICKS;
     if (osDelayUntil(next_tick) != osOK)
     {
       next_tick = osKernelGetTickCount();

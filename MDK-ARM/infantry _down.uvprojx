@@ -1005,6 +1005,11 @@
               <FileType>5</FileType>
               <FilePath>..\user\chassis\chassis.h</FilePath>
             </File>
+            <File>
+              <FileName>parameter.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\parameter.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

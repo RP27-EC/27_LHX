@@ -3,10 +3,7 @@
 
 #include "main.h"
 #include "motor3508.h"
-
-
-
-#define CHASSIS_MAX_MOTOR_RPM  5000.0f
+#include "parameter.h"
 
 void Chassis_MecanumInverse(float front,float left,float cycle);
 
