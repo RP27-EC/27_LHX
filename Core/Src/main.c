@@ -20,11 +20,13 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "can.h"
+#include "spi.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "communication.h"
+#include "imu.h"
 #include "motor4310.h"
 
 /* USER CODE END Includes */
@@ -93,7 +95,14 @@ int main(void)
   MX_GPIO_Init();
   MX_CAN1_Init();
   MX_CAN2_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  if (GimbalImu_Init() != HAL_OK)
+  {
+    /* Yaw 依赖上板 IMU 稳向，初始化失败时不允许进入电机控制。 */
+    Error_Handler();
+  }
+
   if (Motor4310_Init() != HAL_OK)
   {
     Error_Handler();

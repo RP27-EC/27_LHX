@@ -11,7 +11,7 @@
 /* 板间遥控帧超时；下板断遥控后停止发送 D1～D3。 */
 #define COMM_RC_TIMEOUT_MS                  100U
 
-/* 电机串级 PID，按 10 ms 控制周期整定。 */
+/* 电机与云台 PID，按模板 1 ms 控制周期运行。 */
 #define MOTOR4310_SPEED_KP                  1.0f
 #define MOTOR4310_SPEED_KI                  0.5f
 #define MOTOR4310_SPEED_KD                  0.0f
@@ -22,16 +22,40 @@
 #define MOTOR4310_POSITION_KD               0.0f
 #define MOTOR4310_POSITION_INTEGRAL_LIMIT   100.0f
 #define MOTOR4310_POSITION_OUTPUT_LIMIT     300.0f
-#define MOTOR4310_CONTROL_PERIOD_S          0.01f
+#define MOTOR4310_CONTROL_PERIOD_S          0.001f
 
-/* 云台任务与遥控：摇杆值范围 -660～660，速度为电机反馈原始速度码。 */
-#define CLOUD_CONTROL_PERIOD_TICKS          10U
+/* 云台任务与遥控：摇杆值范围 -660～660。 */
+#define CLOUD_CONTROL_PERIOD_TICKS          1U
 #define CLOUD_TASK_STACK_BYTES              1024U
 #define CLOUD_RC_MAX_VALUE                  660.0f
 #define CLOUD_RC_SPEED_ENTER                15
 #define CLOUD_RC_SPEED_EXIT                 8
-#define CLOUD_YAW_MAX_SPEED_RAW             300
 #define CLOUD_PITCH_MAX_SPEED_RAW           150
+
+/* D4 底盘角速度仅保留作调试数据，不再参与 Yaw 控制。 */
+#define CLOUD_FOLLOW_RATE_TIMEOUT_MS        100U
+
+/* 上板 BMI088：模板坐标变换为绕 Z 轴180°（X/Y 取反，Z 不变）。 */
+#define GIMBAL_IMU_UPDATE_PERIOD_S          0.001f
+#define GIMBAL_IMU_CALIBRATION_SAMPLES      1000U
+#define GIMBAL_IMU_ATTITUDE_KP              2.0f
+#define GIMBAL_IMU_ATTITUDE_KI              0.02f
+#define GIMBAL_IMU_YAW_RATE_FILTER_ALPHA    1.0f
+
+/* 模板 Yaw 惯性系位控：角度外环 -> 陀螺仪角速度内环 -> 转矩。 */
+#define CLOUD_YAW_COMMAND_RATE_DEG_S        200.0f
+#define CLOUD_YAW_RC_DIRECTION              1.0f
+#define CLOUD_YAW_ANGLE_KP                  20.0f
+#define CLOUD_YAW_ANGLE_KI                  0.05f
+#define CLOUD_YAW_ANGLE_KD                  0.0f
+#define CLOUD_YAW_ANGLE_INTEGRAL_LIMIT      200.0f
+#define CLOUD_YAW_RATE_TARGET_LIMIT_DEG_S   500.0f
+/* 模板内环 Kp=0.04 Nm/(deg/s)，4310 原始转矩码按 2047/10 Nm 换算。 */
+#define CLOUD_YAW_RATE_KP                   8.188f
+#define CLOUD_YAW_RATE_KI                   0.0f
+#define CLOUD_YAW_RATE_KD                   0.0f
+#define CLOUD_YAW_RATE_INTEGRAL_LIMIT       0.0f
+#define CLOUD_YAW_TORQUE_LIMIT_RAW          2047.0f
 
 /* 模板机械归中点；当前实车 Pitch 下限与补偿比例保留现有调试值。 */
 #define CLOUD_YAW_HOME_RAD                  (-0.387884378f)

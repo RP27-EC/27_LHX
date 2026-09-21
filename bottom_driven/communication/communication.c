@@ -1,6 +1,7 @@
 #include "communication.h"
 #include "can.h"
 #include "motor4310.h"
+#include <float.h>
 #include <string.h>
 
 #define COMM_CAN_FILTER_BANK        14U
@@ -99,7 +100,7 @@ static void Communication_RC_AcceptFragment(
         communication_rc_assembly_mask = 0U;
     }
 
-    /* D4 暂未使用，仍由通用 CAN 快照接口保留原始数据。 */
+    /* D4 底盘转速由通用 CAN 快照保存，云台任务按需读取。 */
 }
 
 static int32_t Communication_CAN_RxIndex(uint16_t std_id)
@@ -209,6 +210,41 @@ HAL_StatusTypeDef Communication_CAN_SendC2(
     const uint8_t data[COMM_CAN_FRAME_SIZE])
 {
     return Communication_CAN_Send(COMM_CAN_TX_ID_C2, data);
+}
+
+HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg)
+{
+    uint8_t data[COMM_CAN_FRAME_SIZE] = {0};
+    int16_t encoded;
+
+    if (!(angle_deg >= -FLT_MAX && angle_deg <= FLT_MAX))
+    { return HAL_ERROR; }
+    if (angle_deg > 327.67f) { angle_deg = 327.67f; }
+    else if (angle_deg < -327.68f) { angle_deg = -327.68f; }
+    encoded = (int16_t)(angle_deg * 100.0f);
+    data[0] = (uint8_t)(uint16_t)encoded;
+    data[1] = (uint8_t)((uint16_t)encoded >> 8);
+    data[2] = 0x01U;
+    return Communication_CAN_SendC1(data);
+}
+
+bool Communication_CAN_GetChassisYawRate(float *rate_deg_s)
+{
+    Communication_CanRxFrame_t frame;
+    int16_t encoded;
+
+    if (rate_deg_s == NULL ||
+        !Communication_CAN_GetLatest(COMM_CAN_RX_ID_D4, &frame) ||
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
+            CLOUD_FOLLOW_RATE_TIMEOUT_MS ||
+        (frame.data[2] & 0x01U) == 0U)
+    {
+        return false;
+    }
+    encoded = (int16_t)((uint16_t)frame.data[0] |
+                        ((uint16_t)frame.data[1] << 8));
+    *rate_deg_s = (float)encoded * 0.01f;
+    return true;
 }
 
 bool Communication_CAN_GetLatest(uint16_t std_id,

@@ -1,6 +1,8 @@
 #include "cloud_terrace.h"
 #include "communication.h"
+#include "imu.h"
 #include "motor4310.h"
+#include "PID.h"
 #include "parameter.h"
 #include <math.h>
 #include <stdbool.h>
@@ -18,6 +20,15 @@ static int32_t home_target[MOTOR4310_COUNT];
 static uint16_t home_stable_cycles;
 static bool targets_initialized;
 static PitchControl_t pitch_control;
+static PID_Controller_t yaw_angle_pid;
+static PID_Controller_t yaw_rate_pid;
+
+volatile bool cloud_yaw_imu_online;
+volatile float cloud_yaw_target_deg;
+volatile float cloud_yaw_angle_deg;
+volatile float cloud_yaw_rate_deg_s;
+volatile float cloud_yaw_rate_target_deg_s;
+volatile int16_t cloud_yaw_torque_raw;
 
 static void cloud_reset_home(void)
 {
@@ -25,12 +36,27 @@ static void cloud_reset_home(void)
     home_stable_cycles = 0U;
     targets_initialized = false;
     pitch_control.speed_mode = false;
+    PID_Reset(&yaw_angle_pid);
+    PID_Reset(&yaw_rate_pid);
+    cloud_yaw_imu_online = false;
+    cloud_yaw_target_deg = 0.0f;
+    cloud_yaw_angle_deg = 0.0f;
+    cloud_yaw_rate_deg_s = 0.0f;
+    cloud_yaw_rate_target_deg_s = 0.0f;
+    cloud_yaw_torque_raw = 0;
     home_target[MOTOR4310_PITCH] = 0;
     home_target[MOTOR4310_YAW] = 0;
 }
 
 void CloudTerrace_Init(void)
 {
+    PID_Init(&yaw_angle_pid, CLOUD_YAW_ANGLE_KP, CLOUD_YAW_ANGLE_KI,
+             CLOUD_YAW_ANGLE_KD, CLOUD_YAW_ANGLE_INTEGRAL_LIMIT,
+             CLOUD_YAW_RATE_TARGET_LIMIT_DEG_S,
+             MOTOR4310_CONTROL_PERIOD_S);
+    PID_Init(&yaw_rate_pid, CLOUD_YAW_RATE_KP, CLOUD_YAW_RATE_KI,
+             CLOUD_YAW_RATE_KD, CLOUD_YAW_RATE_INTEGRAL_LIMIT,
+             CLOUD_YAW_TORQUE_LIMIT_RAW, MOTOR4310_CONTROL_PERIOD_S);
     pitch_control.hold_angle = 0;
     cloud_reset_home();
 }
@@ -110,15 +136,72 @@ static bool cloud_home_step(void)
     return cloud_terrace_home_state == CLOUD_TERRACE_HOME_DONE;
 }
 
+static float cloud_wrap_yaw_deg(float angle_deg)
+{
+    while (angle_deg > 180.0f) { angle_deg -= 360.0f; }
+    while (angle_deg < -180.0f) { angle_deg += 360.0f; }
+    return angle_deg;
+}
+
+static bool cloud_yaw_relative_deg(float *angle_deg)
+{
+    Motor4310_Data_t yaw;
+
+    if (angle_deg == NULL || !Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
+    { return false; }
+    *angle_deg = cloud_wrap_yaw_deg(
+        (float)(yaw.total_angle - home_target[MOTOR4310_YAW]) *
+        360.0f / MOTOR4310_ECD_PER_ROUND);
+    return true;
+}
+
 static void cloud_control_yaw(int16_t input)
 {
-    int16_t speed;
-    /* Yaw 始终为速度环，摇杆回中时仅给零速，不锁住角度。 */
+    GimbalImu_Data_t imu;
+    float torque;
+
     if (input >= -CLOUD_RC_SPEED_ENTER && input <= CLOUD_RC_SPEED_ENTER)
     { input = 0; }
-    speed = (int16_t)((float)input / CLOUD_RC_MAX_VALUE *
-                      CLOUD_YAW_MAX_SPEED_RAW);
-    (void)Motor4310_SpeedControlMotor(MOTOR4310_YAW, speed);
+    if (!GimbalImu_Get(&imu))
+    {
+        cloud_yaw_imu_online = false;
+        PID_Reset(&yaw_angle_pid);
+        PID_Reset(&yaw_rate_pid);
+        cloud_yaw_torque_raw = 0;
+        (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
+        return;
+    }
+
+    if (!cloud_yaw_imu_online)
+    {
+        /* IMU 恢复时从当前朝向重新接管，避免追赶旧目标突跳。 */
+        cloud_yaw_target_deg = imu.yaw_total_deg;
+        PID_Reset(&yaw_angle_pid);
+        PID_Reset(&yaw_rate_pid);
+    }
+    cloud_yaw_imu_online = true;
+    cloud_yaw_angle_deg = imu.yaw_total_deg;
+    cloud_yaw_rate_deg_s = imu.yaw_rate_deg_s;
+    /* 摇杆改变惯性系角度目标；松杆后目标不变，云台稳向。 */
+    cloud_yaw_target_deg += CLOUD_YAW_RC_DIRECTION *
+        (float)input / CLOUD_RC_MAX_VALUE * CLOUD_YAW_COMMAND_RATE_DEG_S *
+        MOTOR4310_CONTROL_PERIOD_S;
+    cloud_yaw_rate_target_deg_s = PID_Calc(
+        &yaw_angle_pid, cloud_yaw_target_deg, imu.yaw_total_deg);
+    torque = PID_Calc(&yaw_rate_pid, cloud_yaw_rate_target_deg_s,
+                      imu.yaw_rate_deg_s);
+    cloud_yaw_torque_raw = (int16_t)torque;
+    (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW,
+                                      cloud_yaw_torque_raw);
+}
+
+static void cloud_send_yaw_angle(void)
+{
+    float relative_deg;
+
+    if (!cloud_yaw_relative_deg(&relative_deg)) { return; }
+    /* 传机械归中后的相对车头角，而非电机编码器原始零点。 */
+    (void)Communication_CAN_SendYawAngle(relative_deg);
 }
 
 static void cloud_control_pitch(int16_t input)
@@ -216,11 +299,23 @@ void CloudTerrace_Update(void)
     if (!cloud_home_step()) { return; }
     if (!targets_initialized)
     {
+        GimbalImu_Data_t imu;
+
+        if (!GimbalImu_Get(&imu))
+        {
+            (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
+            return;
+        }
         pitch_control.hold_angle = home_target[MOTOR4310_PITCH];
         pitch_control.speed_mode = false;
-        Motor4310_ResetControl(MOTOR4310_YAW);
+        cloud_yaw_target_deg = imu.yaw_total_deg;
+        cloud_yaw_angle_deg = imu.yaw_total_deg;
+        cloud_yaw_rate_deg_s = imu.yaw_rate_deg_s;
+        PID_Reset(&yaw_angle_pid);
+        PID_Reset(&yaw_rate_pid);
         targets_initialized = true;
     }
     cloud_control_yaw(rc.rc.ch[0]);
     cloud_control_pitch(rc.rc.ch[1]);
+    cloud_send_yaw_angle();
 }

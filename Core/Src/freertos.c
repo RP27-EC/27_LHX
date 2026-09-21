@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "communication.h"
 #include "cloud_terrace.h"
+#include "imu.h"
 #include "parameter.h"
 /* USER CODE END Includes */
 
@@ -53,15 +54,15 @@
 osThreadId_t communicationHandle;
 const osThreadAttr_t communication_attributes = {
   .name = "communication",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityHigh,
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityHigh7,
 };
 /* Definitions for myTask02 */
 osThreadId_t myTask02Handle;
 const osThreadAttr_t myTask02_attributes = {
   .name = "myTask02",
-  .stack_size = CLOUD_TASK_STACK_BYTES,
-  .priority = (osPriority_t) osPriorityHigh7,
+  .stack_size = 516 * 4,
+  .priority = (osPriority_t) osPriorityHigh5,
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -162,7 +163,8 @@ void motor_control(void *argument)
   next_tick = osKernelGetTickCount();
   for(;;)
   {
-    /* 控制策略全部由云台模块负责，任务只提供固定节拍。 */
+    /* 按模板顺序：先更新 IMU，再用当次数据执行云台闭环。 */
+    (void)GimbalImu_Update();
     CloudTerrace_Update();
 
     next_tick += CLOUD_CONTROL_PERIOD_TICKS;

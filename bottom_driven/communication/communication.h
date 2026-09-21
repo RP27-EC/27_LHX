@@ -67,6 +67,12 @@ HAL_StatusTypeDef Communication_CAN_SendC1(
 HAL_StatusTypeDef Communication_CAN_SendC2(
     const uint8_t data[COMM_CAN_FRAME_SIZE]);
 
+/* 跟随协议：C1[0:1] 为有符号归中角度(0.01 度)，[2] bit0=有效；
+ * D4[0:1] 为有符号底盘实际角速度(0.01 度/秒)，[2] bit0=有效。
+ * 两者均为小端；其余字节置零。 */
+HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg);
+bool Communication_CAN_GetChassisYawRate(float *rate_deg_s);
+
 /* 获取指定 D1~D4 的最新完整快照；尚未收到或参数错误时返回 false。 */
 bool Communication_CAN_GetLatest(uint16_t std_id,
                                  Communication_CanRxFrame_t *frame);
