@@ -191,7 +191,7 @@ void motor3508_speed_control(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    if(RC_online_return()&&Motor3508_OnlineCheck()){
+    if(RC_online_return()&&Motor3508_OnlineCheck()&&rc_ctrl.rc.s[0]==2){
     Chassis_MecanumInverse(rc_ctrl.rc.ch[3]*5,-rc_ctrl.rc.ch[2]*5,-rc_ctrl.rc.ch[0]*5);
     }else {
       Motor3508_Stop();
@@ -240,7 +240,7 @@ void up_down_communication(void *argument)
     }
     taskEXIT_CRITICAL();
 
-    if (frame_count_snapshot > 0U)
+    if (frame_count_snapshot > 0U && RC_online_return())
     {
       /* 经典 CAN 一帧最多 8 字节，把 DBUS 的 18 字节原始帧依次拆分：
        * D1 = byte 0~7，D2 = byte 8~15，D3 = byte 16~17 + 六字节 0。
