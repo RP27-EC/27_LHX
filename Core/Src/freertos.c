@@ -197,8 +197,17 @@ void motor3508_speed_control(void *argument)
     (void)ChassisImu_Update();
     if (RC_online_return() && Motor3508_OnlineCheck())
     {
-      if (rc_ctrl.rc.s[0] == CHASSIS_FOLLOW_SWITCH_POSITION)
+      if (rc_ctrl.rc.s[0] == CHASSIS_SPIN_SWITCH_0_POSITION &&
+          rc_ctrl.rc.s[1] == CHASSIS_SPIN_SWITCH_1_POSITION)
       {
+        /* 小陀螺：底盘固定自转，平移方向以云台Yaw朝向为正前方。 */
+        Chassis_FollowReset();
+        Chassis_SpinUpdate(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
+                           rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE);
+      }
+      else if (rc_ctrl.rc.s[0] == CHASSIS_FOLLOW_SWITCH_POSITION)
+      {
+        Chassis_SpinReset();
         /* 上档由云台相对车头角度驱动旋转，左右摇杆只控制 Yaw。 */
         Chassis_FollowUpdate(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
                              rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
@@ -209,6 +218,7 @@ void motor3508_speed_control(void *argument)
       {
         /* 下档和中档使用相同的底盘手动控制；中档时上板Yaw锁车头。 */
         Chassis_FollowReset();
+        Chassis_SpinReset();
         Chassis_MecanumInverse(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
                               rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
                               rc_ctrl.rc.ch[0] * CHASSIS_ROTATE_SCALE);
@@ -216,12 +226,14 @@ void motor3508_speed_control(void *argument)
       else
       {
         Chassis_FollowReset();
+        Chassis_SpinReset();
         (void)Motor3508_Stop();
       }
     }
     else
     {
       Chassis_FollowReset();
+      Chassis_SpinReset();
       (void)Motor3508_Stop();
     }
 

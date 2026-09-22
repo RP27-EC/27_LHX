@@ -1,9 +1,13 @@
 #include "chassis.h"
 #include "communication.h"
 #include "imu.h"
+#include <math.h>
+
+#define CHASSIS_DEG_TO_RAD 0.01745329251994329577f
 
 static float chassis_follow_cycle_rpm;
 static uint32_t chassis_follow_last_rate_tx_ms;
+static float chassis_spin_cycle_rpm;
 
 
 static float Chassis_Abs(float value)
@@ -58,6 +62,46 @@ void Chassis_FollowReset(void)
 {
     chassis_follow_cycle_rpm = 0.0f;
     chassis_follow_last_rate_tx_ms = 0U;
+}
+
+void Chassis_SpinReset(void)
+{
+    chassis_spin_cycle_rpm = 0.0f;
+}
+
+void Chassis_SpinUpdate(float gimbal_front, float gimbal_left)
+{
+    const float target_rpm = CHASSIS_SPIN_ROTATE_RPM *
+                             CHASSIS_SPIN_ROTATE_SIGN;
+    float step = target_rpm - chassis_spin_cycle_rpm;
+    float yaw_angle_deg;
+    float yaw_rad;
+    float cosine;
+    float sine;
+    float chassis_front = 0.0f;
+    float chassis_left = 0.0f;
+
+    if (step > CHASSIS_SPIN_SLEW_RPM_PER_TICK)
+    { step = CHASSIS_SPIN_SLEW_RPM_PER_TICK; }
+    else if (step < -CHASSIS_SPIN_SLEW_RPM_PER_TICK)
+    { step = -CHASSIS_SPIN_SLEW_RPM_PER_TICK; }
+    chassis_spin_cycle_rpm += step;
+
+    if (Communication_GetYawAngle(&yaw_angle_deg))
+    {
+        /* 遥控平移量定义在云台坐标系。使用云台相对底盘的机械Yaw角
+         * 旋转到底盘坐标系，使“向前”始终等于云台当前指向。 */
+        yaw_rad = yaw_angle_deg * CHASSIS_SPIN_YAW_ANGLE_SIGN *
+                  CHASSIS_DEG_TO_RAD;
+        cosine = cosf(yaw_rad);
+        sine = sinf(yaw_rad);
+        chassis_front = gimbal_front * cosine - gimbal_left * sine;
+        chassis_left = gimbal_front * sine + gimbal_left * cosine;
+    }
+
+    /* C1角度暂时无效时平移保持为零，但小陀螺自转继续运行。 */
+    Chassis_MecanumInverse(chassis_front, chassis_left,
+                           chassis_spin_cycle_rpm);
 }
 
 void Chassis_FollowUpdate(float front, float left, float yaw_input)

@@ -13,11 +13,19 @@
 /* ==================== 底盘指令与安全 ==================== */
 #define CHASSIS_ENABLE_SWITCH_POSITION  2U     /* 左拨杆使能档位：上=1，中=3，下=2。 */
 #define CHASSIS_MECHANICAL_SWITCH_POSITION 3U  /* 机械云台模式：底盘控制与下档一致。 */
+#define CHASSIS_SPIN_SWITCH_0_POSITION   2U     /* 小陀螺组合：s[0]下档。 */
+#define CHASSIS_SPIN_SWITCH_1_POSITION   1U     /* 小陀螺组合：s[1]上档。 */
 #define CHASSIS_FORWARD_SCALE           5.0f   /* 遥控前进通道 ch[3] 到轮速指令的倍率。 */
 #define CHASSIS_LEFT_SCALE             -5.0f   /* 遥控横移通道 ch[2] 的倍率及方向。 */
 #define CHASSIS_ROTATE_SCALE           -5.0f   /* 遥控旋转通道 ch[0] 的倍率及方向。 */
-#define CHASSIS_MAX_MOTOR_RPM         5000.0f   /* 麦轮解算后四轮统一缩放的最大目标转速。 */
+#define CHASSIS_MAX_MOTOR_RPM         7000.0f   /* 麦轮解算后四轮统一缩放的最大目标转速。 */
 #define CHASSIS_TASK_PERIOD_TICKS        1U     /* 底盘控制任务周期；应与 PID 时间参数一致。 */
+
+/* ==================== 小陀螺 ==================== */
+#define CHASSIS_SPIN_ROTATE_RPM        5000.0f /* 小陀螺四轮旋转速度目标。 */
+#define CHASSIS_SPIN_ROTATE_SIGN          1.0f /* 修改正负可切换旋转方向。 */
+#define CHASSIS_SPIN_SLEW_RPM_PER_TICK   20.0f /* 每1 ms允许增加的旋转目标。 */
+#define CHASSIS_SPIN_YAW_ANGLE_SIGN       1.0f /* 云台机械Yaw角到坐标变换的方向。 */
 
 /* ==================== 云台带动底盘跟随 ==================== */
 #define CHASSIS_FOLLOW_SWITCH_POSITION  1U     /* 上档：云台带动底盘跟随。 */
