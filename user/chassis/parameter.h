@@ -12,6 +12,7 @@
 
 /* ==================== 底盘指令与安全 ==================== */
 #define CHASSIS_ENABLE_SWITCH_POSITION  2U     /* 左拨杆使能档位：上=1，中=3，下=2。 */
+#define CHASSIS_MECHANICAL_SWITCH_POSITION 3U  /* 机械云台模式：底盘控制与下档一致。 */
 #define CHASSIS_FORWARD_SCALE           5.0f   /* 遥控前进通道 ch[3] 到轮速指令的倍率。 */
 #define CHASSIS_LEFT_SCALE             -5.0f   /* 遥控横移通道 ch[2] 的倍率及方向。 */
 #define CHASSIS_ROTATE_SCALE           -5.0f   /* 遥控旋转通道 ch[0] 的倍率及方向。 */
@@ -19,13 +20,13 @@
 #define CHASSIS_TASK_PERIOD_TICKS        1U     /* 底盘控制任务周期；应与 PID 时间参数一致。 */
 
 /* ==================== 云台带动底盘跟随 ==================== */
-#define CHASSIS_FOLLOW_SWITCH_POSITION  1U     /* 左拨杆上档；下档手动底盘保持原样。 */
+#define CHASSIS_FOLLOW_SWITCH_POSITION  1U     /* 上档：云台带动底盘跟随。 */
 #define CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS 100U
 #define CHASSIS_FOLLOW_DEADBAND_DEG     10.0f
-#define CHASSIS_FOLLOW_KP_RPM_PER_DEG   60.0f   /* 超出死区后的角度误差 -> 轮电机转速。 */
+#define CHASSIS_FOLLOW_KP_RPM_PER_DEG   80.0f   /* 超出死区后的角度误差 -> 轮电机转速。 */
 #define CHASSIS_FOLLOW_RC_DEADBAND       15.0f   /* Yaw摇杆前馈死区，抑制中位噪声。 */
-#define CHASSIS_FOLLOW_FF_RPM_PER_RC      1.0f   /* Yaw摇杆每单位对应的底盘旋转速度前馈。 */
-#define CHASSIS_FOLLOW_MAX_ROTATE_RPM  4500.0f
+#define CHASSIS_FOLLOW_FF_RPM_PER_RC      1.5f   /* Yaw摇杆每单位对应的底盘旋转速度前馈。 */
+#define CHASSIS_FOLLOW_MAX_ROTATE_RPM  5000.0f
 #define CHASSIS_FOLLOW_SLEW_RPM_PER_TICK 10.0f   /* 1 ms 控制周期的旋转指令变化上限。 */
 #define CHASSIS_FOLLOW_RATE_TX_PERIOD_MS 10U
 #define CHASSIS_FOLLOW_ROTATE_SIGN      1.0f

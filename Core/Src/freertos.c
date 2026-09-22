@@ -204,8 +204,10 @@ void motor3508_speed_control(void *argument)
                              rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
                              (float)rc_ctrl.rc.ch[0]);
       }
-      else if (rc_ctrl.rc.s[0] == CHASSIS_ENABLE_SWITCH_POSITION)
+      else if (rc_ctrl.rc.s[0] == CHASSIS_ENABLE_SWITCH_POSITION ||
+               rc_ctrl.rc.s[0] == CHASSIS_MECHANICAL_SWITCH_POSITION)
       {
+        /* 下档和中档使用相同的底盘手动控制；中档时上板Yaw锁车头。 */
         Chassis_FollowReset();
         Chassis_MecanumInverse(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
                               rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
