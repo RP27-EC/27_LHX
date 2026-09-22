@@ -19,6 +19,7 @@ volatile CloudTerrace_HomeState_t cloud_terrace_home_state =
 static int32_t home_target[MOTOR4310_COUNT];
 static uint16_t home_stable_cycles;
 static bool targets_initialized;
+static bool yaw_mechanical_mode;
 static PitchControl_t pitch_control;
 static PID_Controller_t yaw_angle_pid;
 static PID_Controller_t yaw_rate_pid;
@@ -35,6 +36,7 @@ static void cloud_reset_home(void)
     cloud_terrace_home_state = CLOUD_TERRACE_HOME_WAIT;
     home_stable_cycles = 0U;
     targets_initialized = false;
+    yaw_mechanical_mode = false;
     pitch_control.speed_mode = false;
     PID_Reset(&yaw_angle_pid);
     PID_Reset(&yaw_rate_pid);
@@ -160,6 +162,17 @@ static void cloud_control_yaw(int16_t input)
     GimbalImu_Data_t imu;
     float torque;
 
+    if (yaw_mechanical_mode)
+    {
+        /* 从机械位控切回惯性系控制时清空两套控制器，随后从当前
+         * IMU朝向重新建立目标，避免模式切换产生转矩突跳。 */
+        Motor4310_ResetControl(MOTOR4310_YAW);
+        PID_Reset(&yaw_angle_pid);
+        PID_Reset(&yaw_rate_pid);
+        cloud_yaw_imu_online = false;
+        yaw_mechanical_mode = false;
+    }
+
     if (input >= -CLOUD_RC_SPEED_ENTER && input <= CLOUD_RC_SPEED_ENTER)
     { input = 0; }
     if (!GimbalImu_Get(&imu))
@@ -193,6 +206,24 @@ static void cloud_control_yaw(int16_t input)
     cloud_yaw_torque_raw = (int16_t)torque;
     (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW,
                                       cloud_yaw_torque_raw);
+}
+
+static void cloud_control_yaw_mechanical(void)
+{
+    if (!yaw_mechanical_mode)
+    {
+        /* 机械模式不用IMU稳向，直接用编码器位置环将Yaw锁在车头。 */
+        PID_Reset(&yaw_angle_pid);
+        PID_Reset(&yaw_rate_pid);
+        Motor4310_ResetControl(MOTOR4310_YAW);
+        cloud_yaw_imu_online = false;
+        yaw_mechanical_mode = true;
+    }
+
+    cloud_yaw_rate_target_deg_s = 0.0f;
+    cloud_yaw_torque_raw = 0;
+    (void)Motor4310_PositionControlMotor(MOTOR4310_YAW,
+                                         home_target[MOTOR4310_YAW]);
 }
 
 static void cloud_send_yaw_angle(void)
@@ -274,9 +305,11 @@ void CloudTerrace_Update(void)
     HAL_StatusTypeDef pitch_enable, yaw_enable;
 
     Motor4310_Heartbeat();
-    if (!Communication_RC_Get(&rc) || rc.rc.s[0] != COMM_RC_SW_UP)
+    if (!Communication_RC_Get(&rc) ||
+        (rc.rc.s[0] != COMM_RC_SW_UP &&
+         rc.rc.s[0] != COMM_RC_SW_MID))
     {
-        /* 遥控断联或退出云台模式：两轴失能，驱动定期重发失能帧。 */
+        /* 遥控断联或进入纯底盘模式：两轴失能并定期重发失能帧。 */
         cloud_reset_home();
         (void)Motor4310_DisableMotor(MOTOR4310_PITCH);
         (void)Motor4310_DisableMotor(MOTOR4310_YAW);
@@ -299,23 +332,19 @@ void CloudTerrace_Update(void)
     if (!cloud_home_step()) { return; }
     if (!targets_initialized)
     {
-        GimbalImu_Data_t imu;
-
-        if (!GimbalImu_Get(&imu))
-        {
-            (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
-            return;
-        }
         pitch_control.hold_angle = home_target[MOTOR4310_PITCH];
         pitch_control.speed_mode = false;
-        cloud_yaw_target_deg = imu.yaw_total_deg;
-        cloud_yaw_angle_deg = imu.yaw_total_deg;
-        cloud_yaw_rate_deg_s = imu.yaw_rate_deg_s;
-        PID_Reset(&yaw_angle_pid);
-        PID_Reset(&yaw_rate_pid);
         targets_initialized = true;
     }
-    cloud_control_yaw(rc.rc.ch[0]);
+
+    if (rc.rc.s[0] == COMM_RC_SW_MID)
+    {
+        cloud_control_yaw_mechanical();
+    }
+    else
+    {
+        cloud_control_yaw(-rc.rc.ch[0]);
+    }
     cloud_control_pitch(rc.rc.ch[1]);
     cloud_send_yaw_angle();
 }
