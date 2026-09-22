@@ -11,13 +11,13 @@
 /* 板间遥控帧超时；下板断遥控后停止发送 D1～D3。 */
 #define COMM_RC_TIMEOUT_MS                  100U
 
-/* 电机与云台 PID，按模板 1 ms 控制周期运行。 */
-#define MOTOR4310_SPEED_KP                  1.0f
+/* 电机与云台 PID，按 1 ms 控制周期运行。 */
+#define MOTOR4310_SPEED_KP                  1.1f
 #define MOTOR4310_SPEED_KI                  0.5f
 #define MOTOR4310_SPEED_KD                  0.0f
 #define MOTOR4310_SPEED_INTEGRAL_LIMIT      200.0f
 #define MOTOR4310_SPEED_OUTPUT_LIMIT        2047.0f
-#define MOTOR4310_POSITION_KP               0.5f
+#define MOTOR4310_POSITION_KP               0.6f
 #define MOTOR4310_POSITION_KI               0.5f
 #define MOTOR4310_POSITION_KD               0.0f
 #define MOTOR4310_POSITION_INTEGRAL_LIMIT   100.0f
@@ -42,17 +42,17 @@
 #define GIMBAL_IMU_ATTITUDE_KI              0.02f
 #define GIMBAL_IMU_YAW_RATE_FILTER_ALPHA    1.0f
 
-/* 模板 Yaw 惯性系位控：角度外环 -> 陀螺仪角速度内环 -> 转矩。 */
+/*  Yaw 惯性系位控：角度外环 -> 陀螺仪角速度内环 -> 转矩。 */
 #define CLOUD_YAW_COMMAND_RATE_DEG_S        200.0f
 #define CLOUD_YAW_RC_DIRECTION              1.0f
-#define CLOUD_YAW_ANGLE_KP                  20.0f
-#define CLOUD_YAW_ANGLE_KI                  0.05f
+#define CLOUD_YAW_ANGLE_KP                  22.0f
+#define CLOUD_YAW_ANGLE_KI                  0.1f
 #define CLOUD_YAW_ANGLE_KD                  0.0f
 #define CLOUD_YAW_ANGLE_INTEGRAL_LIMIT      200.0f
 #define CLOUD_YAW_RATE_TARGET_LIMIT_DEG_S   500.0f
 /* 模板内环 Kp=0.04 Nm/(deg/s)，4310 原始转矩码按 2047/10 Nm 换算。 */
-#define CLOUD_YAW_RATE_KP                   8.188f
-#define CLOUD_YAW_RATE_KI                   0.0f
+#define CLOUD_YAW_RATE_KP                   9.0f
+#define CLOUD_YAW_RATE_KI                   0.1f
 #define CLOUD_YAW_RATE_KD                   0.0f
 #define CLOUD_YAW_RATE_INTEGRAL_LIMIT       0.0f
 #define CLOUD_YAW_TORQUE_LIMIT_RAW          2047.0f

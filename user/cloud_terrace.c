@@ -212,7 +212,18 @@ static void cloud_control_yaw_mechanical(void)
 {
     if (!yaw_mechanical_mode)
     {
-        /* 机械模式不用IMU稳向，直接用编码器位置环将Yaw锁在车头。 */
+        Motor4310_Data_t yaw;
+
+        if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
+        {
+            cloud_yaw_torque_raw = 0;
+            return;
+        }
+
+        /* 小陀螺稳向可能使累计编码器跨过多圈。进入机械模式时重新
+         * 选择当前角度附近等效的车头零点，保证回中不超过半圈。 */
+        home_target[MOTOR4310_YAW] =
+            cloud_nearest_home(CLOUD_YAW_HOME_RAD, yaw.total_angle);
         PID_Reset(&yaw_angle_pid);
         PID_Reset(&yaw_rate_pid);
         Motor4310_ResetControl(MOTOR4310_YAW);
@@ -307,9 +318,11 @@ void CloudTerrace_Update(void)
     Motor4310_Heartbeat();
     if (!Communication_RC_Get(&rc) ||
         (rc.rc.s[0] != COMM_RC_SW_UP &&
-         rc.rc.s[0] != COMM_RC_SW_MID))
+         rc.rc.s[0] != COMM_RC_SW_MID &&
+         !(rc.rc.s[0] == COMM_RC_SW_DOWN &&
+           rc.rc.s[1] == COMM_RC_SW_UP)))
     {
-        /* 遥控断联或进入纯底盘模式：两轴失能并定期重发失能帧。 */
+        /* 遥控断联或进入普通手动底盘模式：两轴失能。 */
         cloud_reset_home();
         (void)Motor4310_DisableMotor(MOTOR4310_PITCH);
         (void)Motor4310_DisableMotor(MOTOR4310_YAW);
@@ -343,6 +356,8 @@ void CloudTerrace_Update(void)
     }
     else
     {
+        /* s0上档和小陀螺组合均使用惯性系Yaw；小陀螺中底盘
+         * 自转，云台仍可由摇杆改变指向并在松杆后稳向。 */
         cloud_control_yaw(-rc.rc.ch[0]);
     }
     cloud_control_pitch(rc.rc.ch[1]);
