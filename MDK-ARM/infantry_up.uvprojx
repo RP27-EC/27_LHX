@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/motor;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/motor;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -603,6 +603,31 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>bottom_driven/motor</GroupName>
+          <Files>
+            <File>
+              <FileName>motor3508.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../bottom_driven/motor/motor3508.c</FilePath>
+            </File>
+            <File>
+              <FileName>motor3508.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../bottom_driven/motor/motor3508.h</FilePath>
+            </File>
+            <File>
+              <FileName>dial_motor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../bottom_driven/motor/dial_motor.c</FilePath>
+            </File>
+            <File>
+              <FileName>dial_motor.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../bottom_driven/motor/dial_motor.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>bottom_driven/IMU</GroupName>
           <Files>
             <File>
@@ -634,6 +659,16 @@
               <FileName>parameter.h</FileName>
               <FileType>5</FileType>
               <FilePath>../user/parameter.h</FilePath>
+            </File>
+            <File>
+              <FileName>shoot_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/shoot_control.c</FilePath>
+            </File>
+            <File>
+              <FileName>shoot_control.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/shoot_control.h</FilePath>
             </File>
           </Files>
         </Group>

@@ -28,6 +28,8 @@
 #include "communication.h"
 #include "imu.h"
 #include "motor4310.h"
+#include "motor3508.h"
+#include "dial_motor.h"
 
 /* USER CODE END Includes */
 
@@ -104,6 +106,16 @@ int main(void)
   }
 
   if (Motor4310_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (Motor3508_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (DialMotor_Init() != HAL_OK)
   {
     Error_Handler();
   }

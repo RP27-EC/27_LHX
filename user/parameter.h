@@ -24,6 +24,51 @@
 #define MOTOR4310_POSITION_OUTPUT_LIMIT     300.0f
 #define MOTOR4310_CONTROL_PERIOD_S          0.001f
 
+/* 3508 速度环：C620 电流指令与四路群组报文。 */
+#define MOTOR3508_CURRENT_LIMIT             16384
+#define MOTOR3508_MAX_SPEED_RPM             2000.0f
+#define MOTOR3508_LEFT_DIRECTION            1.0f
+#define MOTOR3508_RIGHT_DIRECTION          (-1.0f)
+#define MOTOR3508_OFFLINE_TIMEOUT_MS        100U
+#define MOTOR3508_SPEED_KP                  2.0f
+#define MOTOR3508_SPEED_KI                  1.0f
+#define MOTOR3508_SPEED_KD                  0.0f
+#define MOTOR3508_SPEED_INTEGRAL_LIMIT      500.0f
+#define MOTOR3508_SPEED_OUTPUT_LIMIT        5000.0f
+#define MOTOR3508_PID_CONTROL_TIME_S        0.001f
+
+/* LK4005 拨盘电机：CAN1 单电机协议。 */
+#define DIAL_MOTOR_CAN_ID                   0x141U
+#define DIAL_MOTOR_CURRENT_LIMIT            2000
+#define DIAL_MOTOR_OFFLINE_TIMEOUT_MS       100U
+#define DIAL_MOTOR_POSITION_KP              0.18f
+#define DIAL_MOTOR_POSITION_KI              0.0f
+#define DIAL_MOTOR_POSITION_KD              0.0f
+#define DIAL_MOTOR_POSITION_INTEGRAL_LIMIT  0.0f
+#define DIAL_MOTOR_POSITION_SPEED_LIMIT_DPS 7000.0f
+#define DIAL_MOTOR_SPEED_KP                 0.16f
+#define DIAL_MOTOR_SPEED_KI                 0.0f
+#define DIAL_MOTOR_SPEED_KD                 0.0f
+#define DIAL_MOTOR_SPEED_INTEGRAL_LIMIT     0.0f
+#define DIAL_MOTOR_SPEED_OUTPUT_LIMIT       1000.0f
+#define DIAL_MOTOR_PID_CONTROL_TIME_S       0.001f
+
+/* 发射电机任务：两个摩擦轮与拨盘必须同时在线。 */
+#define SHOOT_CONTROL_PERIOD_TICKS          1U
+#define SHOOT_LEFT_FRIC_MOTOR_ID            1U
+#define SHOOT_RIGHT_FRIC_MOTOR_ID           2U
+#define SHOOT_FRIC_TARGET_SPEED_RPM         1500
+
+#define SHOOT_DIAL_ONE_BULLET_COUNTS        65536LL
+#define SHOOT_DIAL_FEED_DIRECTION            1LL
+#define SHOOT_DIAL_ARRIVED_ERROR_COUNTS     500LL
+#define SHOOT_DIAL_SINGLE_MOVE_TIMEOUT_MS   500U
+#define SHOOT_DIAL_BLOCK_CURRENT_THRESHOLD  400
+#define SHOOT_DIAL_BLOCK_SPEED_THRESHOLD_DPS 10
+#define SHOOT_DIAL_BLOCK_CONFIRM_TICKS      200U
+#define SHOOT_DIAL_STUCK_REVERSE_TIMEOUT_MS 200U
+#define SHOOT_DIAL_STUCK_RELOAD_TIMEOUT_MS  200U
+
 /* 云台任务与遥控：摇杆值范围 -660～660。 */
 #define CLOUD_CONTROL_PERIOD_TICKS          1U
 #define CLOUD_TASK_STACK_BYTES              1024U

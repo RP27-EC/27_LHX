@@ -29,6 +29,9 @@
 #include "cloud_terrace.h"
 #include "imu.h"
 #include "parameter.h"
+#include "motor3508.h"
+#include "dial_motor.h"
+#include "shoot_control.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,6 +67,13 @@ const osThreadAttr_t myTask02_attributes = {
   .stack_size = 516 * 4,
   .priority = (osPriority_t) osPriorityHigh5,
 };
+/* Definitions for myTask03 */
+osThreadId_t myTask03Handle;
+const osThreadAttr_t myTask03_attributes = {
+  .name = "myTask03",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -72,6 +82,7 @@ const osThreadAttr_t myTask02_attributes = {
 
 void up__down_communication(void *argument);
 void motor_control(void *argument);
+void shoot(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -108,6 +119,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of myTask02 */
   myTask02Handle = osThreadNew(motor_control, NULL, &myTask02_attributes);
 
+  /* creation of myTask03 */
+  myTask03Handle = osThreadNew(shoot, NULL, &myTask03_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -131,6 +145,7 @@ void up__down_communication(void *argument)
   uint32_t next_tick;
 
   (void)argument;
+  ShootControl_Init();
   next_tick = osKernelGetTickCount();
   /* Infinite loop */
   for(;;)
@@ -163,7 +178,7 @@ void motor_control(void *argument)
   next_tick = osKernelGetTickCount();
   for(;;)
   {
-    /* 按模板顺序：先更新 IMU，再用当次数据执行云台闭环。 */
+    /* 先更新 IMU，再用当次数据执行云台闭环。 */
     (void)GimbalImu_Update();
     CloudTerrace_Update();
 
@@ -174,6 +189,48 @@ void motor_control(void *argument)
     }
   }
   /* USER CODE END motor_control */
+}
+
+/* USER CODE BEGIN Header_shoot */
+/**
+* @brief Function implementing the myTask03 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_shoot */
+void shoot(void *argument)
+{
+  /* USER CODE BEGIN shoot */
+  uint32_t next_tick;
+
+  (void)argument;
+  next_tick = osKernelGetTickCount();
+  /* Infinite loop */
+  for(;;)
+  {
+    bool shoot_motors_online;
+
+    /* 1 ms 更新在线状态，反馈超过 100 ms 未刷新即掉线。 */
+    Motor3508_Heartbeat();
+    DialMotor_Heartbeat();
+    shoot_motors_online =
+        Motor3508_OnlineCheck(SHOOT_LEFT_FRIC_MOTOR_ID) &&
+        Motor3508_OnlineCheck(SHOOT_RIGHT_FRIC_MOTOR_ID) &&
+        DialMotor_OnlineCheck();
+
+    /* 右拨杆：下档关控，中档启动摩擦轮，上档上升沿单发。 */
+    ShootControl_Update(
+        Communication_RC_IsOnline() && shoot_motors_online &&
+            communication_rc.rc.s[1] != COMM_RC_SW_DOWN,
+        communication_rc.rc.s[1] == COMM_RC_SW_UP);
+
+    next_tick += SHOOT_CONTROL_PERIOD_TICKS;
+    if (osDelayUntil(next_tick) != osOK)
+    {
+      next_tick = osKernelGetTickCount();
+    }
+  }
+  /* USER CODE END shoot */
 }
 
 /* Private application code --------------------------------------------------*/

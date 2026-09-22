@@ -1,6 +1,8 @@
 #include "communication.h"
 #include "can.h"
 #include "motor4310.h"
+#include "motor3508.h"
+#include "dial_motor.h"
 #include <float.h>
 #include <string.h>
 
@@ -415,7 +417,7 @@ __weak void Communication_CAN_OnReceive(
     (void)data;
 }
 
-/* CAN2_RX0_IRQHandler 已由 CubeMX 生成，并会进入此 HAL 回调。 */
+/* CAN1/2 RX0 IRQ 均由 CubeMX 生成，在此统一分发。 */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     CAN_RxHeaderTypeDef header;
@@ -427,13 +429,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         return;
     }
 
-    if (hcan->Instance == CAN1)
-    {
-        Motor4310_CAN_RxFifo0Callback(hcan);
-        return;
-    }
-
-    if (hcan->Instance != CAN2)
+    if (hcan->Instance != CAN1 && hcan->Instance != CAN2)
     {
         return;
     }
@@ -450,6 +446,15 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
             (header.RTR != CAN_RTR_DATA) ||
             (header.DLC != COMM_CAN_FRAME_SIZE))
         {
+            continue;
+        }
+
+        if (hcan->Instance == CAN1)
+        {
+            /* CAN1 共用：Pitch 4310、四路 3508 和 LK4005 拨盘。 */
+            Motor4310_ProcessCanFrame(hcan, header.StdId, data);
+            Motor3508_ProcessCanFrame(hcan, header.StdId, data);
+            DialMotor_ProcessCanFrame(hcan, header.StdId, data);
             continue;
         }
 
