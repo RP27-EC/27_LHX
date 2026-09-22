@@ -269,9 +269,7 @@ void up_down_communication(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    /* rc_task_frame 由遥控解析任务更新。复制时禁止任务切换，防止
-     * 18 字节复制到一半时被新帧覆盖，导致三条 CAN 报文不属于同一帧。
-     */
+    /*上下板通信*/
     taskENTER_CRITICAL();
     frame_count_snapshot = rc_task_frame_count;
     if (frame_count_snapshot > 0U)
@@ -282,9 +280,6 @@ void up_down_communication(void *argument)
 
     if (frame_count_snapshot > 0U && RC_online_return())
     {
-      /* 经典 CAN 一帧最多 8 字节，把 DBUS 的 18 字节原始帧依次拆分：
-       * D1 = byte 0~7，D2 = byte 8~15，D3 = byte 16~17 + 六字节 0。
-       */
       memcpy(tx_d1, &raw_frame[0], COMMUNICATION_FRAME_SIZE);
       memcpy(tx_d2, &raw_frame[8], COMMUNICATION_FRAME_SIZE);
       memset(tx_d3, 0, sizeof(tx_d3));

@@ -58,6 +58,7 @@ bool Motor3508_PositionPIDInit(uint8_t motor_id, float kp, float ki, float kd,
 /* 发送一帧四电机零电流指令*/
 HAL_StatusTypeDef Motor3508_Stop(void);
 
+/*电机在线检查回调函数*/
 bool Motor3508_OnlineCheck(void);
 
 /* motor_id 为 1~4；原子复制反馈，未收到反馈或参数错误返回 false。 */

@@ -118,7 +118,7 @@ void Chassis_FollowUpdate(float front, float left, float yaw_input)
         return;
     }
 
-    /* 连续软死区：10 度内不追，越过边界时从零速平滑起步。 */
+    /* 连续软死区内不追，越过边界时从零速平滑起步。 */
     if (angle_deg > CHASSIS_FOLLOW_DEADBAND_DEG)
     { error_deg = angle_deg - CHASSIS_FOLLOW_DEADBAND_DEG; }
     else if (angle_deg < -CHASSIS_FOLLOW_DEADBAND_DEG)
