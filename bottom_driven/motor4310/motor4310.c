@@ -4,9 +4,9 @@
 
 #define MOTOR4310_STD_ID_TO_FILTER(id) ((uint32_t)(id) << 5U)
 
-Motor4310_Data_t motor4310_data[MOTOR4310_COUNT];
-PID_Controller_t motor4310_speed_pids[MOTOR4310_COUNT];
-PID_Controller_t motor4310_position_pids[MOTOR4310_COUNT];
+Motor4310_Data_t motor4310_data[MOTOR4310_COUNT]; /* Pitch、Yaw 两轴反馈和状态。 */
+PID_Controller_t motor4310_speed_pids[MOTOR4310_COUNT]; /* 两轴速度环 PID。 */
+PID_Controller_t motor4310_position_pids[MOTOR4310_COUNT]; /* 两轴位置外环 PID。 */
 
 static bool valid_id(Motor4310_Id_t id)
 {

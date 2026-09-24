@@ -32,6 +32,7 @@
 #include "motor3508.h"
 #include "dial_motor.h"
 #include "shoot_control.h"
+#include "remote_state.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,21 +55,21 @@
 
 /* USER CODE END Variables */
 /* Definitions for communication */
-osThreadId_t communicationHandle;
+osThreadId_t communicationHandle; /* 板间通信与遥控解析任务句柄。 */
 const osThreadAttr_t communication_attributes = {
   .name = "communication",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityHigh7,
 };
 /* Definitions for myTask02 */
-osThreadId_t myTask02Handle;
+osThreadId_t myTask02Handle; /* 云台电机控制任务句柄。 */
 const osThreadAttr_t myTask02_attributes = {
   .name = "myTask02",
   .stack_size = 516 * 4,
   .priority = (osPriority_t) osPriorityHigh5,
 };
 /* Definitions for myTask03 */
-osThreadId_t myTask03Handle;
+osThreadId_t myTask03Handle; /* 发射机构控制任务句柄。 */
 const osThreadAttr_t myTask03_attributes = {
   .name = "myTask03",
   .stack_size = 256 * 4,
@@ -143,14 +144,18 @@ void up__down_communication(void *argument)
 {
   /* USER CODE BEGIN up__down_communication */
   uint32_t next_tick;
+  Communication_RcControl_t remote_control;
 
   (void)argument;
   ShootControl_Init();
+  RemoteState_Init();
   next_tick = osKernelGetTickCount();
   /* Infinite loop */
   for(;;)
   {
     Communication_Process();
+    RemoteState_Update(&remote_control,
+                       Communication_RC_Get(&remote_control));
 
     next_tick += 1U;
     if (osDelayUntil(next_tick) != osOK)
@@ -209,6 +214,8 @@ void shoot(void *argument)
   for(;;)
   {
     bool shoot_motors_online;
+    RemoteState_t remote;
+    RemoteShoot_t shoot_mode;
 
     /* 1 ms 更新在线状态，反馈超过 100 ms 未刷新即掉线。 */
     Motor3508_Heartbeat();
@@ -217,12 +224,12 @@ void shoot(void *argument)
         Motor3508_OnlineCheck(SHOOT_LEFT_FRIC_MOTOR_ID) &&
         Motor3508_OnlineCheck(SHOOT_RIGHT_FRIC_MOTOR_ID) &&
         DialMotor_OnlineCheck();
+    RemoteState_Get(&remote);
 
-    /* 右拨杆：下档关控，中档启动摩擦轮，上档上升沿单发。 */
-    ShootControl_Update(
-        Communication_RC_IsOnline() && shoot_motors_online &&
-            communication_rc.rc.s[1] != COMM_RC_SW_DOWN,
-        communication_rc.rc.s[1] == COMM_RC_SW_UP);
+    /* 左下档全保险；左中+右上单发，左上+右上以速度环连发。 */
+    shoot_mode = remote.online && remote.shoot_armed && shoot_motors_online ?
+        remote.shoot : REMOTE_SHOOT_OFF;
+    ShootControl_Update(shoot_mode, remote.right_up);
 
     next_tick += SHOOT_CONTROL_PERIOD_TICKS;
     if (osDelayUntil(next_tick) != osOK)

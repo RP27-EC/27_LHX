@@ -33,10 +33,10 @@ extern "C" {
 /* 每个接收 ID 保存一份最新快照，便于任务读取和调试器观察。 */
 typedef struct
 {
-    uint8_t data[COMM_CAN_FRAME_SIZE];
-    uint32_t rx_count;
-    uint32_t last_rx_ms;
-    bool received;
+    uint8_t data[COMM_CAN_FRAME_SIZE]; /* 该 CAN ID 最近一次收到的 8 字节原始数据。 */
+    uint32_t rx_count;                /* 该 CAN ID 累计收到的有效帧数。 */
+    uint32_t last_rx_ms;              /* 最近一次收帧的 HAL 毫秒时间戳。 */
+    bool received;                    /* 上电后是否至少收到过一帧。 */
 } Communication_CanRxFrame_t;
 
 /* 与下板遥控器解析结果保持一致，通道值范围通常为 -660~660。 */
@@ -44,17 +44,17 @@ typedef struct
 {
     struct
     {
-        int16_t ch[5];
-        uint8_t s[2];
-    } rc;
+        int16_t ch[5]; /* 五路遥控通道，均已减去中心值 1024。 */
+        uint8_t s[2];  /* 左、右三档拨杆的原始档位编码。 */
+    } rc;              /* 与 DJI DBUS 数据布局对应的遥控数据。 */
 } Communication_RcControl_t;
 
 /* 便于 Keil Debug 直接观察；任务代码优先使用 Communication_RC_Get。 */
-extern Communication_RcControl_t communication_rc;
-extern volatile bool communication_rc_online;
-extern volatile uint32_t communication_rc_valid_count;
-extern volatile uint32_t communication_rc_last_valid_ms;
-extern volatile uint32_t communication_rc_assembly_error_count;
+extern Communication_RcControl_t communication_rc; /* 当前解析完成的遥控数据。 */
+extern volatile bool communication_rc_online; /* 遥控链路当前在线标志。 */
+extern volatile uint32_t communication_rc_valid_count; /* 有效遥控帧累计数。 */
+extern volatile uint32_t communication_rc_last_valid_ms; /* 最近有效帧时间。 */
+extern volatile uint32_t communication_rc_assembly_error_count; /* 拼帧错误数。 */
 
 /* 在 MX_CAN2_Init() 之后调用：配置精确 ID 过滤器、启动 CAN2 和接收中断。 */
 HAL_StatusTypeDef Communication_CAN_Init(void);

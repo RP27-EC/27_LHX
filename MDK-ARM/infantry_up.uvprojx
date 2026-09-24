@@ -670,6 +670,16 @@
               <FileType>5</FileType>
               <FilePath>../user/shoot_control.h</FilePath>
             </File>
+            <File>
+              <FileName>remote_state.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/remote_state.c</FilePath>
+            </File>
+            <File>
+              <FileName>remote_state.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/remote_state.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

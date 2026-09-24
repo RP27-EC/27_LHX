@@ -4,32 +4,33 @@
 #include "motor4310.h"
 #include "PID.h"
 #include "parameter.h"
+#include "remote_state.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct
 {
-    bool speed_mode;
-    int32_t hold_angle;
+    bool speed_mode;   /* true 为遥控速度输入，false 为零速角度保持。 */
+    int32_t hold_angle;/* 速度输入归零瞬间锁定的 Pitch 累计编码器角度。 */
 } PitchControl_t;
 
 volatile CloudTerrace_HomeState_t cloud_terrace_home_state =
-    CLOUD_TERRACE_HOME_WAIT;
-static int32_t home_target[MOTOR4310_COUNT];
-static uint16_t home_stable_cycles;
-static bool targets_initialized;
-static bool yaw_mechanical_mode;
-static PitchControl_t pitch_control;
-static PID_Controller_t yaw_angle_pid;
-static PID_Controller_t yaw_rate_pid;
+    CLOUD_TERRACE_HOME_WAIT; /* 当前归中流程状态，供控制与调试观察。 */
+static int32_t home_target[MOTOR4310_COUNT]; /* 两轴归中时的机械位置目标。 */
+static uint16_t home_stable_cycles;          /* 两轴连续处于归中误差内的周期数。 */
+static bool targets_initialized;            /* 常规控制目标是否已从反馈值初始化。 */
+static bool yaw_mechanical_mode;             /* 是否处于 Yaw 始终朝底盘正前方模式。 */
+static PitchControl_t pitch_control;         /* Pitch 速度/保持模式内部状态。 */
+static PID_Controller_t yaw_angle_pid;       /* Yaw 角度外环 PID。 */
+static PID_Controller_t yaw_rate_pid;        /* Yaw 角速度内环 PID。 */
 
-volatile bool cloud_yaw_imu_online;
-volatile float cloud_yaw_target_deg;
-volatile float cloud_yaw_angle_deg;
-volatile float cloud_yaw_rate_deg_s;
-volatile float cloud_yaw_rate_target_deg_s;
-volatile int16_t cloud_yaw_torque_raw;
+volatile bool cloud_yaw_imu_online;          /* 上板 IMU 是否已标定且在线。 */
+volatile float cloud_yaw_target_deg;         /* Yaw 位控累计目标角，单位度。 */
+volatile float cloud_yaw_angle_deg;          /* 当前 IMU 累计 Yaw 角，单位度。 */
+volatile float cloud_yaw_rate_deg_s;         /* 当前 IMU Yaw 角速度，单位度每秒。 */
+volatile float cloud_yaw_rate_target_deg_s;  /* 角度外环给出的角速度目标。 */
+volatile int16_t cloud_yaw_torque_raw;       /* 角速度内环给出的 4310 原始转矩。 */
 
 static void cloud_reset_home(void)
 {
@@ -63,7 +64,7 @@ void CloudTerrace_Init(void)
     cloud_reset_home();
 }
 
-/* 模板的 [-PI, PI] 电机角换成驱动累计编码器角，选择最近的一圈。 */
+/* 将 [-PI, PI] 电机角换成累计编码器计数，并选择最近的一圈。 */
 static int32_t cloud_nearest_home(float motor_rad, int32_t current)
 {
     const int32_t period = (int32_t)(MOTOR4310_ECD_PER_ROUND + 0.5f);
@@ -75,7 +76,7 @@ static int32_t cloud_nearest_home(float motor_rad, int32_t current)
     return target;
 }
 
-/* 仅 Pitch 使用模板重力曲线；电机驱动只接收原始转矩前馈。 */
+/* Pitch 重力补偿采用余弦转矩曲线；驱动接收原始转矩码前馈。 */
 static int16_t cloud_pitch_gravity(uint16_t encoder_angle)
 {
     float motor_rad = (float)encoder_angle *
@@ -312,15 +313,14 @@ static void cloud_control_pitch(int16_t input)
 
 void CloudTerrace_Update(void)
 {
-    Communication_RcControl_t rc;
+    RemoteState_t remote;
     HAL_StatusTypeDef pitch_enable, yaw_enable;
 
     Motor4310_Heartbeat();
-    if (!Communication_RC_Get(&rc) ||
-        (rc.rc.s[0] != COMM_RC_SW_UP &&
-         rc.rc.s[0] != COMM_RC_SW_MID &&
-         !(rc.rc.s[0] == COMM_RC_SW_DOWN &&
-           rc.rc.s[1] == COMM_RC_SW_UP)))
+    RemoteState_Get(&remote);
+    if (remote.mode != REMOTE_MODE_FOLLOW &&
+        remote.mode != REMOTE_MODE_MECHANICAL &&
+        remote.mode != REMOTE_MODE_SPIN)
     {
         /* 遥控断联或进入普通手动底盘模式：两轴失能。 */
         cloud_reset_home();
@@ -350,7 +350,7 @@ void CloudTerrace_Update(void)
         targets_initialized = true;
     }
 
-    if (rc.rc.s[0] == COMM_RC_SW_MID)
+    if (remote.mode == REMOTE_MODE_MECHANICAL)
     {
         cloud_control_yaw_mechanical();
     }
@@ -358,8 +358,8 @@ void CloudTerrace_Update(void)
     {
         /* s0上档和小陀螺组合均使用惯性系Yaw；小陀螺中底盘
          * 自转，云台仍可由摇杆改变指向并在松杆后稳向。 */
-        cloud_control_yaw(-rc.rc.ch[0]);
+        cloud_control_yaw(-remote.channel[0]);
     }
-    cloud_control_pitch(rc.rc.ch[1]);
+    cloud_control_pitch(remote.channel[1]);
     cloud_send_yaw_angle();
 }

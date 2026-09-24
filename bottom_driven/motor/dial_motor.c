@@ -6,9 +6,10 @@
 #define DIAL_MOTOR_CAN_SLAVE_START_BANK   14U
 #define DIAL_MOTOR_STD_ID_TO_FILTER(id)   ((uint32_t)(id) << 5U)
 
-DialMotor_Feedback_t dial_motor_feedback;
-PID_Controller_t dial_motor_position_pid;
-PID_Controller_t dial_motor_speed_pid;
+DialMotor_Feedback_t dial_motor_feedback; /* LK4005 拨盘电机反馈快照。 */
+PID_Controller_t dial_motor_position_pid; /* 拨盘累计位置外环 PID。 */
+PID_Controller_t dial_motor_speed_pid;    /* 拨盘速度内环 PID。 */
+PID_Controller_t dial_motor_continuous_speed_pid; /* 连发独立速度环，供调试器观察。 */
 
 static int16_t DialMotor_LimitCurrent(int16_t current)
 {
@@ -70,6 +71,13 @@ HAL_StatusTypeDef DialMotor_Init(void)
              DIAL_MOTOR_SPEED_KP,
              DIAL_MOTOR_SPEED_KI,
              DIAL_MOTOR_SPEED_KD,
+             DIAL_MOTOR_SPEED_INTEGRAL_LIMIT,
+             DIAL_MOTOR_SPEED_OUTPUT_LIMIT,
+             DIAL_MOTOR_PID_CONTROL_TIME_S);
+    PID_Init(&dial_motor_continuous_speed_pid,
+             DIAL_MOTOR_CONTINUOUS_SPEED_KP,
+             DIAL_MOTOR_CONTINUOUS_SPEED_KI,
+             DIAL_MOTOR_CONTINUOUS_SPEED_KD,
              DIAL_MOTOR_SPEED_INTEGRAL_LIMIT,
              DIAL_MOTOR_SPEED_OUTPUT_LIMIT,
              DIAL_MOTOR_PID_CONTROL_TIME_S);
@@ -141,6 +149,7 @@ void DialMotor_ResetControl(void)
 {
     PID_Reset(&dial_motor_position_pid);
     PID_Reset(&dial_motor_speed_pid);
+    PID_Reset(&dial_motor_continuous_speed_pid);
 }
 
 HAL_StatusTypeDef DialMotor_PositionControl(int64_t target_encoder_total)
@@ -162,6 +171,23 @@ HAL_StatusTypeDef DialMotor_PositionControl(int64_t target_encoder_total)
     current = PID_Calc(&dial_motor_speed_pid,
                        target_speed_dps,
                        (float)feedback.speed_dps);
+    return DialMotor_SetTorqueCurrent((int16_t)current);
+}
+
+HAL_StatusTypeDef DialMotor_SpeedControl(float target_speed_dps)
+{
+    DialMotor_Feedback_t feedback;
+    float current;
+
+    if (!DialMotor_GetFeedback(&feedback) || !DialMotor_OnlineCheck())
+    {
+        DialMotor_ResetControl();
+        (void)DialMotor_SetTorqueCurrent(0);
+        return HAL_ERROR;
+    }
+
+    current = PID_Calc(&dial_motor_continuous_speed_pid,
+                       target_speed_dps, (float)feedback.speed_dps);
     return DialMotor_SetTorqueCurrent((int16_t)current);
 }
 

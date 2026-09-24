@@ -1,120 +1,142 @@
 #ifndef PARAMETER_H
 #define PARAMETER_H
 
-/* DM4310 CAN 地址与掉线保护；Pitch 接 CAN1，Yaw 接 CAN2。 */
-#define MOTOR4310_PITCH_CONTROL_CAN_ID      0x001U
-#define MOTOR4310_PITCH_FEEDBACK_CAN_ID     0x011U
-#define MOTOR4310_CONTROL_CAN_ID            0x002U
-#define MOTOR4310_FEEDBACK_CAN_ID           0x012U
-#define MOTOR4310_OFFLINE_TIMEOUT_MS        100U
-#define MOTOR4310_DISABLE_RETRY_MS          50U
-/* 板间遥控帧超时；下板断遥控后停止发送 D1～D3。 */
-#define COMM_RC_TIMEOUT_MS                  100U
+/* 上板集中参数；修改后需重新编译烧录。*_MS 是 HAL 毫秒，*_TICKS 是 RTOS 节拍。
+ * PID 积分限幅限制积分项，输出限幅限制该环输出，不等于机构机械限位。
+ */
 
-/* 电机与云台 PID，按 1 ms 控制周期运行。 */
-#define MOTOR4310_SPEED_KP                  1.1f
-#define MOTOR4310_SPEED_KI                  0.5f
-#define MOTOR4310_SPEED_KD                  0.0f
-#define MOTOR4310_SPEED_INTEGRAL_LIMIT      200.0f
-#define MOTOR4310_SPEED_OUTPUT_LIMIT        2047.0f
-#define MOTOR4310_POSITION_KP               0.6f
-#define MOTOR4310_POSITION_KI               0.5f
-#define MOTOR4310_POSITION_KD               0.0f
-#define MOTOR4310_POSITION_INTEGRAL_LIMIT   100.0f
-#define MOTOR4310_POSITION_OUTPUT_LIMIT     300.0f
-#define MOTOR4310_CONTROL_PERIOD_S          0.001f
+/* DM4310：Pitch 在 CAN1、Yaw 在 CAN2；CONTROL 为发送 ID，FEEDBACK 为回传 ID。 */
+#define MOTOR4310_PITCH_CONTROL_CAN_ID      0x001U /* Pitch 控制标准 ID。 */
+#define MOTOR4310_PITCH_FEEDBACK_CAN_ID     0x011U /* Pitch 反馈标准 ID。 */
+#define MOTOR4310_CONTROL_CAN_ID            0x002U /* Yaw 控制标准 ID。 */
+#define MOTOR4310_FEEDBACK_CAN_ID           0x012U /* Yaw 反馈标准 ID。 */
+#define MOTOR4310_OFFLINE_TIMEOUT_MS        100U   /* 两轴任一反馈超过此时长未更新，即判离线。 */
+#define MOTOR4310_DISABLE_RETRY_MS          50U    /* 保险状态下周期重发失能命令的间隔。 */
+#define COMM_RC_TIMEOUT_MS                  100U   /* D1~D3 有效遥控帧超过此时长未更新，即判断控。 */
 
-/* 3508 速度环：C620 电流指令与四路群组报文。 */
-#define MOTOR3508_CURRENT_LIMIT             16384
-#define MOTOR3508_MAX_SPEED_RPM             2000.0f
-#define MOTOR3508_LEFT_DIRECTION            1.0f
-#define MOTOR3508_RIGHT_DIRECTION          (-1.0f)
-#define MOTOR3508_OFFLINE_TIMEOUT_MS        100U
-#define MOTOR3508_SPEED_KP                  2.0f
-#define MOTOR3508_SPEED_KI                  1.0f
-#define MOTOR3508_SPEED_KD                  0.0f
-#define MOTOR3508_SPEED_INTEGRAL_LIMIT      500.0f
-#define MOTOR3508_SPEED_OUTPUT_LIMIT        5000.0f
-#define MOTOR3508_PID_CONTROL_TIME_S        0.001f
+/* 4310 串级控制：位置误差用累计编码器计数，位置环输出速度原始码目标；
+ * 速度环读取电机回传速度原始码，输出转矩原始码（约 -2048~2047）。
+ */
+#define MOTOR4310_SPEED_KP                  1.1f    /* 速度误差到转矩码的比例增益。 */
+#define MOTOR4310_SPEED_KI                  0.5f    /* 速度环积分增益，积分按控制周期累积。 */
+#define MOTOR4310_SPEED_KD                  0.0f    /* 速度环微分增益；0 为关闭。 */
+#define MOTOR4310_SPEED_INTEGRAL_LIMIT      200.0f  /* 速度环积分项绝对值上限。 */
+#define MOTOR4310_SPEED_OUTPUT_LIMIT        2047.0f /* 速度环输出转矩原始码上限。 */
+#define MOTOR4310_POSITION_KP               0.6f    /* 位置计数误差到速度目标的比例增益。 */
+#define MOTOR4310_POSITION_KI               0.5f    /* 位置环积分增益。 */
+#define MOTOR4310_POSITION_KD               0.0f    /* 位置环微分增益；0 为关闭。 */
+#define MOTOR4310_POSITION_INTEGRAL_LIMIT   100.0f  /* 位置环积分项绝对值上限。 */
+#define MOTOR4310_POSITION_OUTPUT_LIMIT     300.0f  /* 位置环速度原始码目标上限。 */
+#define MOTOR4310_CONTROL_PERIOD_S          0.001f  /* PID 单次调用周期，1 ms = 0.001 s。 */
 
-/* LK4005 拨盘电机：CAN1 单电机协议。 */
-#define DIAL_MOTOR_CAN_ID                   0x141U
-#define DIAL_MOTOR_CURRENT_LIMIT            2000
-#define DIAL_MOTOR_OFFLINE_TIMEOUT_MS       100U
-#define DIAL_MOTOR_POSITION_KP              0.18f
-#define DIAL_MOTOR_POSITION_KI              0.0f
-#define DIAL_MOTOR_POSITION_KD              0.0f
-#define DIAL_MOTOR_POSITION_INTEGRAL_LIMIT  0.0f
-#define DIAL_MOTOR_POSITION_SPEED_LIMIT_DPS 7000.0f
-#define DIAL_MOTOR_SPEED_KP                 0.16f
-#define DIAL_MOTOR_SPEED_KI                 0.0f
-#define DIAL_MOTOR_SPEED_KD                 0.0f
-#define DIAL_MOTOR_SPEED_INTEGRAL_LIMIT     0.0f
-#define DIAL_MOTOR_SPEED_OUTPUT_LIMIT       1000.0f
-#define DIAL_MOTOR_PID_CONTROL_TIME_S       0.001f
+/* 摩擦轮 3508：回传速度为 rpm，速度环输出为 C620 电流命令原始码。 */
+#define MOTOR3508_CURRENT_LIMIT             16384   /* 发给 C620 的电流码绝对值上限。 */
+#define MOTOR3508_MAX_SPEED_RPM             2000.0f /* 目标速度绝对值上限，rpm。 */
+#define MOTOR3508_LEFT_DIRECTION            1.0f    /* 左轮目标速度方向系数。 */
+#define MOTOR3508_RIGHT_DIRECTION          (-1.0f)  /* 右轮反转系数，和左轮等大反向。 */
+#define MOTOR3508_OFFLINE_TIMEOUT_MS        100U    /* 反馈超时判离线的阈值。 */
+#define MOTOR3508_SPEED_KP                  2.0f    /* rpm 误差到电流码的比例增益。 */
+#define MOTOR3508_SPEED_KI                  1.0f    /* rpm 误差积分增益。 */
+#define MOTOR3508_SPEED_KD                  0.0f    /* rpm 误差微分增益。 */
+#define MOTOR3508_SPEED_INTEGRAL_LIMIT      500.0f  /* 速度环积分项绝对值上限。 */
+#define MOTOR3508_SPEED_OUTPUT_LIMIT        5000.0f /* PID 电流码输出上限，另受 CURRENT_LIMIT 约束。 */
+#define MOTOR3508_PID_CONTROL_TIME_S        0.001f  /* 摩擦轮 PID 调用周期，1 ms。 */
 
-/* 发射电机任务：两个摩擦轮与拨盘必须同时在线。 */
-#define SHOOT_CONTROL_PERIOD_TICKS          1U
-#define SHOOT_LEFT_FRIC_MOTOR_ID            1U
-#define SHOOT_RIGHT_FRIC_MOTOR_ID           2U
-#define SHOOT_FRIC_TARGET_SPEED_RPM         1500
+/* LK4005 拨盘：位置环输入累计 16 位编码器计数，输出目标速度 deg/s；
+ * 速度环输入 deg/s，输出 0xA1 电流命令原始码；连发走独立速度环。
+ */
+#define DIAL_MOTOR_CAN_ID                   0x141U  /* 拨盘电机标准 CAN ID。 */
+#define DIAL_MOTOR_CURRENT_LIMIT            2000    /* 0xA1 电流命令的最终绝对值限幅。 */
+#define DIAL_MOTOR_OFFLINE_TIMEOUT_MS       100U    /* 拨盘反馈超时判离线的阈值。 */
+#define DIAL_MOTOR_POSITION_KP              0.2f    /* 位置计数误差到目标 deg/s 的比例增益。 */
+#define DIAL_MOTOR_POSITION_KI              0.0f    /* 位置环积分增益；0 为关闭。 */
+#define DIAL_MOTOR_POSITION_KD              0.0f    /* 位置环微分增益；0 为关闭。 */
+#define DIAL_MOTOR_POSITION_INTEGRAL_LIMIT  0.0f    /* 位置环积分项限幅；0 不保留积分贡献。 */
+#define DIAL_MOTOR_POSITION_SPEED_LIMIT_DPS 7000.0f /* 位置环输出目标速度上限，deg/s。 */
+#define DIAL_MOTOR_SPEED_KP                 0.1f    /* 单发位置内环速度比例增益。 */
+#define DIAL_MOTOR_SPEED_KI                 0.0f    /* 单发位置内环速度积分增益。 */
+#define DIAL_MOTOR_SPEED_KD                 0.005f    /* 单发位置内环速度微分增益。 */
+#define DIAL_MOTOR_SPEED_INTEGRAL_LIMIT     500.0f    /* 单发、连发速度环共用的积分项限幅。 */
+#define DIAL_MOTOR_SPEED_OUTPUT_LIMIT       1500.0f /* 两个速度环输出电流码上限。 */
+#define DIAL_MOTOR_CONTINUOUS_SPEED_KP      4.0f   /* 连发独立速度环比例增益。 */
+#define DIAL_MOTOR_CONTINUOUS_SPEED_KI      7.5f    /* 连发独立速度环积分增益。 */
+#define DIAL_MOTOR_CONTINUOUS_SPEED_KD      0.01f  /* 连发独立速度环微分增益。 */
+#define DIAL_MOTOR_PID_CONTROL_TIME_S       0.001f  /* 拨盘 PID 调用周期，1 ms。 */
 
-#define SHOOT_DIAL_ONE_BULLET_COUNTS        65536LL
-#define SHOOT_DIAL_FEED_DIRECTION            1LL
-#define SHOOT_DIAL_ARRIVED_ERROR_COUNTS     500LL
-#define SHOOT_DIAL_SINGLE_MOVE_TIMEOUT_MS   500U
-#define SHOOT_DIAL_BLOCK_CURRENT_THRESHOLD  400
-#define SHOOT_DIAL_BLOCK_SPEED_THRESHOLD_DPS 10
-#define SHOOT_DIAL_BLOCK_CONFIRM_TICKS      200U
-#define SHOOT_DIAL_STUCK_REVERSE_TIMEOUT_MS 200U
-#define SHOOT_DIAL_STUCK_RELOAD_TIMEOUT_MS  200U
+/* 发射任务：两个摩擦轮和拨盘都需在线；3508 编号为驱动接口编号。 */
+#define SHOOT_CONTROL_PERIOD_TICKS          1U    /* 发射控制任务周期，当前 1 tick = 1 ms。 */
+#define SHOOT_LEFT_FRIC_MOTOR_ID            1U    /* 左摩擦轮驱动编号。 */
+#define SHOOT_RIGHT_FRIC_MOTOR_ID           2U    /* 右摩擦轮驱动编号。 */
+#define SHOOT_FRIC_TARGET_SPEED_RPM         1500  /* 两轮共同目标速度幅值，rpm。 */
+/* 拨盘一圈按 2^16=65536 计数，一圈上弹一发；单发目标在旧累计目标上递增。
+ * 连发目标速度 = 圈/秒 × 360 deg/s，现 15 圈/秒即 5400 deg/s。
+ */
+#define SHOOT_DIAL_ONE_BULLET_COUNTS        65536LL /* 一发的编码器累计增量；堵转退让也走一圈。 */
+#define SHOOT_DIAL_FEED_DIRECTION           1LL     /* 正值代表逆时针上弹；改为 -1 反转。 */
+#define SHOOT_DIAL_CONTINUOUS_ROUNDS_PER_S   15.0f   /* 连发拨盘目标圈速，圈/秒。 */
+#define SHOOT_DIAL_ARRIVED_ERROR_COUNTS     500LL   /* |目标-反馈|≤500 计数视为到位，约 2.75°。 */
+#define SHOOT_DIAL_SINGLE_MOVE_TIMEOUT_MS  500U    /* 单发未到位时最多等待的时长。 */
+#define SHOOT_DIAL_BLOCK_CURRENT_THRESHOLD 600     /* 堵转判据：|反馈电流原始码|须大于此值。 */
+#define SHOOT_DIAL_BLOCK_SPEED_THRESHOLD_DPS 10    /* 堵转判据：|反馈速度|须小于此值，deg/s。 */
+#define SHOOT_DIAL_BLOCK_CONFIRM_TICKS      200U    /* 两个堵转判据连续满足 200 次，约 200 ms。 */
+#define SHOOT_DIAL_STUCK_REVERSE_TIMEOUT_MS 200U    /* 堵转后反向退让的最长时间。 */
+#define SHOOT_DIAL_STUCK_RELOAD_TIMEOUT_MS  200U    /* 退让后重试原目标的最长时间。 */
+#define SHOOT_DIAL_SAFE_STOP_RETRY_MS       50U     /* 保险状态下停止帧重发间隔。 */
 
-/* 云台任务与遥控：摇杆值范围 -660～660。 */
-#define CLOUD_CONTROL_PERIOD_TICKS          1U
-#define CLOUD_TASK_STACK_BYTES              1024U
-#define CLOUD_RC_MAX_VALUE                  660.0f
-#define CLOUD_RC_SPEED_ENTER                15
-#define CLOUD_RC_SPEED_EXIT                 8
-#define CLOUD_PITCH_MAX_SPEED_RAW           150
+/* 云台任务与摇杆：DBUS 通道约 -660~660，Pitch 摇杆目标速度原始码
+ * = 通道值 / 660 × CLOUD_PITCH_MAX_SPEED_RAW。
+ */
+#define CLOUD_CONTROL_PERIOD_TICKS          1U     /* 云台任务周期，当前 1 tick = 1 ms。 */
+#define CLOUD_TASK_STACK_BYTES              1024U  /* 云台任务栈大小，字节。 */
+#define CLOUD_RC_MAX_VALUE                  660.0f /* DBUS 摇杆归一化分母。 */
+#define CLOUD_RC_SPEED_ENTER                15     /* 静止转运动的摇杆阈值，原始通道值。 */
+#define CLOUD_RC_SPEED_EXIT                 8      /* 运动转保持的较小阈值，构成滞回。 */
+#define CLOUD_PITCH_MAX_SPEED_RAW           150    /* Pitch 满杆速度目标，电机速度原始码。 */
+#define CLOUD_FOLLOW_RATE_TIMEOUT_MS        100U   /* D4 角速度快照有效期；当前 Yaw 闭环未用 D4。 */
 
-/* D4 底盘角速度仅保留作调试数据，不再参与 Yaw 控制。 */
-#define CLOUD_FOLLOW_RATE_TIMEOUT_MS        100U
+/* BMI088 传感器到车体坐标绕 Z 轴转 180°：X/Y 取反、Z 不变。 */
+#define GIMBAL_IMU_UPDATE_PERIOD_S          0.001f /* 姿态积分周期，1 ms。 */
+#define GIMBAL_IMU_CALIBRATION_SAMPLES      1000U  /* 静止陀螺零偏采样数，每次隔 1 ms，约 1 s。 */
+#define GIMBAL_IMU_ATTITUDE_KP              2.0f   /* 加速度重力方向修正姿态的比例增益。 */
+#define GIMBAL_IMU_ATTITUDE_KI              0.02f  /* 姿态误差积分修正增益。 */
+#define GIMBAL_IMU_YAW_RATE_FILTER_ALPHA    1.0f   /* 角速度低通新样本权重；1 为直接采用新值。 */
 
-/* 上板 BMI088：模板坐标变换为绕 Z 轴180°（X/Y 取反，Z 不变）。 */
-#define GIMBAL_IMU_UPDATE_PERIOD_S          0.001f
-#define GIMBAL_IMU_CALIBRATION_SAMPLES      1000U
-#define GIMBAL_IMU_ATTITUDE_KP              2.0f
-#define GIMBAL_IMU_ATTITUDE_KI              0.02f
-#define GIMBAL_IMU_YAW_RATE_FILTER_ALPHA    1.0f
+/* 惯性系 Yaw：摇杆积分成角度目标，再经角度环→deg/s 目标→速度环→转矩码。
+ * 10 N·m 对应约 2047 转矩码，即约 204.7 码/N·m；0.04 N·m/(deg/s)
+ * 换算约 8.19 码/(deg/s)。下方 Kp=9.0 是该量级上的实际调定值。
+ */
+#define CLOUD_YAW_COMMAND_RATE_DEG_S        200.0f /* 满杆目标角变化率；每周期增量=ch/660×200×0.001 度。 */
+#define CLOUD_YAW_RC_DIRECTION              1.0f   /* 摇杆方向系数；调用处已将 ch[0] 取反。 */
+#define CLOUD_YAW_ANGLE_KP                  25.0f  /* Yaw 角度误差 deg 到目标 deg/s 的比例增益。 */
+#define CLOUD_YAW_ANGLE_KI                  0.5f   /* 角度外环积分增益。 */
+#define CLOUD_YAW_ANGLE_KD                  0.0f   /* 角度外环微分增益。 */
+#define CLOUD_YAW_ANGLE_INTEGRAL_LIMIT      200.0f /* 角度外环积分项绝对值上限。 */
+#define CLOUD_YAW_RATE_TARGET_LIMIT_DEG_S   500.0f /* 角度外环输出角速度目标上限，deg/s。 */
+#define CLOUD_YAW_RATE_KP                   9.0f   /* IMU 角速度误差到 4310 转矩码的比例增益。 */
+#define CLOUD_YAW_RATE_KI                   0.5f   /* IMU 角速度内环积分增益。 */
+#define CLOUD_YAW_RATE_KD                   0.0f   /* IMU 角速度内环微分增益。 */
+#define CLOUD_YAW_RATE_INTEGRAL_LIMIT       0.0f   /* 角速度内环积分项限幅；0 不保留积分贡献。 */
+#define CLOUD_YAW_TORQUE_LIMIT_RAW          2047.0f /* 角速度内环输出转矩码上限。 */
 
-/*  Yaw 惯性系位控：角度外环 -> 陀螺仪角速度内环 -> 转矩。 */
-#define CLOUD_YAW_COMMAND_RATE_DEG_S        200.0f
-#define CLOUD_YAW_RC_DIRECTION              1.0f
-#define CLOUD_YAW_ANGLE_KP                  22.0f
-#define CLOUD_YAW_ANGLE_KI                  0.1f
-#define CLOUD_YAW_ANGLE_KD                  0.0f
-#define CLOUD_YAW_ANGLE_INTEGRAL_LIMIT      200.0f
-#define CLOUD_YAW_RATE_TARGET_LIMIT_DEG_S   500.0f
-/* 模板内环 Kp=0.04 Nm/(deg/s)，4310 原始转矩码按 2047/10 Nm 换算。 */
-#define CLOUD_YAW_RATE_KP                   9.0f
-#define CLOUD_YAW_RATE_KI                   0.1f
-#define CLOUD_YAW_RATE_KD                   0.0f
-#define CLOUD_YAW_RATE_INTEGRAL_LIMIT       0.0f
-#define CLOUD_YAW_TORQUE_LIMIT_RAW          2047.0f
-
-/* 模板机械归中点；当前实车 Pitch 下限与补偿比例保留现有调试值。 */
-#define CLOUD_YAW_HOME_RAD                  (-0.387884378f)
-#define CLOUD_PITCH_HOME_RAD                2.59309077f
-#define CLOUD_HOME_TOLERANCE_DEG            2.0f
-#define CLOUD_HOME_SPEED_RAW_MAX            20
-#define CLOUD_HOME_STABLE_CYCLES            20U
-#define CLOUD_PITCH_MIN_DEG                 (-7.0f)
-#define CLOUD_PITCH_MAX_DEG                 30.0f
-#define CLOUD_PITCH_LIMIT_SLOW_DEG          5.0f
-#define CLOUD_PITCH_GRAVITY_CENTER_RAD      2.678706762f
-#define CLOUD_PITCH_GRAVITY_K               4.2072f
-#define CLOUD_PITCH_GRAVITY_B               (-2.496f)
-#define CLOUD_PITCH_GRAVITY_SCALE           0.6f
-#define CLOUD_MOTOR_TORQUE_MAX_NM           10.0f
+/* 电机单圈位置 0~65535 对应 -π~π rad；归中点换算成计数：
+ * (HOME_RAD+π)×65535/(2π)，再选距当前累计角最近的一圈。
+ * Pitch 机械限位以归中点为零，不是绝对编码器角。
+ */
+#define CLOUD_YAW_HOME_RAD                  (-0.387884378f) /* Yaw 指向车头的电机单圈角，rad。 */
+#define CLOUD_PITCH_HOME_RAD                2.59309077f    /* Pitch 归中时电机单圈角，rad。 */
+#define CLOUD_HOME_TOLERANCE_DEG            2.0f           /* 两轴位置需落在归中目标 ±2°。 */
+#define CLOUD_HOME_SPEED_RAW_MAX            20             /* 两轴速度原始码绝对值须不超过此值。 */
+#define CLOUD_HOME_STABLE_CYCLES            20U            /* 连续合格周期数；1 ms 周期约 20 ms。 */
+#define CLOUD_PITCH_MIN_DEG                 (-7.0f)        /* 相对归中点的 Pitch 下限，度。 */
+#define CLOUD_PITCH_MAX_DEG                 30.0f          /* 相对归中点的 Pitch 上限，度。 */
+#define CLOUD_PITCH_LIMIT_SLOW_DEG          5.0f           /* 距限位不足 5° 时按剩余距离线性减速。 */
+/* 重力前馈：N·m=×SCALE；
+ * 电机角=angle×2π/65535-π；转矩码=N·m×4095/(2×MAX_NM)。
+ */
+#define CLOUD_PITCH_GRAVITY_CENTER_RAD      2.678706762f /* 余弦重力曲线中心角，rad。 */
+#define CLOUD_PITCH_GRAVITY_K               4.2072f      /* 余弦项幅值，N·m。 */
+#define CLOUD_PITCH_GRAVITY_B               (-2.496f)    /* 恒定转矩偏置，N·m。 */
+#define CLOUD_PITCH_GRAVITY_SCALE           0.6f         /* 总体前馈比例；减小可降低整条重力曲线幅值。 */
+#define CLOUD_MOTOR_TORQUE_MAX_NM           10.0f        /* 转矩码换算采用的电机满量程，N·m。 */
 
 #endif /* PARAMETER_H */

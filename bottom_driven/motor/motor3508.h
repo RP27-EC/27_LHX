@@ -19,14 +19,14 @@ extern "C" {
 /* C620 反馈原始数据；速度单位为电机转子 rpm。 */
 typedef struct
 {
-    uint16_t encoder;
-    int16_t speed_rpm;
-    int16_t current_raw;
-    uint8_t temperature;
-    volatile bool received;
-    volatile bool online;
-    volatile uint32_t last_rx_ms;
-    volatile uint32_t rx_count;
+    uint16_t encoder;            /* 转子单圈编码器原始值，范围 0~8191。 */
+    int16_t speed_rpm;           /* 转子反馈转速，单位 rpm。 */
+    int16_t current_raw;         /* C620 反馈的实际电流原始值。 */
+    uint8_t temperature;         /* 电机温度，单位摄氏度。 */
+    volatile bool received;      /* 上电后是否至少收到过一帧反馈。 */
+    volatile bool online;        /* 心跳检测得到的当前在线状态。 */
+    volatile uint32_t last_rx_ms;/* 最近一次反馈的毫秒时间戳。 */
+    volatile uint32_t rx_count;  /* 累计接收的有效反馈帧数。 */
 } Motor3508_Feedback_t;
 
 extern Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT];

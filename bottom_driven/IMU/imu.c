@@ -4,7 +4,7 @@
 #include <math.h>
 #include <string.h>
 
-/* 上板模板硬件：SPI1，PA4 加速度计 CS，PB0 陀螺仪 CS。 */
+/* 上板 BMI088：SPI1，PA4 加速度计 CS，PB0 陀螺仪 CS。 */
 #define IMU_ACCEL_CS_PORT              GPIOA
 #define IMU_ACCEL_CS_PIN               GPIO_PIN_4
 #define IMU_GYRO_CS_PORT               GPIOB
@@ -31,13 +31,13 @@
 #define BMI088_GYRO_SENSITIVITY        0.0010652644360f
 #define IMU_RAD_TO_DEG                 57.2957795131f
 
-static float gyro_bias[3];
-static float integral_feedback[3];
-static uint32_t last_update_ms;
-static float yaw_last_deg;
-static int32_t yaw_rounds;
+static float gyro_bias[3];        /* 标定得到的三轴陀螺仪零偏。 */
+static float integral_feedback[3];/* 姿态融合中用于消除漂移的积分反馈。 */
+static uint32_t last_update_ms;   /* 上一次姿态更新的毫秒时间戳。 */
+static float yaw_last_deg;        /* 上一周期单圈 Yaw 角，用于跨圈判断。 */
+static int32_t yaw_rounds;        /* Yaw 跨越正负 180 度的累计圈数。 */
 
-volatile GimbalImu_Data_t gimbal_imu;
+volatile GimbalImu_Data_t gimbal_imu; /* 供控制任务和调试器读取的 IMU 快照。 */
 
 static void imu_delay_us(uint32_t us)
 {
@@ -305,7 +305,7 @@ HAL_StatusTypeDef GimbalImu_Init(void)
             gimbal_imu.init_error = 0x83U;
             return HAL_ERROR;
         }
-        /* 模板坐标变换是传感器坐标绕 Z 轴180°。 */
+        /* 传感器到车体坐标绕 Z 轴 180°。 */
         bias_sum[0] -= gyro[0];
         bias_sum[1] -= gyro[1];
         bias_sum[2] += gyro[2];
@@ -334,7 +334,7 @@ bool GimbalImu_Update(void)
         return false;
     }
 
-    /* 严格按模板 arz=180° 变换：X、Y 取反，Z 不变。 */
+    /* 绕 Z 轴 180° 的坐标变换：X、Y 取反，Z 不变。 */
     gyro[0] = -gyro[0] - gyro_bias[0];
     gyro[1] = -gyro[1] - gyro_bias[1];
     gyro[2] =  gyro[2] - gyro_bias[2];

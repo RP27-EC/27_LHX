@@ -14,18 +14,18 @@
 #define COMM_RC_PART_D2             0x02U
 
 static volatile Communication_CanRxFrame_t
-    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT];
-static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE];
-static volatile uint8_t communication_rc_assembly_mask;
-static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE];
-static volatile bool communication_rc_snapshot_ready;
-static volatile uint32_t communication_rc_snapshot_ms;
+    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; /* D1~D4 各自的最新接收快照。 */
+static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE]; /* D1~D3 拼接中的遥控原始帧。 */
+static volatile uint8_t communication_rc_assembly_mask; /* 已收到 D1/D2 分片的位掩码。 */
+static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; /* 提交给任务解析的完整遥控快照。 */
+static volatile bool communication_rc_snapshot_ready; /* 是否有完整遥控帧等待任务解析。 */
+static volatile uint32_t communication_rc_snapshot_ms; /* 完整遥控帧拼接完成的时间。 */
 
-Communication_RcControl_t communication_rc;
-volatile bool communication_rc_online = false;
-volatile uint32_t communication_rc_valid_count = 0U;
-volatile uint32_t communication_rc_last_valid_ms = 0U;
-volatile uint32_t communication_rc_assembly_error_count = 0U;
+Communication_RcControl_t communication_rc; /* 当前已解析的遥控器数据。 */
+volatile bool communication_rc_online = false; /* 遥控链路当前是否在线。 */
+volatile uint32_t communication_rc_valid_count = 0U; /* 累计有效遥控帧数。 */
+volatile uint32_t communication_rc_last_valid_ms = 0U; /* 最近有效遥控帧时间。 */
+volatile uint32_t communication_rc_assembly_error_count = 0U; /* D1~D3 拼帧错误数。 */
 
 static void Communication_RC_SetSafe(void)
 {

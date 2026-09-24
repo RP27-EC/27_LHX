@@ -6,8 +6,8 @@
 #define MOTOR3508_CAN_SLAVE_START_BANK     14U
 #define MOTOR3508_STD_ID_TO_FILTER16(id)   ((uint32_t)(id) << 5U)
 
-Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT];
-PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];
+Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT]; /* 两个摩擦轮电机反馈。 */
+PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];    /* 两个摩擦轮速度 PID。 */
 
 static int16_t Motor3508_LimitCurrent(float value)
 {
