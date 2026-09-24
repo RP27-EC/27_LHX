@@ -19,7 +19,9 @@ typedef struct
     RemoteMode_t mode;   /* 当前底盘控制模式。 */
     int16_t channel[5]; /* 与模式同步的五路遥控通道。 */
     bool online;        /* 遥控器当前是否在线。 */
-    bool spin_enabled;  /* 左下且右上时才允许小陀螺自旋。 */
+    bool keyboard_active; /* V 键切换的键鼠控制状态。 */
+    bool spin_enabled;  /* 遥控模式需右拨杆换档；键鼠模式需 G 按下沿使能自旋。 */
+    uint32_t turnaround_request_count; /* 拨轮上拨下降沿累计次数；底盘任务逐次消费。 */
 } RemoteState_t;
 
 /* 由遥控解析任务写入，底盘任务读取。 */

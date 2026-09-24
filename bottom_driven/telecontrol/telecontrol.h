@@ -21,6 +21,24 @@
 #define switch_is_mid(s)  ((s) == RC_SW_MID)
 #define switch_is_up(s)   ((s) == RC_SW_UP)
 
+/* DBUS 键盘位图，位序与模板工程一致。 */
+#define RC_KEY_W      (1U << 0)
+#define RC_KEY_S      (1U << 1)
+#define RC_KEY_A      (1U << 2)
+#define RC_KEY_D      (1U << 3)
+#define RC_KEY_SHIFT  (1U << 4)
+#define RC_KEY_CTRL   (1U << 5)
+#define RC_KEY_Q      (1U << 6)
+#define RC_KEY_E      (1U << 7)
+#define RC_KEY_R      (1U << 8)
+#define RC_KEY_F      (1U << 9)
+#define RC_KEY_G      (1U << 10)
+#define RC_KEY_Z      (1U << 11)
+#define RC_KEY_X      (1U << 12)
+#define RC_KEY_C      (1U << 13)
+#define RC_KEY_V      (1U << 14)
+#define RC_KEY_B      (1U << 15)
+
 /* ch[0，1] 为右摇杆0左右1上下左负右正，ch[2，3] 为左摇杆，ch[4] 为拨轮下正上负；均已减去中值 1024。s为拨杆开关[0]左[1]右 */
 typedef struct
 {
@@ -29,6 +47,15 @@ typedef struct
         int16_t ch[5]; /* 五路遥控通道，均已减去中心值 1024。 */
         uint8_t s[2];  /* 左、右三档拨杆的原始档位编码。 */
     } rc;              /* 与 DJI DBUS 数据布局对应的遥控数据。 */
+    struct
+    {
+        int16_t x;     /* 鼠标水平位移，向右为正。 */
+        int16_t y;     /* 鼠标垂直位移，向下为正。 */
+        int16_t z;     /* 鼠标滚轮原始值，暂未用于控制。 */
+        bool left;     /* 鼠标左键。 */
+        bool right;    /* 鼠标右键。 */
+    } mouse;
+    uint16_t key;      /* DBUS 键盘按下位图。 */
 } RC_ctrl_t;
 
 extern uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM];

@@ -230,7 +230,7 @@ bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN],
 
 /*
  * 按 DBUS 11 位通道格式解包原始遥控帧。
- * 仅解析摇杆、拨轮和拨杆；字节 6~15 的键鼠数据暂不处理。
+ * 同时解析字节 6~15 的鼠标位移、按钮和键盘位图。
  * 输出通道以 1024 为中心归零，正常范围 -660~660。
  * ch[3] == -660 是合法满量程输入，不作特殊屏蔽。
  */
@@ -259,6 +259,12 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
     /* DBUS 拨杆位序：s[0] 取 bit 7~6，s[1] 取 bit 5~4。 */
     decoded.rc.s[0] = (frame[5] >> 6) & 0x03U;
     decoded.rc.s[1] = (frame[5] >> 4) & 0x03U;
+    decoded.mouse.x = (int16_t)((uint16_t)frame[6] | ((uint16_t)frame[7] << 8));
+    decoded.mouse.y = (int16_t)((uint16_t)frame[8] | ((uint16_t)frame[9] << 8));
+    decoded.mouse.z = (int16_t)((uint16_t)frame[10] | ((uint16_t)frame[11] << 8));
+    decoded.mouse.left = (frame[12] & 0x01U) != 0U;
+    decoded.mouse.right = (frame[13] & 0x01U) != 0U;
+    decoded.key = (uint16_t)frame[14] | ((uint16_t)frame[15] << 8);
 
     /* 摇杆异常时清零输出并拒绝该帧；两个拨杆均须为 1、2、3。 */
     for (i = 0U; i < 4U; i++)

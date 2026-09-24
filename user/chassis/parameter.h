@@ -10,6 +10,14 @@
 #define RC_TIMEOUT_MS                    100U   /* 最后有效 DBUS 帧距今≥100 ms 即判遥控离线。 */
 #define RC_TASK_PERIOD_TICKS             15U    /* 遥控解析任务每 15 tick 运行一次。 */
 
+/* 键鼠模式由 V 按键切换；转换后的虚拟通道仍使用 DBUS 的 ±660 量程。 */
+#define RC_KEYBOARD_MOVE_RAW             440    /* WASD 普通移动对应的虚拟摇杆幅值。 */
+#define RC_KEYBOARD_SPRINT_RAW           660    /* 按住 Shift 时的移动幅值。 */
+#define RC_KEYBOARD_SLOW_RAW             220    /* 按住 Ctrl 时的移动幅值。 */
+#define RC_KEYBOARD_MOUSE_YAW_GAIN       8      /* 每个鼠标 X 计数换算的 Yaw 虚拟通道值。 */
+#define RC_KEYBOARD_MOUSE_PITCH_GAIN     8      /* 每个鼠标 Y 计数换算的 Pitch 虚拟通道值。 */
+#define RC_KEYBOARD_AIM_DIVISOR          2      /* 按住鼠标右键时视角输入减半。 */
+
 /* ==================== 底盘指令与安全 ==================== */
 #define CHASSIS_MECHANICAL_SWITCH_POSITION 3U  /* DBUS 左拨杆中档值，机械模式由 ch[0] 直接转底盘。 */
 #define CHASSIS_SPIN_SWITCH_0_POSITION   2U     /* DBUS 左拨杆下档值，选择小陀螺模式。 */
@@ -30,7 +38,7 @@
 /* ==================== 云台带动底盘跟随 ==================== */
 #define CHASSIS_FOLLOW_SWITCH_POSITION  1U     /* DBUS 左拨杆上档值，选择底盘跟随云台。 */
 #define CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS 100U   /* 上板 C1 机械 Yaw 角超过此时间未更新则停止跟随。 */
-#define CHASSIS_FOLLOW_DEADBAND_DEG     5.0f   /* |机械 Yaw 角|≤10° 不输出角度跟随分量。 */
+#define CHASSIS_FOLLOW_DEADBAND_DEG     5.0f   /* 相对所选正方向误差≤5° 时不输出角度跟随分量。 */
 /* 死区外角误差：正角减 10°，负角加 10°；旋转分量=角误差×KP+摇杆前馈。 */
 #define CHASSIS_FOLLOW_KP_RPM_PER_DEG   80.0f   /* 每超出死区 1°，增加 80 rpm 底盘旋转分量。 */
 #define CHASSIS_FOLLOW_RC_DEADBAND       15.0f  /* Yaw 遥控通道原始值的前馈死区。 */
@@ -39,6 +47,14 @@
 #define CHASSIS_FOLLOW_SLEW_RPM_PER_TICK 10.0f  /* 跟随旋转分量每 tick 最多变 10 rpm。 */
 #define CHASSIS_FOLLOW_RATE_TX_PERIOD_MS 10U    /* 向上板发送 D4 实测底盘角速度的最短间隔。 */
 #define CHASSIS_FOLLOW_ROTATE_SIGN      1.0f    /* 跟随旋转最终方向系数，改符号可反转。 */
+/* 两个相反的车头方向分别对应云台机械 Yaw 相对底盘 0° 和 180°。
+ * |角度|<90° 选物理车头，≥90° 选车尾。
+ * 拨轮从中位向上跨过负阈值触发调头，回中位附近后才可再次触发。
+ */
+#define CHASSIS_FRONT_SWITCH_DEG          90.0f /* 正反车头的就近选择分界角。 */
+#define CHASSIS_TURN_WHEEL_TRIGGER_RAW     200  /* ch[4]≤-200 视为向上拨到触发位。 */
+#define CHASSIS_TURN_WHEEL_REARM_RAW        50  /* ch[4]>-50 时重新布防。 */
+#define CHASSIS_TURN_DONE_TOLERANCE_DEG   5.0f /* 收到转完状态后，离目标≤5° 才恢复底盘。 */
 
 /* ==================== BMI088 与姿态解算 ==================== */
 #define IMU_UPDATE_PERIOD_S               0.001f /* 姿态积分使用的周期，1 ms。 */

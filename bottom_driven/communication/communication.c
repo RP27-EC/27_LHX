@@ -163,10 +163,16 @@ bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame)
 
 bool Communication_GetYawAngle(float *angle_deg)
 {
+    bool turning;
+    return Communication_GetYawState(angle_deg, &turning);
+}
+
+bool Communication_GetYawState(float *angle_deg, bool *turning)
+{
     Communication_RxFrame frame;
     int16_t encoded;
 
-    if (angle_deg == NULL ||
+    if (angle_deg == NULL || turning == NULL ||
         !Communication_GetRxFrame(COMMUNICATION_RX_ID_C1, &frame) ||
         (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
             CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS ||
@@ -177,6 +183,7 @@ bool Communication_GetYawAngle(float *angle_deg)
     encoded = (int16_t)((uint16_t)frame.data[0] |
                         ((uint16_t)frame.data[1] << 8));
     *angle_deg = (float)encoded * 0.01f;
+    *turning = (frame.data[2] & 0x02U) != 0U;
     return true;
 }
 

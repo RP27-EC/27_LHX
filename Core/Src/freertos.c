@@ -191,6 +191,7 @@ void motor3508_speed_control(void *argument)
   /* USER CODE BEGIN motor3508_speed_control */
   uint32_t next_tick;
   RemoteState_t remote;
+  bool turn_hold;
   (void)argument;
   next_tick = osKernelGetTickCount();
   /* Infinite loop */
@@ -199,7 +200,12 @@ void motor3508_speed_control(void *argument)
     /* BMI088 角速度与姿态保持 1 ms 更新，跟随模式直接使用 Z 轴角速度。 */
     (void)ChassisImu_Update();
     RemoteState_Get(&remote);
-    if (remote.online && Motor3508_OnlineCheck())
+    turn_hold = false;
+    if (!remote.online)
+    { Chassis_TurnaroundReset(remote.turnaround_request_count); }
+    else
+    { turn_hold = Chassis_TurnaroundUpdate(remote.turnaround_request_count); }
+    if (remote.online && Motor3508_OnlineCheck() && !turn_hold)
     {
       if (remote.mode == REMOTE_MODE_SPIN)
       {
@@ -222,9 +228,9 @@ void motor3508_speed_control(void *argument)
         /* 中档使用手动底盘控制，同时上板 Yaw 锁车头。 */
         Chassis_FollowReset();
         Chassis_SpinReset();
-        Chassis_MecanumInverse(remote.channel[3] * CHASSIS_FORWARD_SCALE,
-                              remote.channel[2] * CHASSIS_LEFT_SCALE,
-                              remote.channel[0] * CHASSIS_ROTATE_SCALE);
+        Chassis_MechanicalUpdate(remote.channel[3] * CHASSIS_FORWARD_SCALE,
+                                 remote.channel[2] * CHASSIS_LEFT_SCALE,
+                                 remote.channel[0] * CHASSIS_ROTATE_SCALE);
       }
       else
       {
