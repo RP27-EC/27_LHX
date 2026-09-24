@@ -4,21 +4,21 @@
 #include <string.h>
 
 /* 中断写入，task 读取；不让 task 直接读取正在接收的 DMA 缓冲区。 */
-static uint8_t rc_frame_snapshot[RC_FRAME_LEN];
-static volatile bool rc_frame_ready = false;
+static uint8_t rc_frame_snapshot[RC_FRAME_LEN]; /* 中断提交给任务的完整 DBUS 快照。 */
+static volatile bool rc_frame_ready = false;    /* 是否存在尚未被任务取走的新快照。 */
 
-static volatile uint32_t rc_last_valid_rx_ms = 0U;   //最近有效帧接收时间
-static volatile bool rc_has_valid_frame = false;     //上电后是否接到有效帧
-static volatile bool rc_online = false;              //遥控是否在线
+static volatile uint32_t rc_last_valid_rx_ms = 0U; /* 最近有效帧接收时间。 */
+static volatile bool rc_has_valid_frame = false;   /* 上电后是否接到过有效帧。 */
+static volatile bool rc_online = false;            /* 遥控链路当前是否在线。 */
 
-static uint32_t rc_frame_received_ms = 0U;
+static uint32_t rc_frame_received_ms = 0U; /* 当前待解析快照的接收时间。 */
 /* 用于调试器观察。 */
-volatile uint32_t rc_rx_frame_count = 0;
-volatile uint16_t rc_rx_last_size = 0;
+volatile uint32_t rc_rx_frame_count = 0; /* DMA 中识别出的完整 DBUS 帧数。 */
+volatile uint16_t rc_rx_last_size = 0;   /* 最近一次 UART 空闲中断收到的字节数。 */
 
-uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM];//接收数据储存数值
+uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM]; /* UART DMA 双缓冲接收区。 */
 
-RC_ctrl_t rc_ctrl = { .rc = { .ch = {0}, .s = {RC_SW_MID, RC_SW_MID} } };
+RC_ctrl_t rc_ctrl = { .rc = { .ch = {0}, .s = {RC_SW_MID, RC_SW_MID} } }; /* 当前遥控数据。 */
 
 //串口DMA接收以及标志变量初始化初始化
 void control_usart_init(uint8_t *rx_1buff,uint8_t *rx_2buff,uint16_t dma_buf_num)
@@ -229,10 +229,10 @@ bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN],
 }
 
 /*
- * 从模板 rc_sensor_update 移植 DBUS 位解包逻辑。
+ * 按 DBUS 11 位通道格式解包原始遥控帧。
  * 仅解析摇杆、拨轮和拨杆；字节 6~15 的键鼠数据暂不处理。
  * 输出通道以 1024 为中心归零，正常范围 -660~660。
- * 不保留模板针对 ch3 == -660 的特例，以免屏蔽合法满量程输入。
+ * ch[3] == -660 是合法满量程输入，不作特殊屏蔽。
  */
 bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
 {
@@ -256,7 +256,7 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
     decoded.rc.ch[4] = (int16_t)(((uint16_t)frame[16] |
                                  ((uint16_t)frame[17] << 8)) & 0x07FFU) - 1024;
 
-    /* 与模板 s1/s2 位序一致：s[0] 取 bit 7~6，s[1] 取 bit 5~4。 */
+    /* DBUS 拨杆位序：s[0] 取 bit 7~6，s[1] 取 bit 5~4。 */
     decoded.rc.s[0] = (frame[5] >> 6) & 0x03U;
     decoded.rc.s[1] = (frame[5] >> 4) & 0x03U;
 
@@ -279,7 +279,7 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
         return false;
     }
 
-    /* 保留模板拨轮异常归零处理。 */
+    /* 拨轮越界时归零，不影响其余有效通道。 */
     if ((decoded.rc.ch[4] < -660) || (decoded.rc.ch[4] > 660))
     {
         decoded.rc.ch[4] = 0;

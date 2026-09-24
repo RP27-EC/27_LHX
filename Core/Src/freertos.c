@@ -34,12 +34,13 @@
 #include "communication.h"
 #include "parameter.h"
 #include "imu.h"
+#include "remote_state.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-uint8_t rc_task_frame[RC_FRAME_LEN];
-volatile uint32_t rc_task_frame_count = 0;
+uint8_t rc_task_frame[RC_FRAME_LEN]; /* 遥控解析任务使用的 DBUS 帧副本。 */
+volatile uint32_t rc_task_frame_count = 0; /* 任务成功解析的遥控帧计数。 */
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -57,21 +58,21 @@ volatile uint32_t rc_task_frame_count = 0;
 
 /* USER CODE END Variables */
 /* Definitions for Control_Parsing */
-osThreadId_t Control_ParsingHandle;
+osThreadId_t Control_ParsingHandle; /* 遥控接收与解析任务句柄。 */
 const osThreadAttr_t Control_Parsing_attributes = {
   .name = "Control_Parsing",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityHigh5,
 };
 /* Definitions for motor3508 */
-osThreadId_t motor3508Handle;
+osThreadId_t motor3508Handle; /* 底盘 3508 控制任务句柄。 */
 const osThreadAttr_t motor3508_attributes = {
   .name = "motor3508",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityHigh7,
 };
 /* Definitions for communication */
-osThreadId_t communicationHandle;
+osThreadId_t communicationHandle; /* 上下板 CAN 通信任务句柄。 */
 const osThreadAttr_t communication_attributes = {
   .name = "communication",
   .stack_size = 128 * 4,
@@ -148,6 +149,7 @@ void StartRcTask(void *argument)
     uint32_t next_tick = osKernelGetTickCount();
     uint32_t received_ms;
     (void)argument;
+    RemoteState_Init();
   /* Infinite loop */
   for(;;)
   {
@@ -162,7 +164,7 @@ void StartRcTask(void *argument)
 
     }
 
-      (void)RC_CheckOnline(HAL_GetTick());
+      RemoteState_Update(&rc_ctrl, RC_CheckOnline(HAL_GetTick()));
 
         /* 按配置周期执行遥控解析和在线检测。 */
       next_tick += RC_TASK_PERIOD_TICKS;
@@ -188,6 +190,7 @@ void motor3508_speed_control(void *argument)
 {
   /* USER CODE BEGIN motor3508_speed_control */
   uint32_t next_tick;
+  RemoteState_t remote;
   (void)argument;
   next_tick = osKernelGetTickCount();
   /* Infinite loop */
@@ -195,33 +198,33 @@ void motor3508_speed_control(void *argument)
   {
     /* BMI088 角速度与姿态保持 1 ms 更新，跟随模式直接使用 Z 轴角速度。 */
     (void)ChassisImu_Update();
-    if (RC_online_return() && Motor3508_OnlineCheck())
+    RemoteState_Get(&remote);
+    if (remote.online && Motor3508_OnlineCheck())
     {
-      if (rc_ctrl.rc.s[0] == CHASSIS_SPIN_SWITCH_0_POSITION &&
-          rc_ctrl.rc.s[1] == CHASSIS_SPIN_SWITCH_1_POSITION)
+      if (remote.mode == REMOTE_MODE_SPIN)
       {
-        /* 小陀螺：底盘固定自转，平移方向以云台Yaw朝向为正前方。 */
+        /* 左下档按云台朝向平移；仅右上档叠加底盘自旋。 */
         Chassis_FollowReset();
-        Chassis_SpinUpdate(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
-                           rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE);
+        Chassis_SpinUpdate(remote.channel[3] * CHASSIS_FORWARD_SCALE,
+                           remote.channel[2] * CHASSIS_LEFT_SCALE,
+                           remote.spin_enabled);
       }
-      else if (rc_ctrl.rc.s[0] == CHASSIS_FOLLOW_SWITCH_POSITION)
+      else if (remote.mode == REMOTE_MODE_FOLLOW)
       {
         Chassis_SpinReset();
         /* 上档由云台相对车头角度驱动旋转，左右摇杆只控制 Yaw。 */
-        Chassis_FollowUpdate(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
-                             rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
-                             (float)rc_ctrl.rc.ch[0]);
+        Chassis_FollowUpdate(remote.channel[3] * CHASSIS_FORWARD_SCALE,
+                             remote.channel[2] * CHASSIS_LEFT_SCALE,
+                             (float)remote.channel[0]);
       }
-      else if (rc_ctrl.rc.s[0] == CHASSIS_ENABLE_SWITCH_POSITION ||
-               rc_ctrl.rc.s[0] == CHASSIS_MECHANICAL_SWITCH_POSITION)
+      else if (remote.mode == REMOTE_MODE_MECHANICAL)
       {
-        /* 下档和中档使用相同的底盘手动控制；中档时上板Yaw锁车头。 */
+        /* 中档使用手动底盘控制，同时上板 Yaw 锁车头。 */
         Chassis_FollowReset();
         Chassis_SpinReset();
-        Chassis_MecanumInverse(rc_ctrl.rc.ch[3] * CHASSIS_FORWARD_SCALE,
-                              rc_ctrl.rc.ch[2] * CHASSIS_LEFT_SCALE,
-                              rc_ctrl.rc.ch[0] * CHASSIS_ROTATE_SCALE);
+        Chassis_MecanumInverse(remote.channel[3] * CHASSIS_FORWARD_SCALE,
+                              remote.channel[2] * CHASSIS_LEFT_SCALE,
+                              remote.channel[0] * CHASSIS_ROTATE_SCALE);
       }
       else
       {
@@ -270,6 +273,7 @@ void up_down_communication(void *argument)
   for(;;)
   {
     /*上下板通信*/
+    Communication_Service();
     taskENTER_CRITICAL();
     frame_count_snapshot = rc_task_frame_count;
     if (frame_count_snapshot > 0U)

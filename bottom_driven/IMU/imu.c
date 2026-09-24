@@ -3,7 +3,7 @@
 #include <math.h>
 #include <string.h>
 
-/* 模板 DM-MC02 下板：BMI088 使用 SPI2。 */
+/* 下板 BMI088 使用 SPI2。 */
 #define IMU_ACCEL_CS_PORT              GPIOC
 #define IMU_ACCEL_CS_PIN               GPIO_PIN_0
 #define IMU_GYRO_CS_PORT               GPIOC
@@ -35,16 +35,16 @@
 #define IMU_RAD_TO_DEG                 57.2957795131f
 #define IMU_GRAVITY                    9.80665f
 
-static SPI_HandleTypeDef imu_spi;
-static float gyro_bias[3];
-static float gyro_bias_sum[3];
-static float integral_feedback[3];
-static uint32_t calibration_count;
-static uint32_t last_update_ms;
-static float yaw_last_deg;
-static int32_t yaw_rounds;
+static SPI_HandleTypeDef imu_spi;  /* 下板 BMI088 使用的独立 SPI 句柄。 */
+static float gyro_bias[3];         /* 标定完成后的三轴陀螺仪零偏。 */
+static float gyro_bias_sum[3];     /* 启动标定期间三轴零偏采样累加值。 */
+static float integral_feedback[3]; /* 姿态融合中用于抑制漂移的积分反馈。 */
+static uint32_t calibration_count; /* 已累计的陀螺仪零偏标定样本数。 */
+static uint32_t last_update_ms;    /* 上一次姿态更新的毫秒时间戳。 */
+static float yaw_last_deg;         /* 上周期单圈 Yaw 角，用于跨圈判断。 */
+static int32_t yaw_rounds;         /* Yaw 跨越正负 180 度的累计圈数。 */
 
-volatile ChassisImu_Data_t chassis_imu;
+volatile ChassisImu_Data_t chassis_imu; /* 供底盘控制和调试读取的 IMU 快照。 */
 
 static void imu_delay_us(uint32_t us)
 {
@@ -358,7 +358,7 @@ bool ChassisImu_Update(void)
 
     if (!imu_read_sensor(gyro, accel, &temperature))
     { chassis_imu.online = false; return false; }
-    /* 模板下板安装方向：传感器坐标绕 Z 轴旋转 180 度。 */
+    /* 传感器到车体坐标绕 Z 轴旋转 180 度。 */
     gyro[0] *= IMU_GYRO_X_SIGN; gyro[1] *= IMU_GYRO_Y_SIGN;
     gyro[2] *= IMU_GYRO_Z_SIGN;
     accel[0] *= IMU_ACCEL_X_SIGN; accel[1] *= IMU_ACCEL_Y_SIGN;

@@ -26,9 +26,9 @@ typedef struct
 {
     struct
     {
-        int16_t ch[5];
-        uint8_t s[2];
-    } rc;
+        int16_t ch[5]; /* 五路遥控通道，均已减去中心值 1024。 */
+        uint8_t s[2];  /* 左、右三档拨杆的原始档位编码。 */
+    } rc;              /* 与 DJI DBUS 数据布局对应的遥控数据。 */
 } RC_ctrl_t;
 
 extern uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM];

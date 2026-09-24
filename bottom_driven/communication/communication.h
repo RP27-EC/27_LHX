@@ -29,9 +29,14 @@ typedef struct
 /* 便于在 Keil Debug 中直接观察板间通信是否工作。 */
 extern volatile uint32_t communication_rx_count;
 extern volatile uint32_t communication_last_rx_id;
+extern volatile uint32_t communication_bus_off_count; /* CAN2 Bus-Off 恢复尝试次数。 */
+extern volatile uint32_t communication_restart_count; /* CAN2 成功重新启动次数。 */
 
 /* 在 MX_FDCAN2_Init() 之后调用：配置 C1/C2 滤波器、启动 FDCAN2 并开启 FIFO0 中断。 */
 HAL_StatusTypeDef Communication_Init(void);
+
+/* 通信任务周期调用：CAN2 进入 Bus-Off 时限频重启，使硬件自动重发恢复工作。 */
+void Communication_Service(void);
 
 /* 发送一帧到上板。std_id 只允许 D1~D4，data 必须指向 8 字节数据。 */
 HAL_StatusTypeDef Communication_Send(uint32_t std_id,

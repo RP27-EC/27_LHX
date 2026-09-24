@@ -1030,6 +1030,16 @@
               <FileType>5</FileType>
               <FilePath>..\user\chassis\parameter.h</FilePath>
             </File>
+            <File>
+              <FileName>remote_state.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\remote_state.c</FilePath>
+            </File>
+            <File>
+              <FileName>remote_state.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\remote_state.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

@@ -4,6 +4,7 @@
 #include "main.h"
 #include "motor3508.h"
 #include "parameter.h"
+#include <stdbool.h>
 
 void Chassis_MecanumInverse(float front,float left,float cycle);
 
@@ -14,7 +15,8 @@ void Chassis_FollowUpdate(float front, float left, float yaw_input);
 void Chassis_FollowReset(void);
 
 /*小陀螺行进控制*/
-void Chassis_SpinUpdate(float gimbal_front, float gimbal_left);
+void Chassis_SpinUpdate(float gimbal_front, float gimbal_left,
+                        bool spin_enabled);
 
 /*电机小陀螺旋转速度清零*/
 void Chassis_SpinReset(void);

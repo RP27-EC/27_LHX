@@ -3,11 +3,12 @@
 #include "imu.h"
 #include <math.h>
 
+/* 角度制转弧度制：1°=π/180 rad，供云台相对车头角的坐标旋转使用。 */
 #define CHASSIS_DEG_TO_RAD 0.01745329251994329577f
 
-static float chassis_follow_cycle_rpm;
-static uint32_t chassis_follow_last_rate_tx_ms;
-static float chassis_spin_cycle_rpm;
+static float chassis_follow_cycle_rpm; /* 跟随模式当前旋转分量，带斜坡变化。 */
+static uint32_t chassis_follow_last_rate_tx_ms; /* 最近发送底盘实测角速度的时间。 */
+static float chassis_spin_cycle_rpm; /* 小陀螺模式当前自旋分量，带斜坡变化。 */
 
 
 static float Chassis_Abs(float value)
@@ -69,10 +70,11 @@ void Chassis_SpinReset(void)
     chassis_spin_cycle_rpm = 0.0f;
 }
 
-void Chassis_SpinUpdate(float gimbal_front, float gimbal_left)
+void Chassis_SpinUpdate(float gimbal_front, float gimbal_left,
+                        bool spin_enabled)
 {
-    const float target_rpm = CHASSIS_SPIN_ROTATE_RPM *
-                             CHASSIS_SPIN_ROTATE_SIGN;
+    const float target_rpm = spin_enabled ?
+        CHASSIS_SPIN_ROTATE_RPM * CHASSIS_SPIN_ROTATE_SIGN : 0.0f;
     float step = target_rpm - chassis_spin_cycle_rpm;
     float yaw_angle_deg;
     float yaw_rad;
@@ -81,11 +83,19 @@ void Chassis_SpinUpdate(float gimbal_front, float gimbal_left)
     float chassis_front = 0.0f;
     float chassis_left = 0.0f;
 
-    if (step > CHASSIS_SPIN_SLEW_RPM_PER_TICK)
-    { step = CHASSIS_SPIN_SLEW_RPM_PER_TICK; }
-    else if (step < -CHASSIS_SPIN_SLEW_RPM_PER_TICK)
-    { step = -CHASSIS_SPIN_SLEW_RPM_PER_TICK; }
-    chassis_spin_cycle_rpm += step;
+    if (!spin_enabled)
+    {
+        /* 右拨杆离开上档时立即撤销自旋指令。 */
+        chassis_spin_cycle_rpm = 0.0f;
+    }
+    else
+    {
+        if (step > CHASSIS_SPIN_SLEW_RPM_PER_TICK)
+        { step = CHASSIS_SPIN_SLEW_RPM_PER_TICK; }
+        else if (step < -CHASSIS_SPIN_SLEW_RPM_PER_TICK)
+        { step = -CHASSIS_SPIN_SLEW_RPM_PER_TICK; }
+        chassis_spin_cycle_rpm += step;
+    }
 
     if (Communication_GetYawAngle(&yaw_angle_deg))
     {
@@ -99,7 +109,7 @@ void Chassis_SpinUpdate(float gimbal_front, float gimbal_left)
         chassis_left = gimbal_front * sine + gimbal_left * cosine;
     }
 
-    /* C1角度暂时无效时平移保持为零，但小陀螺自转继续运行。 */
+    /* C1角度暂时无效时平移为零；自旋仍受右拨杆上档控制。 */
     Chassis_MecanumInverse(chassis_front, chassis_left,
                            chassis_spin_cycle_rpm);
 }

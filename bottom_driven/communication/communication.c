@@ -6,11 +6,14 @@
 #include <float.h>
 #include <string.h>
 
-static Communication_RxFrame communication_rx_c1;
-static Communication_RxFrame communication_rx_c2;
+static Communication_RxFrame communication_rx_c1; /* 上板 C1 报文的最新快照。 */
+static Communication_RxFrame communication_rx_c2; /* 上板 C2 报文的最新快照。 */
 
-volatile uint32_t communication_rx_count = 0U;
-volatile uint32_t communication_last_rx_id = 0U;
+volatile uint32_t communication_rx_count = 0U; /* C1/C2 有效报文累计接收数。 */
+volatile uint32_t communication_last_rx_id = 0U; /* 最近收到的板间通信标准 ID。 */
+volatile uint32_t communication_bus_off_count = 0U; /* CAN2 Bus-Off 恢复尝试次数。 */
+volatile uint32_t communication_restart_count = 0U; /* CAN2 成功重新启动次数。 */
+static uint32_t communication_last_restart_ms; /* 避免持续断线时频繁重启外设。 */
 
 HAL_StatusTypeDef Communication_Init(void)
 {
@@ -21,6 +24,9 @@ HAL_StatusTypeDef Communication_Init(void)
     memset(&communication_rx_c2, 0, sizeof(communication_rx_c2));
     communication_rx_count = 0U;
     communication_last_rx_id = 0U;
+    communication_bus_off_count = 0U;
+    communication_restart_count = 0U;
+    communication_last_restart_ms = 0U;
 
     /* 一个双 ID 标准滤波器精确放行 0xC1 和 0xC2，并送入 FIFO0。 */
     filter.IdType = FDCAN_STANDARD_ID;
@@ -53,16 +59,65 @@ HAL_StatusTypeDef Communication_Init(void)
     return status;
 }
 
+void Communication_Service(void)
+{
+    FDCAN_ProtocolStatusTypeDef protocol_status;
+    uint32_t now_ms;
+
+    /* 遥控帧超时会自动恢复；此处处理的是控制器自身进入 Bus-Off。 */
+    if (HAL_FDCAN_GetState(&hfdcan2) != HAL_FDCAN_STATE_BUSY ||
+        HAL_FDCAN_GetProtocolStatus(&hfdcan2, &protocol_status) != HAL_OK ||
+        protocol_status.BusOff == 0U)
+    {
+        return;
+    }
+
+    now_ms = HAL_GetTick();
+    if (communication_bus_off_count != 0U &&
+        (uint32_t)(now_ms - communication_last_restart_ms) <
+            COMMUNICATION_BUS_OFF_RETRY_MS)
+    {
+        return;
+    }
+
+    communication_last_restart_ms = now_ms;
+    communication_bus_off_count++;
+    /* HAL Start 只接受 READY 状态；先 Stop 再 Start 清除 Bus-Off 的 INIT。 */
+    if (HAL_FDCAN_Stop(&hfdcan2) != HAL_OK)
+    {
+        return;
+    }
+    if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK)
+    {
+        return;
+    }
+    if (HAL_FDCAN_ActivateNotification(&hfdcan2,
+                                        FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
+                                        0U) == HAL_OK)
+    {
+        communication_restart_count++;
+    }
+}
+
 HAL_StatusTypeDef Communication_Send(uint32_t std_id,
                                      const uint8_t data[COMMUNICATION_FRAME_SIZE])
 {
     FDCAN_TxHeaderTypeDef header = {0};
+    FDCAN_ProtocolStatusTypeDef protocol_status;
 
     if ((data == NULL) ||
         (std_id < COMMUNICATION_TX_ID_D1) ||
         (std_id > COMMUNICATION_TX_ID_D4))
     {
         return HAL_ERROR;
+    }
+
+    /* Bus-Off 时不继续塞入旧遥控帧；恢复任务重启后发送当前最新帧。 */
+    if (HAL_FDCAN_GetState(&hfdcan2) != HAL_FDCAN_STATE_BUSY ||
+        HAL_FDCAN_GetProtocolStatus(&hfdcan2, &protocol_status) != HAL_OK ||
+        protocol_status.BusOff != 0U)
+    {
+        return HAL_BUSY;
     }
 
     header.Identifier = std_id;

@@ -4,9 +4,9 @@
 #include "PID.h"
 #include <float.h>
 
-static Motor3508_Feedback motor_feedback[MOTOR3508_COUNT];
-static PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];
-static PID_Controller_t motor3508_position_pid[MOTOR3508_COUNT];
+static Motor3508_Feedback motor_feedback[MOTOR3508_COUNT]; /* 四个底盘电机反馈。 */
+static PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT]; /* 四路速度环 PID。 */
+static PID_Controller_t motor3508_position_pid[MOTOR3508_COUNT]; /* 四路位置外环 PID。 */
 static uint8_t control_mode = 0U; /* 0 停止，1 速度，2 位置。 */
 
 //模式切换清零积分
@@ -257,7 +257,7 @@ void Motor3508_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interr
         encoder = ((uint16_t)data[0] << 8) | data[1];
         if (encoder > 8191U) { continue; }
         motor = &motor_feedback[header.Identifier - MOTOR3508_FEEDBACK_BASE];
-        /* 从模板提取跨圈累计逻辑；8192 个计数为转子一圈。
+        /* 编码器跨圈累计：8192 个计数为转子一圈。
          * 相邻两次有效反馈运动须小于半圈，否则方向/圈数存在歧义。
          * 首帧建立相对零点，不能提供断电保持的绝对位置。
          */
