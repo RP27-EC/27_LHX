@@ -19,6 +19,10 @@ static bool dial_stopped;           /* 拨盘停止命令是否已成功入队�
 static uint32_t dial_last_stop_ms;  /* 最近一次停止命令入队时间。 */
 static bool last_right_up;          /* 上周期右拨杆上档状态。 */
 static RemoteShoot_t last_mode;     /* 上周期发射模式，用于切换时重建目标。 */
+static uint32_t keyboard_single_seen; /* 发射任务已读取的短按事件序号。 */
+static bool keyboard_single_pending; /* 当前一发进行中时，最多暂存下一次短按。 */
+static bool keyboard_single_active; /* 单发已触发，需保持位控至结束。 */
+static bool keyboard_single_started; /* 拨盘已进入供弹/堵转恢复状态。 */
 
 static int32_t Shoot_AbsInt32(int32_t value)
 {
@@ -202,6 +206,10 @@ void ShootControl_Init(void)
     dial_last_stop_ms = 0U;
     last_right_up = false;
     last_mode = REMOTE_SHOOT_OFF;
+    keyboard_single_seen = 0U;
+    keyboard_single_pending = false;
+    keyboard_single_active = false;
+    keyboard_single_started = false;
     Motor3508_ResetSpeedPID();
     DialMotor_ResetControl();
 }
@@ -265,4 +273,58 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
     Shoot_DialUpdate(single_rising, mode == REMOTE_SHOOT_CONTINUOUS);
     last_right_up = right_up;
     last_mode = mode;
+}
+
+void ShootControl_ResetKeyboard(uint32_t single_request_count)
+{
+    keyboard_single_seen = single_request_count;
+    keyboard_single_pending = false;
+    keyboard_single_active = false;
+    keyboard_single_started = false;
+}
+
+void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
+                                 uint32_t single_request_count)
+{
+    if (mode != REMOTE_SHOOT_READY && mode != REMOTE_SHOOT_CONTINUOUS)
+    {
+        ShootControl_ResetKeyboard(single_request_count);
+        ShootControl_Update(REMOTE_SHOOT_OFF, false);
+        return;
+    }
+
+    if (single_request_count != keyboard_single_seen)
+    {
+        keyboard_single_seen = single_request_count;
+        keyboard_single_pending = true;
+    }
+
+    if (keyboard_single_active ||
+        (keyboard_single_pending && mode == REMOTE_SHOOT_READY))
+    {
+        if (!keyboard_single_active)
+        {
+            keyboard_single_active = true;
+            keyboard_single_started = false;
+            keyboard_single_pending = false;
+        }
+
+        /* 松键后的单发不能立即退回 READY，否则拨盘刚起动就会被 Stop。 */
+        ShootControl_Update(REMOTE_SHOOT_SINGLE,
+                            !keyboard_single_started);
+        if (shoot_dial_state != SHOOT_DIAL_IDLE)
+        { keyboard_single_started = true; }
+        else if (keyboard_single_started)
+        { keyboard_single_active = false; }
+        else
+        {
+            /* 反馈暂未就绪时允许下周期重新尝试单发上升沿。 */
+            last_right_up = false;
+        }
+        return;
+    }
+
+    if (mode == REMOTE_SHOOT_CONTINUOUS)
+    { keyboard_single_pending = false; }
+    ShootControl_Update(mode, false);
 }

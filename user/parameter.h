@@ -82,6 +82,7 @@
 #define SHOOT_DIAL_STUCK_REVERSE_TIMEOUT_MS 200U    /* 堵转后反向退让的最长时间。 */
 #define SHOOT_DIAL_STUCK_RELOAD_TIMEOUT_MS  200U    /* 退让后重试原目标的最长时间。 */
 #define SHOOT_DIAL_SAFE_STOP_RETRY_MS       50U     /* 保险状态下停止帧重发间隔。 */
+#define SHOOT_MOUSE_CONTINUOUS_THRESHOLD_MS 200U   /* 键鼠左键按住超过 200 ms 才切入连发；此前松开为单发。 */
 
 /* 云台任务与摇杆：DBUS 通道约 -660~660，Pitch 摇杆目标速度原始码
  * = 通道值 / 660 × CLOUD_PITCH_MAX_SPEED_RAW。
@@ -89,6 +90,12 @@
 #define CLOUD_CONTROL_PERIOD_TICKS          1U     /* 云台任务周期，当前 1 tick = 1 ms。 */
 #define CLOUD_TASK_STACK_BYTES              1024U  /* 云台任务栈大小，字节。 */
 #define CLOUD_RC_MAX_VALUE                  660.0f /* DBUS 摇杆归一化分母。 */
+#define RC_KEYBOARD_MOVE_RAW                440    /* WASD 普通移动的虚拟摇杆幅值。 */
+#define RC_KEYBOARD_SPRINT_RAW              660    /* Shift 加速移动的虚拟摇杆幅值。 */
+#define RC_KEYBOARD_SLOW_RAW                220    /* Ctrl 精细移动的虚拟摇杆幅值。 */
+#define RC_KEYBOARD_MOUSE_YAW_GAIN          8      /* 鼠标 X 每计数换算的虚拟 Yaw 通道值。 */
+#define RC_KEYBOARD_MOUSE_PITCH_GAIN        8      /* 鼠标 Y 每计数换算的 Pitch 通道值；方向已相对上一版反转。 */
+#define RC_KEYBOARD_AIM_DIVISOR             2      /* 按住鼠标右键时视角输入减半。 */
 #define CLOUD_RC_SPEED_ENTER                15     /* 静止转运动的摇杆阈值，原始通道值。 */
 #define CLOUD_RC_SPEED_EXIT                 8      /* 运动转保持的较小阈值，构成滞回。 */
 #define CLOUD_PITCH_MAX_SPEED_RAW           150    /* Pitch 满杆速度目标，电机速度原始码。 */
@@ -130,6 +137,15 @@
 #define CLOUD_PITCH_MIN_DEG                 (-7.0f)        /* 相对归中点的 Pitch 下限，度。 */
 #define CLOUD_PITCH_MAX_DEG                 30.0f          /* 相对归中点的 Pitch 上限，度。 */
 #define CLOUD_PITCH_LIMIT_SLOW_DEG          5.0f           /* 距限位不足 5° 时按剩余距离线性减速。 */
+/* 拨轮从中位向上跨过负阈值触发一次调头；回到中位附近才重新布防。
+ * 两阈值形成滞回，避免拨轮噪声重复触发。调头期间只让 Yaw 转向，底盘停车。
+ */
+#define CLOUD_TURN_WHEEL_TRIGGER_RAW        200            /* ch[4]≤-200 视为向上拨到触发位。 */
+#define CLOUD_TURN_WHEEL_REARM_RAW          50             /* ch[4]>-50 时重新允许下一次触发。 */
+#define CLOUD_FRONT_SWITCH_DEG              90.0f          /* |机械 Yaw 角|≥90° 时车尾更接近云台指向。 */
+#define CLOUD_TURN_TOLERANCE_DEG            3.0f           /* Yaw 距反向车头目标的到位角差。 */
+#define CLOUD_TURN_SPEED_RAW_MAX            20             /* 到位还要求 |Yaw 电机速度原始码|≤20。 */
+#define CLOUD_TURN_STABLE_CYCLES            20U            /* 连续到位周期数，1 ms 周期约 20 ms。 */
 /* 重力前馈：N·m=×SCALE；
  * 电机角=angle×2π/65535-π；转矩码=N·m×4095/(2×MAX_NM)。
  */

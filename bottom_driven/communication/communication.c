@@ -216,6 +216,11 @@ HAL_StatusTypeDef Communication_CAN_SendC2(
 
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg)
 {
+    return Communication_CAN_SendYawState(angle_deg, false);
+}
+
+HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning)
+{
     uint8_t data[COMM_CAN_FRAME_SIZE] = {0};
     int16_t encoded;
 
@@ -226,7 +231,7 @@ HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg)
     encoded = (int16_t)(angle_deg * 100.0f);
     data[0] = (uint8_t)(uint16_t)encoded;
     data[1] = (uint8_t)((uint16_t)encoded >> 8);
-    data[2] = 0x01U;
+    data[2] = turning ? 0x03U : 0x01U;
     return Communication_CAN_SendC1(data);
 }
 
@@ -300,6 +305,12 @@ bool Communication_RC_Parse(
                                   ((uint16_t)frame[17] << 8)) & 0x07FFU) - 1024;
     decoded.rc.s[0] = (frame[5] >> 6) & 0x03U;
     decoded.rc.s[1] = (frame[5] >> 4) & 0x03U;
+    decoded.mouse.x = (int16_t)((uint16_t)frame[6] | ((uint16_t)frame[7] << 8));
+    decoded.mouse.y = (int16_t)((uint16_t)frame[8] | ((uint16_t)frame[9] << 8));
+    decoded.mouse.z = (int16_t)((uint16_t)frame[10] | ((uint16_t)frame[11] << 8));
+    decoded.mouse.left = (frame[12] & 0x01U) != 0U;
+    decoded.mouse.right = (frame[13] & 0x01U) != 0U;
+    decoded.key = (uint16_t)frame[14] | ((uint16_t)frame[15] << 8);
 
     for (index = 0U; index < 4U; index++)
     {

@@ -26,6 +26,11 @@ void ShootControl_Init(void);
 
 /* 每 1 ms 调用；单发仅在右拨杆进入上档的边沿触发。 */
 void ShootControl_Update(RemoteShoot_t mode, bool right_up);
+/* 键鼠短按事件锁存至一发完成；长按沿用原连发速度环。 */
+void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
+                                 uint32_t single_request_count);
+/* 退出键鼠模式时取消未完成的键鼠请求，后续恢复遥控拨杆逻辑。 */
+void ShootControl_ResetKeyboard(uint32_t single_request_count);
 
 #ifdef __cplusplus
 }

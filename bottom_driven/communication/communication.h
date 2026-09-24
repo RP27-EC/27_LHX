@@ -30,6 +30,24 @@ extern "C" {
 #define COMM_RC_SW_MID       3U
 #define COMM_RC_SW_DOWN      2U
 
+/* DBUS 键盘位图，与下板原始帧及模板工程一致。 */
+#define COMM_RC_KEY_W      (1U << 0)
+#define COMM_RC_KEY_S      (1U << 1)
+#define COMM_RC_KEY_A      (1U << 2)
+#define COMM_RC_KEY_D      (1U << 3)
+#define COMM_RC_KEY_SHIFT  (1U << 4)
+#define COMM_RC_KEY_CTRL   (1U << 5)
+#define COMM_RC_KEY_Q      (1U << 6)
+#define COMM_RC_KEY_E      (1U << 7)
+#define COMM_RC_KEY_R      (1U << 8)
+#define COMM_RC_KEY_F      (1U << 9)
+#define COMM_RC_KEY_G      (1U << 10)
+#define COMM_RC_KEY_Z      (1U << 11)
+#define COMM_RC_KEY_X      (1U << 12)
+#define COMM_RC_KEY_C      (1U << 13)
+#define COMM_RC_KEY_V      (1U << 14)
+#define COMM_RC_KEY_B      (1U << 15)
+
 /* 每个接收 ID 保存一份最新快照，便于任务读取和调试器观察。 */
 typedef struct
 {
@@ -47,6 +65,15 @@ typedef struct
         int16_t ch[5]; /* 五路遥控通道，均已减去中心值 1024。 */
         uint8_t s[2];  /* 左、右三档拨杆的原始档位编码。 */
     } rc;              /* 与 DJI DBUS 数据布局对应的遥控数据。 */
+    struct
+    {
+        int16_t x;     /* 鼠标向右位移为正。 */
+        int16_t y;     /* 鼠标向下位移为正。 */
+        int16_t z;     /* 鼠标滚轮原始值，暂未使用。 */
+        bool left;     /* 鼠标左键。 */
+        bool right;    /* 鼠标右键。 */
+    } mouse;
+    uint16_t key;      /* DBUS 键盘按下位图。 */
 } Communication_RcControl_t;
 
 /* 便于 Keil Debug 直接观察；任务代码优先使用 Communication_RC_Get。 */
@@ -67,10 +94,12 @@ HAL_StatusTypeDef Communication_CAN_SendC1(
 HAL_StatusTypeDef Communication_CAN_SendC2(
     const uint8_t data[COMM_CAN_FRAME_SIZE]);
 
-/* 跟随协议：C1[0:1] 为有符号归中角度(0.01 度)，[2] bit0=有效；
+/* 跟随协议：C1[0:1] 为有符号归中角度(0.01 度)，[2] bit0=有效、bit1=正在调头；
  * D4[0:1] 为有符号底盘实际角速度(0.01 度/秒)，[2] bit0=有效。
  * 两者均为小端；其余字节置零。 */
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg);
+/* C1 byte[2] bit1 表示云台正在执行调头，底盘应停车。 */
+HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning);
 bool Communication_CAN_GetChassisYawRate(float *rate_deg_s);
 
 /* 获取指定 D1~D4 的最新完整快照；尚未收到或参数错误时返回 false。 */

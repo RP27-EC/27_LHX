@@ -226,10 +226,19 @@ void shoot(void *argument)
         DialMotor_OnlineCheck();
     RemoteState_Get(&remote);
 
-    /* 左下档全保险；左中+右上单发，左上+右上以速度环连发。 */
+    /* 遥控拨杆沿用原单发/连发；键鼠左键短按单发、长按连发。 */
     shoot_mode = remote.online && remote.shoot_armed && shoot_motors_online ?
         remote.shoot : REMOTE_SHOOT_OFF;
-    ShootControl_Update(shoot_mode, remote.right_up);
+    if (remote.keyboard_active)
+    {
+      ShootControl_UpdateKeyboard(shoot_mode,
+                                  remote.shoot_single_request_count);
+    }
+    else
+    {
+      ShootControl_ResetKeyboard(remote.shoot_single_request_count);
+      ShootControl_Update(shoot_mode, remote.right_up);
+    }
 
     next_tick += SHOOT_CONTROL_PERIOD_TICKS;
     if (osDelayUntil(next_tick) != osOK)

@@ -29,9 +29,11 @@ typedef struct
     RemoteShoot_t shoot;     /* 当前发射档位。 */
     int16_t channel[5];     /* 同一次遥控快照中的五路通道。 */
     bool online;            /* 遥控帧当前有效且未超时。 */
-    bool shoot_armed;       /* 本次在线期间右拨杆已真实切换过档位。 */
-    bool right_up;          /* 右拨杆当前是否上档，供单发边沿判定。 */
-    bool spin_enabled;      /* 左下且右上时才允许底盘自旋。 */
+    bool keyboard_active;   /* V 键切换的键鼠控制状态。 */
+    bool shoot_armed;       /* 遥控右拨杆已换档，或键鼠 F 已开启摩擦轮。 */
+    bool right_up;          /* 遥控右上档或键鼠左键，供单发边沿判定。 */
+    bool spin_enabled;      /* 遥控模式右拨杆换档，或键鼠模式 G 按下沿使能自旋。 */
+    uint32_t shoot_single_request_count; /* 键鼠短按松开产生的单发事件累计数。 */
 } RemoteState_t;
 
 /* 仅通信任务写入；断联时立即清零通道并切安全态。 */

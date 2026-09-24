@@ -13,6 +13,8 @@ typedef enum
 } CloudTerrace_HomeState_t;
 
 extern volatile CloudTerrace_HomeState_t cloud_terrace_home_state;
+extern volatile bool cloud_turnaround_active; /* 正在执行 Yaw 调头，C1 通知底盘停车。 */
+extern volatile bool cloud_front_reversed;    /* 当前逻辑正方向是否为物理车尾。 */
 
 /* Keil Watch：上板 IMU 与 Yaw 角度-角速度串级环。 */
 extern volatile bool cloud_yaw_imu_online;         /* 上板 IMU 在线状态。 */
