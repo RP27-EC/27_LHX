@@ -38,13 +38,13 @@
 /* ==================== 云台带动底盘跟随 ==================== */
 #define CHASSIS_FOLLOW_SWITCH_POSITION  1U     /* DBUS 左拨杆上档值，选择底盘跟随云台。 */
 #define CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS 100U   /* 上板 C1 机械 Yaw 角超过此时间未更新则停止跟随。 */
-#define CHASSIS_FOLLOW_DEADBAND_DEG     5.0f   /* 相对所选正方向误差≤5° 时不输出角度跟随分量。 */
+#define CHASSIS_FOLLOW_DEADBAND_DEG     2.0f   /* 相对所选正方向误差≤5° 时不输出角度跟随分量。 */
 /* 死区外角误差：正角减 10°，负角加 10°；旋转分量=角误差×KP+摇杆前馈。 */
-#define CHASSIS_FOLLOW_KP_RPM_PER_DEG   80.0f   /* 每超出死区 1°，增加 80 rpm 底盘旋转分量。 */
+#define CHASSIS_FOLLOW_KP_RPM_PER_DEG   320.0f   /* 每超出死区 1°，增加 80 rpm 底盘旋转分量。 */
 #define CHASSIS_FOLLOW_RC_DEADBAND       15.0f  /* Yaw 遥控通道原始值的前馈死区。 */
-#define CHASSIS_FOLLOW_FF_RPM_PER_RC      1.5f   /* 死区外每 1 通道值增加 1.5 rpm 前馈。 */
+#define CHASSIS_FOLLOW_FF_RPM_PER_RC      1.8f   /* 死区外每 1 通道值增加 1.5 rpm 前馈。 */
 #define CHASSIS_FOLLOW_MAX_ROTATE_RPM  5000.0f  /* 跟随旋转分量绝对值上限，轮速 rpm。 */
-#define CHASSIS_FOLLOW_SLEW_RPM_PER_TICK 10.0f  /* 跟随旋转分量每 tick 最多变 10 rpm。 */
+#define CHASSIS_FOLLOW_SLEW_RPM_PER_TICK 200.0f  /* 跟随旋转分量每 tick 最多变 10 rpm。 */
 #define CHASSIS_FOLLOW_RATE_TX_PERIOD_MS 10U    /* 向上板发送 D4 实测底盘角速度的最短间隔。 */
 #define CHASSIS_FOLLOW_ROTATE_SIGN      1.0f    /* 跟随旋转最终方向系数，改符号可反转。 */
 /* 两个相反的车头方向分别对应云台机械 Yaw 相对底盘 0° 和 180°。
@@ -54,7 +54,7 @@
 #define CHASSIS_FRONT_SWITCH_DEG          90.0f /* 正反车头的就近选择分界角。 */
 #define CHASSIS_TURN_WHEEL_TRIGGER_RAW     200  /* ch[4]≤-200 视为向上拨到触发位。 */
 #define CHASSIS_TURN_WHEEL_REARM_RAW        50  /* ch[4]>-50 时重新布防。 */
-#define CHASSIS_TURN_DONE_TOLERANCE_DEG   5.0f /* 收到转完状态后，离目标≤5° 才恢复底盘。 */
+#define CHASSIS_TURN_DONE_TOLERANCE_DEG   2.0f /* 收到转完状态后，离目标≤5° 才恢复底盘。 */
 
 /* ==================== BMI088 与姿态解算 ==================== */
 #define IMU_UPDATE_PERIOD_S               0.001f /* 姿态积分使用的周期，1 ms。 */
