@@ -17,16 +17,16 @@
 /* 4310 串级控制：位置误差用累计编码器计数，位置环输出速度原始码目标；
  * 速度环读取电机回传速度原始码，输出转矩原始码（约 -2048~2047）。
  */
-#define MOTOR4310_SPEED_KP                  1.1f    /* 速度误差到转矩码的比例增益。 */
-#define MOTOR4310_SPEED_KI                  0.5f    /* 速度环积分增益，积分按控制周期累积。 */
-#define MOTOR4310_SPEED_KD                  0.0f    /* 速度环微分增益；0 为关闭。 */
+#define MOTOR4310_SPEED_KP                  2.3f    /* 速度误差到转矩码的比例增益。 */
+#define MOTOR4310_SPEED_KI                  0.6f    /* 速度环积分增益，积分按控制周期累积。 */
+#define MOTOR4310_SPEED_KD                  0.004f    /* 速度环微分增益；0 为关闭。 */
 #define MOTOR4310_SPEED_INTEGRAL_LIMIT      200.0f  /* 速度环积分项绝对值上限。 */
 #define MOTOR4310_SPEED_OUTPUT_LIMIT        2047.0f /* 速度环输出转矩原始码上限。 */
-#define MOTOR4310_POSITION_KP               0.6f    /* 位置计数误差到速度目标的比例增益。 */
+#define MOTOR4310_POSITION_KP               1.0f    /* 位置计数误差到速度目标的比例增益。 */
 #define MOTOR4310_POSITION_KI               0.5f    /* 位置环积分增益。 */
-#define MOTOR4310_POSITION_KD               0.0f    /* 位置环微分增益；0 为关闭。 */
+#define MOTOR4310_POSITION_KD               0.008f    /* 位置环微分增益；0 为关闭。 */
 #define MOTOR4310_POSITION_INTEGRAL_LIMIT   100.0f  /* 位置环积分项绝对值上限。 */
-#define MOTOR4310_POSITION_OUTPUT_LIMIT     300.0f  /* 位置环速度原始码目标上限。 */
+#define MOTOR4310_POSITION_OUTPUT_LIMIT     400.0f  /* 位置环速度原始码目标上限。 */
 #define MOTOR4310_CONTROL_PERIOD_S          0.001f  /* PID 单次调用周期，1 ms = 0.001 s。 */
 
 /* 摩擦轮 3508：回传速度为 rpm，速度环输出为 C620 电流命令原始码。 */
@@ -41,6 +41,22 @@
 #define MOTOR3508_SPEED_INTEGRAL_LIMIT      500.0f  /* 速度环积分项绝对值上限。 */
 #define MOTOR3508_SPEED_OUTPUT_LIMIT        5000.0f /* PID 电流码输出上限，另受 CURRENT_LIMIT 约束。 */
 #define MOTOR3508_PID_CONTROL_TIME_S        0.001f  /* 摩擦轮 PID 调用周期，1 ms。 */
+
+/* 模板升降 M2006+C610：CAN1 回传 0x204，发送 0x200 第 4 电流槽；
+ * 反馈速度为电机转子 rpm，速度环按转子 rad/s 计算，输出经 0.18 转为原始电流码。
+ * 尚未接入升降业务任务，只有显式调用控制函数时才给非零输出。
+ */
+#define MOTOR2006_CURRENT_LIMIT             10000  /* C610 电流原始码绝对值限幅。 */
+#define MOTOR2006_OFFLINE_TIMEOUT_MS        100U   /* 回传超过 100 ms 即离线。 */
+#define MOTOR2006_COMMAND_TIMEOUT_MS        100U   /* 非零电流命令超过 100 ms 未更新则自动清零。 */
+#define MOTOR2006_REDUCTION_RATIO           36.0f  /* 转子与减速箱输出轴转数比，36:1。 */
+#define MOTOR2006_TORQUE_CONSTANT           0.18f  /* 模板转矩/电流换算系数。 */
+#define MOTOR2006_SPEED_KP                  8.0f   /* 模板升降速度环比例增益。 */
+#define MOTOR2006_SPEED_KI                  0.0f   /* 模板升降速度环积分增益。 */
+#define MOTOR2006_SPEED_KD                  0.0f   /* 模板升降速度环微分增益。 */
+#define MOTOR2006_SPEED_INTEGRAL_LIMIT      0.0f   /* 模板升降速度环积分限幅。 */
+#define MOTOR2006_SPEED_TORQUE_OUTPUT_LIMIT 300.0f /* 模板升降速度环输出限幅。 */
+#define MOTOR2006_PID_CONTROL_TIME_S        0.001f /* 速度环单次调用周期，1 ms。 */
 
 /* LK4005 拨盘：位置环输入累计 16 位编码器计数，输出目标速度 deg/s；
  * 速度环输入 deg/s，输出 0xA1 电流命令原始码；连发走独立速度环。
@@ -114,13 +130,13 @@
  */
 #define CLOUD_YAW_COMMAND_RATE_DEG_S        200.0f /* 满杆目标角变化率；每周期增量=ch/660×200×0.001 度。 */
 #define CLOUD_YAW_RC_DIRECTION              1.0f   /* 摇杆方向系数；调用处已将 ch[0] 取反。 */
-#define CLOUD_YAW_ANGLE_KP                  25.0f  /* Yaw 角度误差 deg 到目标 deg/s 的比例增益。 */
-#define CLOUD_YAW_ANGLE_KI                  0.5f   /* 角度外环积分增益。 */
+#define CLOUD_YAW_ANGLE_KP                  8.0f  /* Yaw 角度误差 deg 到目标 deg/s 的比例增益。 */
+#define CLOUD_YAW_ANGLE_KI                  0.0f   /* 角度外环积分增益。 */
 #define CLOUD_YAW_ANGLE_KD                  0.0f   /* 角度外环微分增益。 */
 #define CLOUD_YAW_ANGLE_INTEGRAL_LIMIT      200.0f /* 角度外环积分项绝对值上限。 */
 #define CLOUD_YAW_RATE_TARGET_LIMIT_DEG_S   500.0f /* 角度外环输出角速度目标上限，deg/s。 */
 #define CLOUD_YAW_RATE_KP                   9.0f   /* IMU 角速度误差到 4310 转矩码的比例增益。 */
-#define CLOUD_YAW_RATE_KI                   0.5f   /* IMU 角速度内环积分增益。 */
+#define CLOUD_YAW_RATE_KI                   0.0f   /* IMU 角速度内环积分增益。 */
 #define CLOUD_YAW_RATE_KD                   0.0f   /* IMU 角速度内环微分增益。 */
 #define CLOUD_YAW_RATE_INTEGRAL_LIMIT       0.0f   /* 角速度内环积分项限幅；0 不保留积分贡献。 */
 #define CLOUD_YAW_TORQUE_LIMIT_RAW          2047.0f /* 角速度内环输出转矩码上限。 */

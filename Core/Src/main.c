@@ -29,6 +29,7 @@
 #include "imu.h"
 #include "motor4310.h"
 #include "motor3508.h"
+#include "motor2006.h"
 #include "dial_motor.h"
 
 /* USER CODE END Includes */
@@ -111,6 +112,11 @@ int main(void)
   }
 
   if (Motor3508_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (Motor2006_Init() != HAL_OK)
   {
     Error_Handler();
   }

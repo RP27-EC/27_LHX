@@ -2,6 +2,7 @@
 #include "can.h"
 #include "motor4310.h"
 #include "motor3508.h"
+#include "motor2006.h"
 #include "dial_motor.h"
 #include <float.h>
 #include <string.h>
@@ -462,9 +463,10 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
         if (hcan->Instance == CAN1)
         {
-            /* CAN1 共用：Pitch 4310、四路 3508 和 LK4005 拨盘。 */
+            /* CAN1 共用：Pitch 4310、两路 3508、M2006 和 LK4005。 */
             Motor4310_ProcessCanFrame(hcan, header.StdId, data);
             Motor3508_ProcessCanFrame(hcan, header.StdId, data);
+            Motor2006_ProcessCanFrame(hcan, header.StdId, data);
             DialMotor_ProcessCanFrame(hcan, header.StdId, data);
             continue;
         }

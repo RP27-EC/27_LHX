@@ -1,4 +1,5 @@
 #include "motor3508.h"
+#include "motor2006.h"
 #include "can.h"
 #include <string.h>
 
@@ -92,31 +93,10 @@ HAL_StatusTypeDef Motor3508_Init(void)
 HAL_StatusTypeDef Motor3508_SendCurrent(int16_t current_1,
                                        int16_t current_2)
 {
-    CAN_TxHeaderTypeDef header = {0};
-    int16_t current[MOTOR3508_COUNT];
-    uint8_t data[MOTOR3508_FRAME_SIZE] = {0};
-    uint32_t mailbox;
-    uint32_t index;
-
-    current[0] = Motor3508_LimitCurrent((float)current_1);
-    current[1] = Motor3508_LimitCurrent((float)current_2);
-    for (index = 0U; index < MOTOR3508_COUNT; index++)
-    {
-        uint16_t raw = (uint16_t)current[index];
-        data[index * 2U] = (uint8_t)(raw >> 8U);
-        data[index * 2U + 1U] = (uint8_t)raw;
-    }
-
-    if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) == 0U)
-    {
-        return HAL_BUSY;
-    }
-    header.StdId = MOTOR3508_COMMAND_ID;
-    header.IDE = CAN_ID_STD;
-    header.RTR = CAN_RTR_DATA;
-    header.DLC = MOTOR3508_FRAME_SIZE;
-    header.TransmitGlobalTime = DISABLE;
-    return HAL_CAN_AddTxMessage(&hcan1, &header, data, &mailbox);
+    /* 0x200 群组帧第 4 槽由 M2006 使用，统一拼帧避免摩擦轮清零该槽。 */
+    return Motor2006_SendFrictionCurrents(
+        Motor3508_LimitCurrent((float)current_1),
+        Motor3508_LimitCurrent((float)current_2));
 }
 
 HAL_StatusTypeDef Motor3508_SpeedControl(int16_t target_speed_rpm)

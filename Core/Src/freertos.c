@@ -30,6 +30,7 @@
 #include "imu.h"
 #include "parameter.h"
 #include "motor3508.h"
+#include "motor2006.h"
 #include "dial_motor.h"
 #include "shoot_control.h"
 #include "remote_state.h"
@@ -219,6 +220,7 @@ void shoot(void *argument)
 
     /* 1 ms 更新在线状态，反馈超过 100 ms 未刷新即掉线。 */
     Motor3508_Heartbeat();
+    Motor2006_Heartbeat();
     DialMotor_Heartbeat();
     shoot_motors_online =
         Motor3508_OnlineCheck(SHOOT_LEFT_FRIC_MOTOR_ID) &&

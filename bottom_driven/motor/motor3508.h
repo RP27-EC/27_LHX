@@ -35,7 +35,7 @@ extern PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];
 /* 配置 CAN1 上 0x201~0x204 过滤器，并初始化四路速度 PID。 */
 HAL_StatusTypeDef Motor3508_Init(void);
 
-/* 发送 0x200 群组电流帧；只使用 ID1/ID2，ID3/ID4 固定为零。 */
+/* 发送 0x200 群组电流帧；ID1/ID2 为摩擦轮，ID3 为零，ID4 保留 M2006 电流。 */
 HAL_StatusTypeDef Motor3508_SendCurrent(int16_t current_1,
                                        int16_t current_2);
 

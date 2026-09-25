@@ -616,6 +616,16 @@
               <FilePath>../bottom_driven/motor/motor3508.h</FilePath>
             </File>
             <File>
+              <FileName>motor2006.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../bottom_driven/motor/motor2006.c</FilePath>
+            </File>
+            <File>
+              <FileName>motor2006.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../bottom_driven/motor/motor2006.h</FilePath>
+            </File>
+            <File>
               <FileName>dial_motor.c</FileName>
               <FileType>1</FileType>
               <FilePath>../bottom_driven/motor/dial_motor.c</FilePath>
