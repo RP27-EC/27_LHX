@@ -14,7 +14,7 @@ typedef enum
     REMOTE_MODE_SPIN
 } RemoteMode_t;
 
-/* 左右拨杆组合决定发射状态，小陀螺和手动底盘均强制保险。 */
+/* 右拨杆决定发射状态，小陀螺强制保险。 */
 typedef enum
 {
     REMOTE_SHOOT_OFF = 0,
@@ -33,6 +33,8 @@ typedef struct
     bool shoot_armed;       /* 遥控右拨杆已换档，或键鼠 F 已开启摩擦轮。 */
     bool right_up;          /* 遥控右上档或键鼠左键，供单发边沿判定。 */
     bool spin_enabled;      /* 遥控模式右拨杆换档，或键鼠模式 G 按下沿使能自旋。 */
+    bool lift_mode;         /* 左下档机械模式允许升降。 */
+    uint8_t lift_right_switch; /* 升降使用的右拨杆档位。 */
     uint32_t shoot_single_request_count; /* 键鼠短按松开产生的单发事件累计数。 */
 } RemoteState_t;
 

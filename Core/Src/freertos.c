@@ -33,6 +33,7 @@
 #include "motor2006.h"
 #include "dial_motor.h"
 #include "shoot_control.h"
+#include "lift_control.h"
 #include "remote_state.h"
 /* USER CODE END Includes */
 
@@ -149,6 +150,7 @@ void up__down_communication(void *argument)
 
   (void)argument;
   ShootControl_Init();
+  LiftControl_Init();
   RemoteState_Init();
   next_tick = osKernelGetTickCount();
   /* Infinite loop */
@@ -227,6 +229,7 @@ void shoot(void *argument)
         Motor3508_OnlineCheck(SHOOT_RIGHT_FRIC_MOTOR_ID) &&
         DialMotor_OnlineCheck();
     RemoteState_Get(&remote);
+    LiftControl_Update(&remote);
 
     /* 遥控拨杆沿用原单发/连发；键鼠左键短按单发、长按连发。 */
     shoot_mode = remote.online && remote.shoot_armed && shoot_motors_online ?

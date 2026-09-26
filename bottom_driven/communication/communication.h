@@ -15,10 +15,12 @@ extern "C" {
 #define COMM_CAN_RX_ID_D2  0x0D2U
 #define COMM_CAN_RX_ID_D3  0x0D3U
 #define COMM_CAN_RX_ID_D4  0x0D4U
+#define COMM_CAN_RX_ID_D5  0x0D5U /* 四个底盘电机的实时转速。 */
 
 /* 上板发送给下板的标准帧 ID。 */
 #define COMM_CAN_TX_ID_C1  0x0C1U
 #define COMM_CAN_TX_ID_C2  0x0C2U
+#define COMM_LIFT_LOCK_MAGIC 0xA6U
 
 #define COMM_CAN_FRAME_SIZE  8U
 
@@ -30,7 +32,7 @@ extern "C" {
 #define COMM_RC_SW_MID       3U
 #define COMM_RC_SW_DOWN      2U
 
-/* DBUS 键盘位图，与下板原始帧及模板工程一致。 */
+/* DBUS 键盘位图。 */
 #define COMM_RC_KEY_W      (1U << 0)
 #define COMM_RC_KEY_S      (1U << 1)
 #define COMM_RC_KEY_A      (1U << 2)
@@ -93,16 +95,20 @@ HAL_StatusTypeDef Communication_CAN_SendC1(
     const uint8_t data[COMM_CAN_FRAME_SIZE]);
 HAL_StatusTypeDef Communication_CAN_SendC2(
     const uint8_t data[COMM_CAN_FRAME_SIZE]);
+/* C2: [0]=标识，[1] bit0=锁车，[2]=请求序号。 */
+HAL_StatusTypeDef Communication_CAN_SendLiftLock(bool hold, uint8_t sequence);
+/* D5: 四个 int16 小端转子转速 rpm；超时或任一轮超阈值即返回 false。 */
+bool Communication_CAN_ChassisWheelsStopped(uint32_t request_start_ms);
 
 /* 跟随协议：C1[0:1] 为有符号归中角度(0.01 度)，[2] bit0=有效、bit1=正在调头；
- * D4[0:1] 为有符号底盘实际角速度(0.01 度/秒)，[2] bit0=有效。
- * 两者均为小端；其余字节置零。 */
+ * D4[0:1] 为有符号底盘实际角速度(0.01 度/秒)，[2] bit0=有效；
+ * D5 为四个底盘电机的 int16 小端转子转速，单位 rpm。 */
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg);
 /* C1 byte[2] bit1 表示云台正在执行调头，底盘应停车。 */
 HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning);
 bool Communication_CAN_GetChassisYawRate(float *rate_deg_s);
 
-/* 获取指定 D1~D4 的最新完整快照；尚未收到或参数错误时返回 false。 */
+/* 获取指定 D1~D5 的最新完整快照；尚未收到或参数错误时返回 false。 */
 bool Communication_CAN_GetLatest(uint16_t std_id,
                                  Communication_CanRxFrame_t *frame);
 
@@ -121,7 +127,7 @@ bool Communication_RC_Parse(
 bool Communication_RC_Get(Communication_RcControl_t *control);
 bool Communication_RC_IsOnline(void);
 
-/* 收到有效 D1~D4 后调用。业务层可提供强定义覆盖此弱回调。 */
+/* 收到有效 D1~D5 后调用。业务层可提供强定义覆盖此弱回调。 */
 void Communication_CAN_OnReceive(uint16_t std_id,
                                  const uint8_t data[COMM_CAN_FRAME_SIZE]);
 

@@ -8,14 +8,15 @@
 #include <string.h>
 
 #define COMM_CAN_FILTER_BANK        14U
+#define COMM_CAN_WHEEL_FILTER_BANK  16U
 #define COMM_CAN_SLAVE_START_BANK   14U
 #define COMM_CAN_STD_ID_TO_FILTER(id) ((uint32_t)(id) << 5U)
-#define COMM_CAN_RX_FRAME_COUNT     4U
+#define COMM_CAN_RX_FRAME_COUNT     5U
 #define COMM_RC_PART_D1             0x01U
 #define COMM_RC_PART_D2             0x02U
 
 static volatile Communication_CanRxFrame_t
-    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; /* D1~D4 各自的最新接收快照。 */
+    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; /* D1~D5 各自的最新接收快照。 */
 static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE]; /* D1~D3 拼接中的遥控原始帧。 */
 static volatile uint8_t communication_rc_assembly_mask; /* 已收到 D1/D2 分片的位掩码。 */
 static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; /* 提交给任务解析的完整遥控快照。 */
@@ -103,12 +104,12 @@ static void Communication_RC_AcceptFragment(
         communication_rc_assembly_mask = 0U;
     }
 
-    /* D4 底盘转速由通用 CAN 快照保存，云台任务按需读取。 */
+    /* D4 底盘角速度、D5 四轮转速由通用 CAN 快照保存。 */
 }
 
 static int32_t Communication_CAN_RxIndex(uint16_t std_id)
 {
-    if ((std_id >= COMM_CAN_RX_ID_D1) && (std_id <= COMM_CAN_RX_ID_D4))
+    if ((std_id >= COMM_CAN_RX_ID_D1) && (std_id <= COMM_CAN_RX_ID_D5))
     {
         return (int32_t)(std_id - COMM_CAN_RX_ID_D1);
     }
@@ -123,7 +124,7 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
 
     /*
      * bxCAN 16 位列表模式一组正好容纳 4 个标准 ID，因而只接收
-     * 0xD1、0xD2、0xD3、0xD4，不会额外放行相邻 ID。
+     * 0xD1、0xD2、0xD3、0xD4；D5 由 bank 16 单独接收。
      * CAN2 使用从过滤器组 14 开始的共享过滤器区域。
      */
     filter.FilterBank = COMM_CAN_FILTER_BANK;
@@ -142,6 +143,15 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
     {
         return status;
     }
+
+    /* bank 15 留给 Yaw 电机；bank 16 单独精确接收 D5 四轮转速。 */
+    filter.FilterBank = COMM_CAN_WHEEL_FILTER_BANK;
+    filter.FilterIdHigh = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D5);
+    filter.FilterIdLow = filter.FilterIdHigh;
+    filter.FilterMaskIdHigh = filter.FilterIdHigh;
+    filter.FilterMaskIdLow = filter.FilterIdHigh;
+    status = HAL_CAN_ConfigFilter(&hcan2, &filter);
+    if (status != HAL_OK) { return status; }
 
     memset((void *)communication_rx_frames, 0,
            sizeof(communication_rx_frames));
@@ -180,17 +190,14 @@ HAL_StatusTypeDef Communication_CAN_Send(
 {
     CAN_TxHeaderTypeDef header = {0};
     uint32_t mailbox;
+    uint32_t primask;
+    HAL_StatusTypeDef status;
 
     if ((data == NULL) ||
         ((std_id != COMM_CAN_TX_ID_C1) &&
          (std_id != COMM_CAN_TX_ID_C2)))
     {
         return HAL_ERROR;
-    }
-
-    if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan2) == 0U)
-    {
-        return HAL_BUSY;
     }
 
     header.StdId = std_id;
@@ -200,7 +207,13 @@ HAL_StatusTypeDef Communication_CAN_Send(
     header.DLC = COMM_CAN_FRAME_SIZE;
     header.TransmitGlobalTime = DISABLE;
 
-    return HAL_CAN_AddTxMessage(&hcan2, &header, (uint8_t *)data, &mailbox);
+    primask = __get_PRIMASK();
+    __disable_irq();
+    status = HAL_CAN_GetTxMailboxesFreeLevel(&hcan2) == 0U ?
+        HAL_BUSY : HAL_CAN_AddTxMessage(&hcan2, &header,
+                                       (uint8_t *)data, &mailbox);
+    __set_PRIMASK(primask);
+    return status;
 }
 
 HAL_StatusTypeDef Communication_CAN_SendC1(
@@ -213,6 +226,37 @@ HAL_StatusTypeDef Communication_CAN_SendC2(
     const uint8_t data[COMM_CAN_FRAME_SIZE])
 {
     return Communication_CAN_Send(COMM_CAN_TX_ID_C2, data);
+}
+
+HAL_StatusTypeDef Communication_CAN_SendLiftLock(bool hold, uint8_t sequence)
+{
+    uint8_t data[COMM_CAN_FRAME_SIZE] = {0};
+    data[0] = COMM_LIFT_LOCK_MAGIC;
+    data[1] = hold ? 1U : 0U;
+    data[2] = sequence;
+    return Communication_CAN_SendC2(data);
+}
+
+bool Communication_CAN_ChassisWheelsStopped(uint32_t request_start_ms)
+{
+    Communication_CanRxFrame_t frame;
+    uint32_t index;
+    int16_t speed;
+
+    if (!Communication_CAN_GetLatest(COMM_CAN_RX_ID_D5, &frame) ||
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
+            LIFT_CHASSIS_SPEED_TIMEOUT_MS ||
+        (int32_t)(frame.last_rx_ms - request_start_ms) < 0)
+    { return false; }
+    for (index = 0U; index < 4U; index++)
+    {
+        speed = (int16_t)((uint16_t)frame.data[index * 2U] |
+                          ((uint16_t)frame.data[index * 2U + 1U] << 8U));
+        if (speed > LIFT_CHASSIS_STOP_SPEED_RPM ||
+            speed < -LIFT_CHASSIS_STOP_SPEED_RPM)
+        { return false; }
+    }
+    return true;
 }
 
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg)

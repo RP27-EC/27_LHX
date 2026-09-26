@@ -26,5 +26,6 @@ extern volatile int16_t cloud_yaw_torque_raw;      /* Yaw 原始转矩输出。 
 
 void CloudTerrace_Init(void);
 void CloudTerrace_Update(void);
+bool CloudTerrace_LiftYawAligned(void); /* 归中完成且 Yaw 位于开机机械 0° 死区内。 */
 
 #endif /* CLOUD_TERRACE_H */

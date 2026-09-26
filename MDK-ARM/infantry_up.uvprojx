@@ -81,7 +81,7 @@
           </BeforeMake>
           <AfterMake>
             <RunUserProg1>0</RunUserProg1>
-            <RunUserProg2>1</RunUserProg2>
+            <RunUserProg2>0</RunUserProg2>
             <UserProg1Name></UserProg1Name>
             <UserProg2Name></UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
@@ -679,6 +679,16 @@
               <FileName>shoot_control.h</FileName>
               <FileType>5</FileType>
               <FilePath>../user/shoot_control.h</FilePath>
+            </File>
+            <File>
+              <FileName>lift_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/lift_control.c</FilePath>
+            </File>
+            <File>
+              <FileName>lift_control.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/lift_control.h</FilePath>
             </File>
             <File>
               <FileName>remote_state.c</FileName>

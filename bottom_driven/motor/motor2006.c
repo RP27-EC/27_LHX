@@ -9,8 +9,8 @@
 #define MOTOR2006_ENCODER_MODULUS        8192
 #define MOTOR2006_ENCODER_HALF           4096
 
-Motor2006_Feedback_t motor2006_feedback; /* 升降电机最新反馈。 */
-PID_Controller_t motor2006_speed_pid;    /* 模板上板升降电机速度 PID。 */
+Motor2006_Feedback_t motor2006_feedback; /* 最新反馈。 */
+PID_Controller_t motor2006_speed_pid;    /* 速度 PID。 */
 
 /* CAN1 0x200 的全部电流槽必须由同一处拼接，不能分别发送并互相清零。 */
 static int16_t group_current[4];

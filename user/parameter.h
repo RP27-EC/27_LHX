@@ -17,16 +17,16 @@
 /* 4310 串级控制：位置误差用累计编码器计数，位置环输出速度原始码目标；
  * 速度环读取电机回传速度原始码，输出转矩原始码（约 -2048~2047）。
  */
-#define MOTOR4310_SPEED_KP                  2.3f    /* 速度误差到转矩码的比例增益。 */
-#define MOTOR4310_SPEED_KI                  0.6f    /* 速度环积分增益，积分按控制周期累积。 */
+#define MOTOR4310_SPEED_KP                  2.6f    /* 速度误差到转矩码的比例增益。 */
+#define MOTOR4310_SPEED_KI                  0.0f    /* 速度环积分增益，积分按控制周期累积。 */
 #define MOTOR4310_SPEED_KD                  0.004f    /* 速度环微分增益；0 为关闭。 */
 #define MOTOR4310_SPEED_INTEGRAL_LIMIT      200.0f  /* 速度环积分项绝对值上限。 */
 #define MOTOR4310_SPEED_OUTPUT_LIMIT        2047.0f /* 速度环输出转矩原始码上限。 */
-#define MOTOR4310_POSITION_KP               1.0f    /* 位置计数误差到速度目标的比例增益。 */
-#define MOTOR4310_POSITION_KI               0.5f    /* 位置环积分增益。 */
+#define MOTOR4310_POSITION_KP               0.32f    /* 位置计数误差到速度目标的比例增益。 */
+#define MOTOR4310_POSITION_KI               0.0f    /* 位置环积分增益。 */
 #define MOTOR4310_POSITION_KD               0.008f    /* 位置环微分增益；0 为关闭。 */
 #define MOTOR4310_POSITION_INTEGRAL_LIMIT   100.0f  /* 位置环积分项绝对值上限。 */
-#define MOTOR4310_POSITION_OUTPUT_LIMIT     400.0f  /* 位置环速度原始码目标上限。 */
+#define MOTOR4310_POSITION_OUTPUT_LIMIT     700.0f  /* 位置环速度原始码目标上限。 */
 #define MOTOR4310_CONTROL_PERIOD_S          0.001f  /* PID 单次调用周期，1 ms = 0.001 s。 */
 
 /* 摩擦轮 3508：回传速度为 rpm，速度环输出为 C620 电流命令原始码。 */
@@ -42,21 +42,54 @@
 #define MOTOR3508_SPEED_OUTPUT_LIMIT        5000.0f /* PID 电流码输出上限，另受 CURRENT_LIMIT 约束。 */
 #define MOTOR3508_PID_CONTROL_TIME_S        0.001f  /* 摩擦轮 PID 调用周期，1 ms。 */
 
-/* 模板升降 M2006+C610：CAN1 回传 0x204，发送 0x200 第 4 电流槽；
- * 反馈速度为电机转子 rpm，速度环按转子 rad/s 计算，输出经 0.18 转为原始电流码。
- * 尚未接入升降业务任务，只有显式调用控制函数时才给非零输出。
- */
+/* M2006：CAN1 0x204 回传，0x200 第 4 槽发送。 */
 #define MOTOR2006_CURRENT_LIMIT             10000  /* C610 电流原始码绝对值限幅。 */
 #define MOTOR2006_OFFLINE_TIMEOUT_MS        100U   /* 回传超过 100 ms 即离线。 */
 #define MOTOR2006_COMMAND_TIMEOUT_MS        100U   /* 非零电流命令超过 100 ms 未更新则自动清零。 */
 #define MOTOR2006_REDUCTION_RATIO           36.0f  /* 转子与减速箱输出轴转数比，36:1。 */
-#define MOTOR2006_TORQUE_CONSTANT           0.18f  /* 模板转矩/电流换算系数。 */
-#define MOTOR2006_SPEED_KP                  8.0f   /* 模板升降速度环比例增益。 */
-#define MOTOR2006_SPEED_KI                  0.0f   /* 模板升降速度环积分增益。 */
-#define MOTOR2006_SPEED_KD                  0.0f   /* 模板升降速度环微分增益。 */
-#define MOTOR2006_SPEED_INTEGRAL_LIMIT      0.0f   /* 模板升降速度环积分限幅。 */
-#define MOTOR2006_SPEED_TORQUE_OUTPUT_LIMIT 300.0f /* 模板升降速度环输出限幅。 */
+#define MOTOR2006_TORQUE_CONSTANT           0.18f  /* 转矩电流换算系数。 */
+#define MOTOR2006_SPEED_KP                  7.5f   /* 速度比例增益。 */
+#define MOTOR2006_SPEED_KI                  0.0f   /* 速度积分增益。 */
+#define MOTOR2006_SPEED_KD                  0.0f   /* 速度微分增益。 */
+#define MOTOR2006_SPEED_INTEGRAL_LIMIT      0.0f   /* 积分限幅。 */
+#define MOTOR2006_SPEED_TORQUE_OUTPUT_LIMIT 600.0f /* 速度环输出限幅。 */
 #define MOTOR2006_PID_CONTROL_TIME_S        0.001f /* 速度环单次调用周期，1 ms。 */
+
+/* 升降：转子累计圈数以上电首帧为零；方向由实车安装决定。 */
+#define LIFT_DOWN_DIRECTION                 -1.0f   /* 当前下降方向；反向改为 +1。 */
+#define LIFT_DOWN_SPEED_RAD_S               500.0f   /* 下降转子目标速度，rad/s。 */
+#define LIFT_UP_SPEED_RAD_S                 500.0f   /* 上升转子目标速度，rad/s。 */
+#define LIFT_MAX_ROTOR_TURNS                330.0f  /* 上电零点起，正负方向各最多 340 转。 */
+#define LIFT_LIMIT_SLOW_TURNS               1.0f   /* 临近行程边界的减速区，转子圈数。 */
+#define LIFT_LIMIT_STOP_MARGIN_COUNTS       40     /* 距边界不足 40 计数时停机。 */
+#define LIFT_YAW_DEADZONE_DEG               1.0f   /* 云台偏离当前正方向超过此角度即停。 */
+#define LIFT_STOP_RETRY_MS                   50U    /* 停机帧每 50 ms 重发。 */
+#define LIFT_FAULT_STOP_RETRY_MS             5U     /* 堵转、限位后每 5 ms 重发零电流。 */
+#define LIFT_STALL_PROGRESS_COUNTS           40     /* 堵转时间窗内少于 40 计数视为未前进。 */
+#define LIFT_DOWN_STALL_CURRENT_RAW         75    /* 下降堵转电流门槛；另有位移保护。 */
+#define LIFT_DOWN_STALL_SPEED_RPM           1      /* 下降堵转速度门槛，转子 rpm。 */
+#define LIFT_DOWN_STALL_TIME_MS             200U   /* 下降堵转判据持续时间。 */
+#define LIFT_UP_STALL_CURRENT_RAW           520    /* 上升堵转电流门槛；另有位移保护。 */
+#define LIFT_UP_STALL_SPEED_RPM             1      /* 上升堵转速度门槛，转子 rpm。 */
+#define LIFT_UP_STALL_TIME_MS               500U   /* 上升堵转判据持续时间。 */
+#define LIFT_CALIBRATE_UP_SPEED_RAD_S       180.0f  /* 找顶部时的转子速度，低于正常位控速度。 */
+#define LIFT_CALIBRATE_TIMEOUT_MS           90000U /* 90 秒仍未找到顶部则停机。 */
+#define LIFT_BACKOFF_TIMEOUT_MS             10000U /* 顶部回退 10 秒未到位则停机。 */
+#define LIFT_TOP_BACKOFF_TURNS              5.0f   /* 顶部堵转点往下 5 圈作为上顶点。 */
+#define LIFT_TRAVEL_TURNS                   316.0f /* 上顶点到下目标点的转子圈数。 */
+#define LIFT_POSITION_KP_RAD_S_PER_TURN     5.5f   /* 每圈位置误差对应的转子目标速度。 */
+#define LIFT_POSITION_MIN_SPEED_RAD_S       20.0f   /* 未到位时克服静摩擦的最小目标速度。 */
+#define LIFT_BACKOFF_SPEED_RAD_S            5.0f  /* 顶部回退校准的最大转子速度。 */
+#define LIFT_HOLD_SPEED_RAD_S               5.0f  /* 位置保持被外力推开后的最大回位速度。 */
+#define LIFT_POSITION_TOLERANCE_COUNTS      80     /* 目标误差不超过 80 计数视为到位。 */
+#define LIFT_POSITION_SETTLED_RPM           60     /* 顶部回退到位时的最大转子转速。 */
+#define LIFT_CALIBRATION_SETTLE_MS          100U   /* 回退到位需稳定 100 ms。 */
+#define LIFT_LOCK_TX_PERIOD_MS              10U    /* C2 锁车请求发送周期。 */
+#define LIFT_CHASSIS_SPEED_TIMEOUT_MS       50U    /* D5 四轮转速超过 50 ms 未更新则禁止升降。 */
+#define LIFT_CHASSIS_STOP_SPEED_RPM         200     /* 四轮转子转速均不超过此值才允许升降。 */
+#define LIFT_CHASSIS_LOCK_SETTLE_MS         20U     /* 发出锁车请求后至少等待 20 ms 的新转速反馈。 */
+#define LIFT_CHASSIS_RELEASE_RPM             10     /* 转子速度低于此值才解除底盘锁车。 */
+#define LIFT_OFFLINE_RELEASE_MS              200U   /* 电机回传丢失后保持锁车 200 ms。 */
 
 /* LK4005 拨盘：位置环输入累计 16 位编码器计数，输出目标速度 deg/s；
  * 速度环输入 deg/s，输出 0xA1 电流命令原始码；连发走独立速度环。
@@ -69,14 +102,14 @@
 #define DIAL_MOTOR_POSITION_KD              0.0f    /* 位置环微分增益；0 为关闭。 */
 #define DIAL_MOTOR_POSITION_INTEGRAL_LIMIT  0.0f    /* 位置环积分项限幅；0 不保留积分贡献。 */
 #define DIAL_MOTOR_POSITION_SPEED_LIMIT_DPS 7000.0f /* 位置环输出目标速度上限，deg/s。 */
-#define DIAL_MOTOR_SPEED_KP                 0.1f    /* 单发位置内环速度比例增益。 */
+#define DIAL_MOTOR_SPEED_KP                 0.2f    /* 单发位置内环速度比例增益。 */
 #define DIAL_MOTOR_SPEED_KI                 0.0f    /* 单发位置内环速度积分增益。 */
 #define DIAL_MOTOR_SPEED_KD                 0.005f    /* 单发位置内环速度微分增益。 */
 #define DIAL_MOTOR_SPEED_INTEGRAL_LIMIT     500.0f    /* 单发、连发速度环共用的积分项限幅。 */
 #define DIAL_MOTOR_SPEED_OUTPUT_LIMIT       1500.0f /* 两个速度环输出电流码上限。 */
-#define DIAL_MOTOR_CONTINUOUS_SPEED_KP      4.0f   /* 连发独立速度环比例增益。 */
-#define DIAL_MOTOR_CONTINUOUS_SPEED_KI      7.5f    /* 连发独立速度环积分增益。 */
-#define DIAL_MOTOR_CONTINUOUS_SPEED_KD      0.01f  /* 连发独立速度环微分增益。 */
+#define DIAL_MOTOR_CONTINUOUS_SPEED_KP      3.0f   /* 连发独立速度环比例增益。 */
+#define DIAL_MOTOR_CONTINUOUS_SPEED_KI      5.0f    /* 连发独立速度环积分增益。 */
+#define DIAL_MOTOR_CONTINUOUS_SPEED_KD      0.005f  /* 连发独立速度环微分增益。 */
 #define DIAL_MOTOR_PID_CONTROL_TIME_S       0.001f  /* 拨盘 PID 调用周期，1 ms。 */
 
 /* 发射任务：两个摩擦轮和拨盘都需在线；3508 编号为驱动接口编号。 */
@@ -147,7 +180,7 @@
  */
 #define CLOUD_YAW_HOME_RAD                  (-0.387884378f) /* Yaw 指向车头的电机单圈角，rad。 */
 #define CLOUD_PITCH_HOME_RAD                2.59309077f    /* Pitch 归中时电机单圈角，rad。 */
-#define CLOUD_HOME_TOLERANCE_DEG            2.0f           /* 两轴位置需落在归中目标 ±2°。 */
+#define CLOUD_HOME_TOLERANCE_DEG            1.0f           /* 两轴位置需落在归中目标 ±1°。 */
 #define CLOUD_HOME_SPEED_RAW_MAX            20             /* 两轴速度原始码绝对值须不超过此值。 */
 #define CLOUD_HOME_STABLE_CYCLES            20U            /* 连续合格周期数；1 ms 周期约 20 ms。 */
 #define CLOUD_PITCH_MIN_DEG                 (-7.0f)        /* 相对归中点的 Pitch 下限，度。 */
@@ -158,6 +191,8 @@
  */
 #define CLOUD_TURN_WHEEL_TRIGGER_RAW        200            /* ch[4]≤-200 视为向上拨到触发位。 */
 #define CLOUD_TURN_WHEEL_REARM_RAW          50             /* ch[4]>-50 时重新允许下一次触发。 */
+#define CLOUD_SPIN_WHEEL_TRIGGER_RAW        200            /* 拨轮正向越过此值切换小陀螺。 */
+#define CLOUD_SPIN_WHEEL_REARM_RAW          50             /* 拨轮回中位后才能再次切换。 */
 #define CLOUD_FRONT_SWITCH_DEG              90.0f          /* |机械 Yaw 角|≥90° 时车尾更接近云台指向。 */
 #define CLOUD_TURN_TOLERANCE_DEG            3.0f           /* Yaw 距反向车头目标的到位角差。 */
 #define CLOUD_TURN_SPEED_RAW_MAX            20             /* 到位还要求 |Yaw 电机速度原始码|≤20。 */

@@ -8,6 +8,9 @@ static bool shoot_armed; /* 右拨杆切换后锁存，断联时清除。 */
 static bool spin_switch_seen; /* 本次进入小陀螺后是否已记录右拨杆初始档位。 */
 static uint8_t spin_previous_switch; /* 小陀螺模式内上一次有效右拨杆档位。 */
 static bool spin_armed; /* 本次进入小陀螺后右拨杆是否真实换过档。 */
+static bool spin_wheel_ready; /* 正拨前必须先回中位。 */
+static bool physical_spin_selected; /* 拨轮切换的小陀螺状态。 */
+static uint8_t previous_left_switch; /* 左拨杆换档时退出小陀螺。 */
 static bool keyboard_seen; /* 上线首帧只记录键位，不误判为按键事件。 */
 static bool keyboard_active; /* V 键切换的键鼠控制状态。 */
 static uint16_t keyboard_previous_key; /* 上一帧键盘位图。 */
@@ -46,7 +49,7 @@ static void RemoteState_MapKeyboard(RemoteState_t *next,
     { keyboard_mode = REMOTE_MODE_FOLLOW; }
     else if (pressed & COMM_RC_KEY_X)
     { keyboard_mode = REMOTE_MODE_MECHANICAL; }
-    else if (pressed & COMM_RC_KEY_C)
+    else if ((pressed & COMM_RC_KEY_C) && !keyboard_friction_on)
     { keyboard_mode = REMOTE_MODE_SPIN; }
 
     if (key & COMM_RC_KEY_CTRL) { move = RC_KEYBOARD_SLOW_RAW; }
@@ -172,10 +175,10 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             keyboard_mouse_continuous = false;
         }
 
-        /* 左下档始终为小陀螺模式；自旋需本次进入后拨动右拨杆。 */
+        /* 左下、中为机械；左上为跟随。 */
         if (control->rc.s[0] == COMM_RC_SW_DOWN)
         {
-            next.mode = REMOTE_MODE_SPIN;
+            next.mode = REMOTE_MODE_MECHANICAL;
         }
         else if (control->rc.s[0] == COMM_RC_SW_MID)
         {
@@ -191,6 +194,39 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             memset(next.channel, 0, sizeof(next.channel));
         }
 
+        if (next.online)
+        {
+            int16_t wheel = control->rc.ch[4];
+            if (control->rc.s[0] != previous_left_switch)
+            {
+                previous_left_switch = control->rc.s[0];
+                physical_spin_selected = false;
+                spin_wheel_ready = false;
+            }
+            if (keyboard_active)
+            {
+                physical_spin_selected = false;
+                spin_wheel_ready = false;
+            }
+            else
+            {
+                if (wheel >= -CLOUD_SPIN_WHEEL_REARM_RAW &&
+                    wheel <= CLOUD_SPIN_WHEEL_REARM_RAW)
+                { spin_wheel_ready = true; }
+                else if (spin_wheel_ready &&
+                         wheel >= CLOUD_SPIN_WHEEL_TRIGGER_RAW)
+                {
+                    spin_wheel_ready = false;
+                    if (physical_spin_selected)
+                    { physical_spin_selected = false; }
+                    else if (control->rc.s[1] == COMM_RC_SW_DOWN)
+                    { physical_spin_selected = true; }
+                }
+                if (physical_spin_selected)
+                { next.mode = REMOTE_MODE_SPIN; }
+            }
+        }
+
         if (next.online && keyboard_active)
         {
             if (keyboard_mode == REMOTE_MODE_DISABLED)
@@ -198,6 +234,11 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             RemoteState_MapKeyboard(&next, control, pressed);
         }
         next.keyboard_active = next.online && keyboard_active;
+        next.lift_mode = next.online && !keyboard_active &&
+                         control->rc.s[0] == COMM_RC_SW_DOWN &&
+                         next.mode == REMOTE_MODE_MECHANICAL;
+        if (next.lift_mode)
+        { next.lift_right_switch = control->rc.s[1]; }
 
         if (next.online && !keyboard_active &&
             (control->rc.s[1] == COMM_RC_SW_UP ||
@@ -215,7 +256,7 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
                 spin_switch_seen = true;
                 spin_previous_switch = control->rc.s[1];
                 next.spin_enabled = spin_armed && next.right_up;
-                /* 左下档全保险；离开小陀螺后必须重新拨动右拨杆。 */
+                /* 小陀螺全保险；退出后重新拨动右拨杆才能发射。 */
                 shoot_switch_seen = false;
                 shoot_armed = false;
             }
@@ -253,6 +294,14 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             spin_previous_switch = 0U;
             spin_armed = false;
         }
+        if (next.lift_mode)
+        {
+            /* 升降档不同时使能发射；离开后须重新拨动右拨杆。 */
+            next.shoot = REMOTE_SHOOT_OFF;
+            next.shoot_armed = false;
+            shoot_switch_seen = false;
+            shoot_armed = false;
+        }
     }
 
     if (!next.online ||
@@ -267,6 +316,9 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
         spin_switch_seen = false;
         spin_previous_switch = 0U;
         spin_armed = false;
+        spin_wheel_ready = false;
+        physical_spin_selected = false;
+        previous_left_switch = 0U;
     }
     if (!next.online)
     {

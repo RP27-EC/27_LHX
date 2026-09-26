@@ -1,6 +1,7 @@
 #include "cloud_terrace.h"
 #include "communication.h"
 #include "imu.h"
+#include "lift_control.h"
 #include "motor4310.h"
 #include "PID.h"
 #include "parameter.h"
@@ -87,11 +88,11 @@ static int32_t cloud_nearest_home(float motor_rad, int32_t current)
     return target;
 }
 
-/* 在物理车头 0° 与车尾 180° 中，求距当前电机角最近的等效累计目标。 */
+/* 以开机归中的机械零点为基准，取 0°/180° 最近的等效累计目标。 */
 static int32_t cloud_nearest_front_target(bool reversed, int32_t current)
 {
     const int32_t period = (int32_t)(MOTOR4310_ECD_PER_ROUND + 0.5f);
-    int32_t target = cloud_nearest_home(CLOUD_YAW_HOME_RAD, current);
+    int32_t target = home_target[MOTOR4310_YAW];
     if (reversed) { target += period / 2; }
     while (target - current > period / 2) { target -= period; }
     while (target - current < -(period / 2)) { target += period; }
@@ -178,6 +179,18 @@ static bool cloud_yaw_relative_deg(float *angle_deg)
         (float)(yaw.total_angle - home_target[MOTOR4310_YAW]) *
         360.0f / MOTOR4310_ECD_PER_ROUND);
     return true;
+}
+
+bool CloudTerrace_LiftYawAligned(void)
+{
+    float relative_deg;
+
+    if (cloud_terrace_home_state != CLOUD_TERRACE_HOME_DONE ||
+        cloud_turnaround_active || !Motor4310_OnlineCheck(MOTOR4310_YAW) ||
+        !cloud_yaw_relative_deg(&relative_deg))
+    { return false; }
+    /* 升降只认开机归中的物理 0°，调头后的 180° 不算对准。 */
+    return fabsf(relative_deg) <= LIFT_YAW_DEADZONE_DEG;
 }
 
 static void cloud_turn_wheel_update(int16_t wheel)
@@ -304,9 +317,7 @@ static void cloud_control_yaw_mechanical(void)
             return;
         }
 
-        /* 机械模式也使用最近的物理前/后方向，避免小陀螺后多转。 */
-        home_target[MOTOR4310_YAW] =
-            cloud_nearest_home(CLOUD_YAW_HOME_RAD, yaw.total_angle);
+        /* 前/后方向只改变目标，不重新定义开机校准的机械零点。 */
         cloud_front_reversed = fabsf(cloud_wrap_yaw_deg(
             (float)(yaw.total_angle - home_target[MOTOR4310_YAW]) *
             360.0f / MOTOR4310_ECD_PER_ROUND)) >= CLOUD_FRONT_SWITCH_DEG;
@@ -454,8 +465,9 @@ void CloudTerrace_Update(void)
         return;
     }
 
-    if (remote.mode == REMOTE_MODE_MECHANICAL)
+    if (!lift_calibrated || remote.mode == REMOTE_MODE_MECHANICAL)
     {
+        /* 首次校准前持续对准机械正方向，避免稳向停在升降死区外。 */
         cloud_control_yaw_mechanical();
     }
     else

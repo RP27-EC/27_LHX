@@ -10,7 +10,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-/* 模板上板升降电机：CAN1 的 0x204 回传，0x200 群组帧第 4 槽发送。 */
+/* M2006：CAN1 0x204 回传，0x200 第 4 槽发送。 */
 #define MOTOR2006_FEEDBACK_CAN_ID  0x204U
 #define MOTOR2006_COMMAND_CAN_ID   0x200U
 #define MOTOR2006_FRAME_SIZE       8U
@@ -38,7 +38,7 @@ HAL_StatusTypeDef Motor2006_Init(void);
  * 非零命令须持续刷新，超过 MOTOR2006_COMMAND_TIMEOUT_MS 自动归零。 */
 HAL_StatusTypeDef Motor2006_SetCurrent(int16_t current_raw);
 HAL_StatusTypeDef Motor2006_Stop(void);
-/* 模板升降速度环：目标为转子 rad/s，调用周期 1 ms。 */
+/* 速度目标为转子 rad/s，调用周期 1 ms。 */
 HAL_StatusTypeDef Motor2006_SpeedControl(float target_rotor_rad_s);
 void Motor2006_ResetSpeedPID(void);
 
