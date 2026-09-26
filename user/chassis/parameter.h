@@ -19,9 +19,13 @@
 #define RC_KEYBOARD_AIM_DIVISOR          2      /* 按住鼠标右键时视角输入减半。 */
 
 /* ==================== 底盘指令与安全 ==================== */
-#define CHASSIS_MECHANICAL_SWITCH_POSITION 3U  /* DBUS 左拨杆中档值，机械模式由 ch[0] 直接转底盘。 */
-#define CHASSIS_SPIN_SWITCH_0_POSITION   2U     /* DBUS 左拨杆下档值，选择小陀螺模式。 */
-#define CHASSIS_SPIN_SWITCH_1_POSITION   1U     /* DBUS 右拨杆上档值，小陀螺中才实际自旋。 */
+#define CHASSIS_MECHANICAL_SWITCH_POSITION 3U  /* 左中档：机械模式。 */
+#define CHASSIS_MECHANICAL_DOWN_POSITION 2U    /* 左下档：机械模式。 */
+#define CHASSIS_LIFT_LOCK_TIMEOUT_MS     150U   /* C2 锁车失联后延时释放。 */
+#define CHASSIS_WHEEL_SPEED_TX_PERIOD_MS 10U   /* 每 10 ms 向上板发送四轮实测转速。 */
+#define CHASSIS_SPIN_SWITCH_1_POSITION   1U     /* 右上档：小陀螺自旋。 */
+#define CHASSIS_SPIN_WHEEL_TRIGGER_RAW   200    /* 拨轮正向越过此值切换小陀螺。 */
+#define CHASSIS_SPIN_WHEEL_REARM_RAW      50     /* 拨轮回中位后才能再次切换。 */
 /* 遥控通道约 -660~660；倍率把通道值直接转换为四轮解算输入 rpm。 */
 #define CHASSIS_FORWARD_SCALE           5.0f   /* 前进输入=ch[3]×5，满杆约 3300 rpm。 */
 #define CHASSIS_LEFT_SCALE             -5.0f   /* 横移输入=ch[2]×(-5)，负号确定左右方向。 */
@@ -38,7 +42,7 @@
 /* ==================== 云台带动底盘跟随 ==================== */
 #define CHASSIS_FOLLOW_SWITCH_POSITION  1U     /* DBUS 左拨杆上档值，选择底盘跟随云台。 */
 #define CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS 100U   /* 上板 C1 机械 Yaw 角超过此时间未更新则停止跟随。 */
-#define CHASSIS_FOLLOW_DEADBAND_DEG     2.0f   /* 相对所选正方向误差≤5° 时不输出角度跟随分量。 */
+#define CHASSIS_FOLLOW_DEADBAND_DEG     1.0f   /* 相对所选正方向误差≤5° 时不输出角度跟随分量。 */
 /* 死区外角误差：正角减 10°，负角加 10°；旋转分量=角误差×KP+摇杆前馈。 */
 #define CHASSIS_FOLLOW_KP_RPM_PER_DEG   320.0f   /* 每超出死区 1°，增加 80 rpm 底盘旋转分量。 */
 #define CHASSIS_FOLLOW_RC_DEADBAND       15.0f  /* Yaw 遥控通道原始值的前馈死区。 */

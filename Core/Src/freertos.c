@@ -192,6 +192,13 @@ void motor3508_speed_control(void *argument)
   uint32_t next_tick;
   RemoteState_t remote;
   bool turn_hold;
+  bool lift_hold;
+  uint8_t lift_sequence = 0U;
+  uint32_t last_wheel_speed_tx_ms = 0U;
+  bool wheel_feedback_valid;
+  uint8_t wheel_id;
+  int16_t wheel_speed_rpm[MOTOR3508_COUNT];
+  Motor3508_Feedback wheel_feedback;
   (void)argument;
   next_tick = osKernelGetTickCount();
   /* Infinite loop */
@@ -205,11 +212,12 @@ void motor3508_speed_control(void *argument)
     { Chassis_TurnaroundReset(remote.turnaround_request_count); }
     else
     { turn_hold = Chassis_TurnaroundUpdate(remote.turnaround_request_count); }
-    if (remote.online && Motor3508_OnlineCheck() && !turn_hold)
+    lift_hold = Communication_GetLiftLock(&lift_sequence);
+    if (remote.online && Motor3508_OnlineCheck() && !turn_hold && !lift_hold)
     {
       if (remote.mode == REMOTE_MODE_SPIN)
       {
-        /* 左下档按云台朝向平移；仅右上档叠加底盘自旋。 */
+        /* 小陀螺按云台朝向平移，右上档才自旋。 */
         Chassis_FollowReset();
         Chassis_SpinUpdate(remote.channel[3] * CHASSIS_FORWARD_SCALE,
                            remote.channel[2] * CHASSIS_LEFT_SCALE,
@@ -225,7 +233,7 @@ void motor3508_speed_control(void *argument)
       }
       else if (remote.mode == REMOTE_MODE_MECHANICAL)
       {
-        /* 中档使用手动底盘控制，同时上板 Yaw 锁车头。 */
+        /* 机械模式手动控制底盘；升降锁车时不会进入此分支。 */
         Chassis_FollowReset();
         Chassis_SpinReset();
         Chassis_MechanicalUpdate(remote.channel[3] * CHASSIS_FORWARD_SCALE,
@@ -244,6 +252,21 @@ void motor3508_speed_control(void *argument)
       Chassis_FollowReset();
       Chassis_SpinReset();
       (void)Motor3508_Stop();
+    }
+    wheel_feedback_valid = Motor3508_OnlineCheck();
+    for (wheel_id = 1U; wheel_feedback_valid && wheel_id <= MOTOR3508_COUNT;
+         wheel_id++)
+    {
+      if (!Motor3508_GetFeedback(wheel_id, &wheel_feedback))
+      { wheel_feedback_valid = false; }
+      else { wheel_speed_rpm[wheel_id - 1U] = wheel_feedback.speed_rpm; }
+    }
+    if (wheel_feedback_valid &&
+        (uint32_t)(HAL_GetTick() - last_wheel_speed_tx_ms) >=
+            CHASSIS_WHEEL_SPEED_TX_PERIOD_MS &&
+        Communication_SendChassisWheelSpeeds(wheel_speed_rpm) == HAL_OK)
+    {
+      last_wheel_speed_tx_ms = HAL_GetTick();
     }
 
     next_tick += CHASSIS_TASK_PERIOD_TICKS;

@@ -21,7 +21,7 @@
 #define switch_is_mid(s)  ((s) == RC_SW_MID)
 #define switch_is_up(s)   ((s) == RC_SW_UP)
 
-/* DBUS 键盘位图，位序与模板工程一致。 */
+/* DBUS 键盘位图。 */
 #define RC_KEY_W      (1U << 0)
 #define RC_KEY_S      (1U << 1)
 #define RC_KEY_A      (1U << 2)

@@ -13,10 +13,12 @@
 #define COMMUNICATION_TX_ID_D2         0x0D2U
 #define COMMUNICATION_TX_ID_D3         0x0D3U
 #define COMMUNICATION_TX_ID_D4         0x0D4U
+#define COMMUNICATION_TX_ID_D5         0x0D5U /* 四轮转子转速。 */
 
 /* 上板发送给下板的报文 ID，也是下板滤波器唯一放行的两个 ID。 */
 #define COMMUNICATION_RX_ID_C1         0x0C1U
 #define COMMUNICATION_RX_ID_C2         0x0C2U
+#define COMMUNICATION_LIFT_LOCK_MAGIC  0xA6U
 
 typedef struct
 {
@@ -38,7 +40,7 @@ HAL_StatusTypeDef Communication_Init(void);
 /* 通信任务周期调用：CAN2 进入 Bus-Off 时限频重启，使硬件自动重发恢复工作。 */
 void Communication_Service(void);
 
-/* 发送一帧到上板。std_id 只允许 D1~D4，data 必须指向 8 字节数据。 */
+/* 发送一帧到上板。std_id 只允许 D1~D5，data 必须指向 8 字节数据。 */
 HAL_StatusTypeDef Communication_Send(uint32_t std_id,
                                      const uint8_t data[COMMUNICATION_FRAME_SIZE]);
 
@@ -46,11 +48,15 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
 bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame);
 
 /* 跟随协议：C1 为归中 Yaw 角度，D4 为 BMI088 实测底盘角速度；
- * [0:1] 有符号小端 0.01 度(每秒)，[2] bit0 表示数据有效；C1 bit1=正在调头。 */
+ * [0:1] 有符号小端 0.01 度(每秒)，[2] bit0 表示数据有效；C1 bit1=正在调头。
+ * 升降锁车请求使用 C2[0:2]，D5 单独发送四轮转速。 */
 bool Communication_GetYawAngle(float *angle_deg);
 /* 读取 C1 的机械角和调头标志；帧超时/无效时返回 false。 */
 bool Communication_GetYawState(float *angle_deg, bool *turning);
+bool Communication_GetLiftLock(uint8_t *sequence);
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
+/* D5 每个电机占两个字节，int16 小端，单位 rpm。 */
+HAL_StatusTypeDef Communication_SendChassisWheelSpeeds(const int16_t speed_rpm[4]);
 
 /* 由统一 HAL FDCAN FIFO0 回调调用，不应由任务代码直接调用。 */
 void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,

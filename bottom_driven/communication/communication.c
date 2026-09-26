@@ -104,10 +104,12 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
 {
     FDCAN_TxHeaderTypeDef header = {0};
     FDCAN_ProtocolStatusTypeDef protocol_status;
+    uint32_t primask;
+    HAL_StatusTypeDef status;
 
     if ((data == NULL) ||
         (std_id < COMMUNICATION_TX_ID_D1) ||
-        (std_id > COMMUNICATION_TX_ID_D4))
+        (std_id > COMMUNICATION_TX_ID_D5))
     {
         return HAL_ERROR;
     }
@@ -130,7 +132,12 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
     header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
     header.MessageMarker = 0U;
 
-    return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &header, (uint8_t *)data);
+    primask = __get_PRIMASK();
+    __disable_irq();
+    status = HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &header,
+                                            (uint8_t *)data);
+    __set_PRIMASK(primask);
+    return status;
 }
 
 bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame)
@@ -187,6 +194,19 @@ bool Communication_GetYawState(float *angle_deg, bool *turning)
     return true;
 }
 
+bool Communication_GetLiftLock(uint8_t *sequence)
+{
+    Communication_RxFrame frame;
+    if (!Communication_GetRxFrame(COMMUNICATION_RX_ID_C2, &frame) ||
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
+            CHASSIS_LIFT_LOCK_TIMEOUT_MS ||
+        frame.data[0] != COMMUNICATION_LIFT_LOCK_MAGIC ||
+        (frame.data[1] & 1U) == 0U)
+    { return false; }
+    if (sequence != NULL) { *sequence = frame.data[2]; }
+    return true;
+}
+
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s)
 {
     uint8_t data[COMMUNICATION_FRAME_SIZE] = {0};
@@ -201,6 +221,20 @@ HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s)
     data[1] = (uint8_t)((uint16_t)encoded >> 8);
     data[2] = 0x01U;
     return Communication_Send(COMMUNICATION_TX_ID_D4, data);
+}
+
+HAL_StatusTypeDef Communication_SendChassisWheelSpeeds(const int16_t speed_rpm[4])
+{
+    uint8_t data[COMMUNICATION_FRAME_SIZE];
+    uint32_t index;
+    if (speed_rpm == NULL) { return HAL_ERROR; }
+    for (index = 0U; index < 4U; index++)
+    {
+        uint16_t raw = (uint16_t)speed_rpm[index];
+        data[index * 2U] = (uint8_t)raw;
+        data[index * 2U + 1U] = (uint8_t)(raw >> 8U);
+    }
+    return Communication_Send(COMMUNICATION_TX_ID_D5, data);
 }
 
 void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
