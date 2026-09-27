@@ -1,19 +1,19 @@
 #include "communication.h"
 
 #include "fdcan.h"
-#include "motor3508.h"
-#include "parameter.h"
+#include "chassis_can.h"
+#include "peripheral_config.h"
 #include <float.h>
 #include <string.h>
 
-static Communication_RxFrame communication_rx_c1; /* 上板 C1 报文的最新快照。 */
-static Communication_RxFrame communication_rx_c2; /* 上板 C2 报文的最新快照。 */
+static Communication_RxFrame communication_rx_c1; // 上板 C1 报文的最新快照。
+static Communication_RxFrame communication_rx_c2; // 上板 C2 报文的最新快照。
 
-volatile uint32_t communication_rx_count = 0U; /* C1/C2 有效报文累计接收数。 */
-volatile uint32_t communication_last_rx_id = 0U; /* 最近收到的板间通信标准 ID。 */
-volatile uint32_t communication_bus_off_count = 0U; /* CAN2 Bus-Off 恢复尝试次数。 */
-volatile uint32_t communication_restart_count = 0U; /* CAN2 成功重新启动次数。 */
-static uint32_t communication_last_restart_ms; /* 避免持续断线时频繁重启外设。 */
+volatile uint32_t communication_rx_count = 0U; // C1/C2 有效报文累计接收数。
+volatile uint32_t communication_last_rx_id = 0U; // 最近收到的板间通信标准 ID。
+volatile uint32_t communication_bus_off_count = 0U; // CAN2 Bus-Off 恢复尝试次数。
+volatile uint32_t communication_restart_count = 0U; // CAN2 成功重新启动次数。
+static uint32_t communication_last_restart_ms; // 避免持续断线时频繁重启外设。
 
 HAL_StatusTypeDef Communication_Init(void)
 {
@@ -28,7 +28,7 @@ HAL_StatusTypeDef Communication_Init(void)
     communication_restart_count = 0U;
     communication_last_restart_ms = 0U;
 
-    /* 一个双 ID 标准滤波器精确放行 0xC1 和 0xC2，并送入 FIFO0。 */
+    // 一个双 ID 标准滤波器精确放行 0xC1 和 0xC2，并送入 FIFO0。
     filter.IdType = FDCAN_STANDARD_ID;
     filter.FilterIndex = 0U;
     filter.FilterType = FDCAN_FILTER_DUAL;
@@ -38,7 +38,7 @@ HAL_StatusTypeDef Communication_Init(void)
     status = HAL_FDCAN_ConfigFilter(&hfdcan2, &filter);
     if (status != HAL_OK) { return status; }
 
-    /* 未命中过滤器的标准帧、扩展帧以及所有远程帧全部丢弃。 */
+    // 未命中过滤器的标准帧、扩展帧以及所有远程帧全部丢弃。
     status = HAL_FDCAN_ConfigGlobalFilter(&hfdcan2,
                                          FDCAN_REJECT,
                                          FDCAN_REJECT,
@@ -64,7 +64,7 @@ void Communication_Service(void)
     FDCAN_ProtocolStatusTypeDef protocol_status;
     uint32_t now_ms;
 
-    /* 遥控帧超时会自动恢复；此处处理的是控制器自身进入 Bus-Off。 */
+    // 遥控帧超时会自动恢复；此处处理的是控制器自身进入 Bus-Off。
     if (HAL_FDCAN_GetState(&hfdcan2) != HAL_FDCAN_STATE_BUSY ||
         HAL_FDCAN_GetProtocolStatus(&hfdcan2, &protocol_status) != HAL_OK ||
         protocol_status.BusOff == 0U)
@@ -75,14 +75,14 @@ void Communication_Service(void)
     now_ms = HAL_GetTick();
     if (communication_bus_off_count != 0U &&
         (uint32_t)(now_ms - communication_last_restart_ms) <
-            COMMUNICATION_BUS_OFF_RETRY_MS)
+            communication_config.retry_ms)
     {
         return;
     }
 
     communication_last_restart_ms = now_ms;
     communication_bus_off_count++;
-    /* HAL Start 只接受 READY 状态；先 Stop 再 Start 清除 Bus-Off 的 INIT。 */
+    // HAL Start 只接受 READY 状态；先 Stop 再 Start 清除 Bus-Off 的 INIT。
     if (HAL_FDCAN_Stop(&hfdcan2) != HAL_OK)
     {
         return;
@@ -114,7 +114,7 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
         return HAL_ERROR;
     }
 
-    /* Bus-Off 时不继续塞入旧遥控帧；恢复任务重启后发送当前最新帧。 */
+    // Bus-Off 时不继续塞入旧遥控帧；恢复任务重启后发送当前最新帧。
     if (HAL_FDCAN_GetState(&hfdcan2) != HAL_FDCAN_STATE_BUSY ||
         HAL_FDCAN_GetProtocolStatus(&hfdcan2, &protocol_status) != HAL_OK ||
         protocol_status.BusOff != 0U)
@@ -160,7 +160,7 @@ bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame)
         return false;
     }
 
-    /* 防止中断更新到一半时，任务读到由两帧数据拼成的结构体。 */
+    // 防止中断更新到一半时，任务读到由两帧数据拼成的结构体。
     saved_primask = __get_PRIMASK();
     __disable_irq();
     *frame = *source;
@@ -171,18 +171,20 @@ bool Communication_GetRxFrame(uint32_t std_id, Communication_RxFrame *frame)
 bool Communication_GetYawAngle(float *angle_deg)
 {
     bool turning;
-    return Communication_GetYawState(angle_deg, &turning);
+    bool turn_allowed;
+    return Communication_GetYawState(angle_deg, &turning, &turn_allowed);
 }
 
-bool Communication_GetYawState(float *angle_deg, bool *turning)
+bool Communication_GetYawState(float *angle_deg, bool *turning,
+                               bool *turn_allowed)
 {
     Communication_RxFrame frame;
     int16_t encoded;
 
-    if (angle_deg == NULL || turning == NULL ||
+    if (angle_deg == NULL || turning == NULL || turn_allowed == NULL ||
         !Communication_GetRxFrame(COMMUNICATION_RX_ID_C1, &frame) ||
         (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
-            CHASSIS_FOLLOW_ANGLE_TIMEOUT_MS ||
+            communication_config.yaw_angle_timeout_ms ||
         (frame.data[2] & 0x01U) == 0U)
     {
         return false;
@@ -191,6 +193,7 @@ bool Communication_GetYawState(float *angle_deg, bool *turning)
                         ((uint16_t)frame.data[1] << 8));
     *angle_deg = (float)encoded * 0.01f;
     *turning = (frame.data[2] & 0x02U) != 0U;
+    *turn_allowed = (frame.data[2] & 0x04U) != 0U;
     return true;
 }
 
@@ -199,7 +202,7 @@ bool Communication_GetLiftLock(uint8_t *sequence)
     Communication_RxFrame frame;
     if (!Communication_GetRxFrame(COMMUNICATION_RX_ID_C2, &frame) ||
         (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
-            CHASSIS_LIFT_LOCK_TIMEOUT_MS ||
+            communication_config.lift_lock_timeout_ms ||
         frame.data[0] != COMMUNICATION_LIFT_LOCK_MAGIC ||
         (frame.data[1] & 1U) == 0U)
     { return false; }
@@ -250,7 +253,7 @@ void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
         return;
     }
 
-    /* 一次中断排空 FIFO，避免连续到帧时遗留积压。 */
+    // 一次中断排空 FIFO，避免连续到帧时遗留积压。
     while (HAL_FDCAN_GetRxFifoFillLevel(hfdcan, FDCAN_RX_FIFO0) > 0U)
     {
         if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &header, data) != HAL_OK)
@@ -286,23 +289,15 @@ void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
         communication_last_rx_id = header.Identifier;
         communication_rx_count++;
 
-        Communication_RxFrameCallback(header.Identifier, data);
     }
 }
 
-__weak void Communication_RxFrameCallback(
-    uint32_t std_id, const uint8_t data[COMMUNICATION_FRAME_SIZE])
-{
-    (void)std_id;
-    (void)data;
-}
-
-/* HAL 只允许存在一个同名 FIFO0 回调，因此在这里统一分发两个 FDCAN 实例。 */
+// HAL 只允许存在一个同名 FIFO0 回调，因此在这里统一分发两个 FDCAN 实例。
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)
 {
     if (hfdcan == &hfdcan1)
     {
-        Motor3508_FDCANRxFifo0Callback(hfdcan, interrupts);
+        ChassisCan_RxFifo0Callback(hfdcan, interrupts);
     }
     else if (hfdcan == &hfdcan2)
     {

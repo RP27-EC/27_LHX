@@ -1,9 +1,9 @@
 #include "imu.h"
-#include "parameter.h"
+#include "peripheral_config.h"
 #include <math.h>
 #include <string.h>
 
-/* 下板 BMI088 使用 SPI2。 */
+// 下板 BMI088 使用 SPI2。
 #define IMU_ACCEL_CS_PORT              GPIOC
 #define IMU_ACCEL_CS_PIN               GPIO_PIN_0
 #define IMU_GYRO_CS_PORT               GPIOC
@@ -35,16 +35,16 @@
 #define IMU_RAD_TO_DEG                 57.2957795131f
 #define IMU_GRAVITY                    9.80665f
 
-static SPI_HandleTypeDef imu_spi;  /* 下板 BMI088 使用的独立 SPI 句柄。 */
-static float gyro_bias[3];         /* 标定完成后的三轴陀螺仪零偏。 */
-static float gyro_bias_sum[3];     /* 启动标定期间三轴零偏采样累加值。 */
-static float integral_feedback[3]; /* 姿态融合中用于抑制漂移的积分反馈。 */
-static uint32_t calibration_count; /* 已累计的陀螺仪零偏标定样本数。 */
-static uint32_t last_update_ms;    /* 上一次姿态更新的毫秒时间戳。 */
-static float yaw_last_deg;         /* 上周期单圈 Yaw 角，用于跨圈判断。 */
-static int32_t yaw_rounds;         /* Yaw 跨越正负 180 度的累计圈数。 */
+static SPI_HandleTypeDef imu_spi; // 下板 BMI088 使用的独立 SPI 句柄。
+static float gyro_bias[3]; // 标定完成后的三轴陀螺仪零偏。
+static float gyro_bias_sum[3]; // 启动标定期间三轴零偏采样累加值。
+static float integral_feedback[3]; // 姿态融合中用于抑制漂移的积分反馈。
+static uint32_t calibration_count; // 已累计的陀螺仪零偏标定样本数。
+static uint32_t last_update_ms; // 上一次姿态更新的毫秒时间戳。
+static float yaw_last_deg; // 上周期单圈 Yaw 角，用于跨圈判断。
+static int32_t yaw_rounds; // Yaw 跨越正负 180 度的累计圈数。
 
-volatile ChassisImu_Data_t chassis_imu; /* 供底盘控制和调试读取的 IMU 快照。 */
+volatile ChassisImu_Data_t chassis_imu; // 底盘 IMU 数据。
 
 static void imu_delay_us(uint32_t us)
 {
@@ -119,7 +119,7 @@ static uint8_t bmi088_init(void)
     imu_select(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN, false);
     HAL_Delay(10U);
 
-    /* 加速度计 SPI 模式需要先读两次 ID，再软复位。 */
+    // 加速度计 SPI 模式需要先读两次 ID，再软复位。
     (void)imu_read_reg(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
                        BMI088_ACC_CHIP_ID, true);
     if (imu_read_reg(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
@@ -218,12 +218,12 @@ static void imu_update_attitude(float gx, float gy, float gz,
         ex = ay * vz - az * vy;
         ey = az * vx - ax * vz;
         ez = ax * vy - ay * vx;
-        integral_feedback[0] += IMU_ATTITUDE_KI * ex * dt;
-        integral_feedback[1] += IMU_ATTITUDE_KI * ey * dt;
-        integral_feedback[2] += IMU_ATTITUDE_KI * ez * dt;
-        gx += IMU_ATTITUDE_KP * ex + integral_feedback[0];
-        gy += IMU_ATTITUDE_KP * ey + integral_feedback[1];
-        gz += IMU_ATTITUDE_KP * ez + integral_feedback[2];
+        integral_feedback[0] += imu_config.attitude_ki * ex * dt;
+        integral_feedback[1] += imu_config.attitude_ki * ey * dt;
+        integral_feedback[2] += imu_config.attitude_ki * ez * dt;
+        gx += imu_config.attitude_kp * ex + integral_feedback[0];
+        gy += imu_config.attitude_kp * ey + integral_feedback[1];
+        gz += imu_config.attitude_kp * ez + integral_feedback[2];
     }
 
     nq0 = q0 + 0.5f * (-q1 * gx - q2 * gy - q3 * gz) * dt;
@@ -250,7 +250,7 @@ static void imu_update_attitude(float gx, float gy, float gz,
     chassis_imu.yaw_total_deg = chassis_imu.yaw_deg + 360.0f*(float)yaw_rounds;
     yaw_last_deg = chassis_imu.yaw_deg;
 
-    /* 将机体系加速度旋转到世界系，并去除重力。 */
+    // 将机体系加速度旋转到世界系，并去除重力。
     chassis_imu.linear_accel_world_m_s2[0] =
         (1.0f-2.0f*(q2*q2+q3*q3))*chassis_imu.accel_m_s2[0] +
         2.0f*(q1*q2-q0*q3)*chassis_imu.accel_m_s2[1] +
@@ -327,20 +327,20 @@ HAL_StatusTypeDef ChassisImu_Init(void)
     chassis_imu.init_error = error;
     if (error != 0U) { return HAL_ERROR; }
 
-    /* 主任务启动前保持底盘静止，完成三轴零偏标定，避免运动污染零偏。 */
-    for (index = 0U; index < IMU_GYRO_CALIBRATION_SAMPLES; index++)
+    // 主任务启动前保持底盘静止，完成三轴零偏标定，避免运动污染零偏。
+    for (index = 0U; index < imu_config.gyro_calibration_samples; index++)
     {
         if (!imu_read_sensor(gyro, accel, &temperature))
         {
             chassis_imu.init_error = 0x83U;
             return HAL_ERROR;
         }
-        gyro_bias_sum[0] += gyro[0] * IMU_GYRO_X_SIGN;
-        gyro_bias_sum[1] += gyro[1] * IMU_GYRO_Y_SIGN;
-        gyro_bias_sum[2] += gyro[2] * IMU_GYRO_Z_SIGN;
+        gyro_bias_sum[0] += gyro[0] * imu_config.gyro_x_sign;
+        gyro_bias_sum[1] += gyro[1] * imu_config.gyro_y_sign;
+        gyro_bias_sum[2] += gyro[2] * imu_config.gyro_z_sign;
         HAL_Delay(1U);
     }
-    calibration_count = IMU_GYRO_CALIBRATION_SAMPLES;
+    calibration_count = imu_config.gyro_calibration_samples;
     gyro_bias[0] = gyro_bias_sum[0] / (float)calibration_count;
     gyro_bias[1] = gyro_bias_sum[1] / (float)calibration_count;
     gyro_bias[2] = gyro_bias_sum[2] / (float)calibration_count;
@@ -358,21 +358,21 @@ bool ChassisImu_Update(void)
 
     if (!imu_read_sensor(gyro, accel, &temperature))
     { chassis_imu.online = false; return false; }
-    /* 传感器到车体坐标绕 Z 轴旋转 180 度。 */
-    gyro[0] *= IMU_GYRO_X_SIGN; gyro[1] *= IMU_GYRO_Y_SIGN;
-    gyro[2] *= IMU_GYRO_Z_SIGN;
-    accel[0] *= IMU_ACCEL_X_SIGN; accel[1] *= IMU_ACCEL_Y_SIGN;
-    accel[2] *= IMU_ACCEL_Z_SIGN;
+    // 传感器到车体坐标绕 Z 轴旋转 180 度。
+    gyro[0] *= imu_config.gyro_x_sign; gyro[1] *= imu_config.gyro_y_sign;
+    gyro[2] *= imu_config.gyro_z_sign;
+    accel[0] *= imu_config.accel_x_sign; accel[1] *= imu_config.accel_y_sign;
+    accel[2] *= imu_config.accel_z_sign;
     gyro[0] -= gyro_bias[0]; gyro[1] -= gyro_bias[1];
     gyro[2] -= gyro_bias[2];
     now_ms = HAL_GetTick();
     dt = (float)(uint32_t)(now_ms - last_update_ms) * 0.001f;
     last_update_ms = now_ms;
-    if (dt <= 0.0f || dt > 0.02f) { dt = IMU_UPDATE_PERIOD_S; }
+    if (dt <= 0.0f || dt > 0.02f) { dt = imu_config.update_period_s; }
     memcpy((void *)chassis_imu.gyro_rad_s, gyro, sizeof(gyro));
     memcpy((void *)chassis_imu.accel_m_s2, accel, sizeof(accel));
     chassis_imu.temperature_c = temperature;
-    chassis_imu.yaw_rate_deg_s += IMU_YAW_RATE_FILTER_ALPHA *
+    chassis_imu.yaw_rate_deg_s += imu_config.yaw_rate_filter_alpha *
         (gyro[2] * IMU_RAD_TO_DEG - chassis_imu.yaw_rate_deg_s);
     imu_update_attitude(gyro[0], gyro[1], gyro[2],
                         accel[0], accel[1], accel[2], dt);

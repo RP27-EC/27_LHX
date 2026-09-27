@@ -1,26 +1,25 @@
 #include "telecontrol.h"
-#include "parameter.h"
+#include "peripheral_config.h"
 #include <stdbool.h>
 #include <string.h>
 
-/* 中断写入，task 读取；不让 task 直接读取正在接收的 DMA 缓冲区。 */
-static uint8_t rc_frame_snapshot[RC_FRAME_LEN]; /* 中断提交给任务的完整 DBUS 快照。 */
-static volatile bool rc_frame_ready = false;    /* 是否存在尚未被任务取走的新快照。 */
+// 中断写入，task 读取；不让 task 直接读取正在接收的 DMA 缓冲区。
+static uint8_t rc_frame_snapshot[RC_FRAME_LEN]; // 中断提交给任务的完整 DBUS 快照。
+static volatile bool rc_frame_ready = false; // 是否存在尚未被任务取走的新快照。
 
-static volatile uint32_t rc_last_valid_rx_ms = 0U; /* 最近有效帧接收时间。 */
-static volatile bool rc_has_valid_frame = false;   /* 上电后是否接到过有效帧。 */
-static volatile bool rc_online = false;            /* 遥控链路当前是否在线。 */
+static volatile uint32_t rc_last_valid_rx_ms = 0U; // 最近有效帧接收时间。
+static volatile bool rc_has_valid_frame = false; // 上电后是否接到过有效帧。
+static volatile bool rc_online = false; // 遥控链路当前是否在线。
 
-static uint32_t rc_frame_received_ms = 0U; /* 当前待解析快照的接收时间。 */
-/* 用于调试器观察。 */
-volatile uint32_t rc_rx_frame_count = 0; /* DMA 中识别出的完整 DBUS 帧数。 */
-volatile uint16_t rc_rx_last_size = 0;   /* 最近一次 UART 空闲中断收到的字节数。 */
+static uint32_t rc_frame_received_ms = 0U; // 当前待解析快照的接收时间。
+volatile uint32_t rc_rx_frame_count = 0; // DMA 中识别出的完整 DBUS 帧数。
+volatile uint16_t rc_rx_last_size = 0; // 最近一次 UART 空闲中断收到的字节数。
 
-uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM]; /* UART DMA 双缓冲接收区。 */
+uint8_t sbus_rx_buf[2][SBUS_RX_BUF_NUM]; // UART DMA 双缓冲接收区。
 
-RC_ctrl_t rc_ctrl = { .rc = { .ch = {0}, .s = {RC_SW_MID, RC_SW_MID} } }; /* 当前遥控数据。 */
+RC_ctrl_t rc_ctrl = { .rc = { .ch = {0}, .s = {RC_SW_MID, RC_SW_MID} } }; // 当前遥控数据。
 
-//串口DMA接收以及标志变量初始化初始化
+// 初始化 UART DMA 接收状态。
 void control_usart_init(uint8_t *rx_1buff,uint8_t *rx_2buff,uint16_t dma_buf_num)
 {
     rc_frame_received_ms = 0U;
@@ -43,20 +42,20 @@ void control_usart_init(uint8_t *rx_1buff,uint8_t *rx_2buff,uint16_t dma_buf_num
         return;
     }
 
-    /* H7 的 Instance 是 void *；UART5 使用 DMA1 Stream。 */
+    // H7 的 Instance 是 void *；UART5 使用 DMA1 Stream。
     stream = (DMA_Stream_TypeDef *)dma->Instance;
 
-    /* 配置期间关闭接收 DMA 请求和 IDLE 中断。 */
+    // 配置期间关闭接收 DMA 请求和 IDLE 中断。
     CLEAR_BIT(huart5.Instance->CR3, USART_CR3_DMAR);
     __HAL_UART_DISABLE_IT(&huart5, UART_IT_IDLE);
 
     __HAL_DMA_DISABLE(dma);
     while ((stream->CR & DMA_SxCR_EN) != 0U)
     {
-        /* 等待 DMA 真正停止，才能修改地址和计数。 */
+        // 等待 DMA 真正停止，才能修改地址和计数。
     }
 
-    /* 当前方案由 UART IDLE 中断处理帧，不使用 DMA 完成回调。 */
+    // 当前方案由 UART IDLE 中断处理帧，不使用 DMA 完成回调。
     __HAL_DMA_DISABLE_IT(dma,
                         DMA_IT_TC  |
                         DMA_IT_HT  |
@@ -72,13 +71,13 @@ void control_usart_init(uint8_t *rx_1buff,uint8_t *rx_2buff,uint16_t dma_buf_num
         __HAL_DMA_GET_DME_FLAG_INDEX(dma) |
         __HAL_DMA_GET_FE_FLAG_INDEX(dma));
 
-    /* H723 UART5 的接收数据寄存器是 RDR。 */
+    // H723 UART5 的接收数据寄存器是 RDR。
     stream->PAR = (uint32_t)&huart5.Instance->RDR;
     stream->M0AR = (uint32_t)rx_1buff;
     stream->M1AR = (uint32_t)rx_2buff;
     stream->NDTR = dma_buf_num;
 
-    /* 从 M0 开始，开启双缓冲。 */
+    // 从 M0 开始，开启双缓冲。
     CLEAR_BIT(stream->CR, DMA_SxCR_CT);
     SET_BIT(stream->CR, DMA_SxCR_DBM);
 
@@ -129,10 +128,10 @@ void RC_UART5_IdleHandler(void)
         return;
     }
 
-    /* 转为 DMA Stream 寄存器类型后访问 CR 等寄存器。 */
+    // 转为 DMA Stream 寄存器类型后访问 CR 等寄存器。
     stream = (DMA_Stream_TypeDef *)dma->Instance;
 
-    /* 必须在软件停止 DMA 之前记录状态。 */
+    // 必须在软件停止 DMA 之前记录状态。
     target_before = stream->CR & DMA_SxCR_CT;
     full_before = __HAL_DMA_GET_FLAG(
         dma, __HAL_DMA_GET_TC_FLAG_INDEX(dma));
@@ -140,7 +139,7 @@ void RC_UART5_IdleHandler(void)
     __HAL_DMA_DISABLE(dma);
     while ((stream->CR & DMA_SxCR_EN) != 0U)
     {
-        /* 等待 DMA 停止，再读取计数和操作缓冲区。 */
+        // 等待 DMA 停止，再读取计数和操作缓冲区。
     }
 
     current_target = stream->CR & DMA_SxCR_CT;
@@ -151,7 +150,7 @@ void RC_UART5_IdleHandler(void)
         received = (uint16_t)(SBUS_RX_BUF_NUM - remaining);
     }
 
-    /* 把停止过程中出现的串口错误也计入。 */
+    // 把停止过程中出现的串口错误也计入。
     uart_errors |= huart5.Instance->ISR &
                    (USART_ISR_PE | USART_ISR_FE |
                     USART_ISR_NE | USART_ISR_ORE);
@@ -162,11 +161,7 @@ void RC_UART5_IdleHandler(void)
                        ? sbus_rx_buf[0]
                        : sbus_rx_buf[1];
 
-    /*
-     * 只接受完整的 18 字节单帧：
-     * 停止前没有收满缓冲区，停止期间没有切换缓冲区，
-     * 且没有串口错误。
-     */
+    // 仅接受无串口错误、未跨缓冲区的完整 18 字节帧。
     if ((received == RC_FRAME_LEN) &&
         (full_before == RESET) &&
         (current_target == target_before) &&
@@ -178,7 +173,7 @@ void RC_UART5_IdleHandler(void)
         rc_frame_received_ms = HAL_GetTick();
     }
 
-    /* 下次从另一个缓冲区重新接收。 */
+    // 下次从另一个缓冲区重新接收。
     stream->CR ^= DMA_SxCR_CT;
     __HAL_DMA_SET_COUNTER(dma, SBUS_RX_BUF_NUM);
 
@@ -228,12 +223,7 @@ bool RC_TakeFrame(uint8_t frame[RC_FRAME_LEN],
     return available;
 }
 
-/*
- * 按 DBUS 11 位通道格式解包原始遥控帧。
- * 同时解析字节 6~15 的鼠标位移、按钮和键盘位图。
- * 输出通道以 1024 为中心归零，正常范围 -660~660。
- * ch[3] == -660 是合法满量程输入，不作特殊屏蔽。
- */
+// 解析 DBUS 通道与键鼠数据；通道以 1024 为中心归零。
 bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
 {
     RC_ctrl_t decoded = {0};
@@ -256,7 +246,7 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
     decoded.rc.ch[4] = (int16_t)(((uint16_t)frame[16] |
                                  ((uint16_t)frame[17] << 8)) & 0x07FFU) - 1024;
 
-    /* DBUS 拨杆位序：s[0] 取 bit 7~6，s[1] 取 bit 5~4。 */
+    // DBUS 拨杆位序：s[0] 取 bit 7~6，s[1] 取 bit 5~4。
     decoded.rc.s[0] = (frame[5] >> 6) & 0x03U;
     decoded.rc.s[1] = (frame[5] >> 4) & 0x03U;
     decoded.mouse.x = (int16_t)((uint16_t)frame[6] | ((uint16_t)frame[7] << 8));
@@ -266,7 +256,7 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
     decoded.mouse.right = (frame[13] & 0x01U) != 0U;
     decoded.key = (uint16_t)frame[14] | ((uint16_t)frame[15] << 8);
 
-    /* 摇杆异常时清零输出并拒绝该帧；两个拨杆均须为 1、2、3。 */
+    // 摇杆异常时清零输出并拒绝该帧；两个拨杆均须为 1、2、3。
     for (i = 0U; i < 4U; i++)
     {
         if ((decoded.rc.ch[i] < -660) || (decoded.rc.ch[i] > 660))
@@ -285,7 +275,7 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
         return false;
     }
 
-    /* 拨轮越界时归零，不影响其余有效通道。 */
+    // 拨轮越界时归零，不影响其余有效通道。
     if ((decoded.rc.ch[4] < -660) || (decoded.rc.ch[4] > 660))
     {
         decoded.rc.ch[4] = 0;
@@ -295,20 +285,20 @@ bool RC_ParseFrame(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control)
     return true;
 }
 
-/*超时检测*/
+// 超时检测
 bool RC_CheckOnline(uint32_t now_ms)
 {
     bool online;
 
     online = rc_has_valid_frame &&
              ((uint32_t)(now_ms - rc_last_valid_rx_ms)
-              < RC_TIMEOUT_MS);
+              < telecontrol_config.timeout_ms);
 
     rc_online = online;
 
     if (!online)
     {
-        /* 离线时清除旧指令，避免继续使用最后一次摇杆值。 */
+        // 离线时清除旧指令，避免继续使用最后一次摇杆值。
         memset(&rc_ctrl, 0, sizeof(rc_ctrl));
         rc_ctrl.rc.s[0] = RC_SW_MID;
         rc_ctrl.rc.s[1] = RC_SW_MID;
@@ -317,7 +307,7 @@ bool RC_CheckOnline(uint32_t now_ms)
     return online;
 }
 
-/*记录接收有效帧时间，更新状态*/
+// 记录接收有效帧时间，更新状态
 void RC_MarkValidFrame(uint32_t received_ms)
 {
     rc_last_valid_rx_ms = received_ms;

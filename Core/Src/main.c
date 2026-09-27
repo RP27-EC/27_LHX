@@ -31,6 +31,10 @@
 #include "motor3508.h"
 #include "communication.h"
 #include "imu.h"
+#include "peripheral_config.h"
+#include "application_config.h"
+#include "power_communication.h"
+#include "chassis_can.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -104,7 +108,14 @@ int main(void)
   MX_UART5_Init();
   MX_FDCAN2_Init();
   /* USER CODE BEGIN 2 */
+  LowerPeripheralConfig_InitAll();
+  LowerApplicationConfig_InitAll();
+  PowerCommunication_Init();
   if (Motor3508_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (ChassisCan_Init() != HAL_OK)
   {
     Error_Handler();
   }

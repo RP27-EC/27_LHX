@@ -968,8 +968,43 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>configuration</GroupName>
+          <Files>
+            <File>
+              <FileName>peripheral_config.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../bottom_driven/peripheral_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>peripheral_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../bottom_driven/peripheral_config.h</FilePath>
+            </File>
+            <File>
+              <FileName>application_config.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/chassis/application_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>application_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/chassis/application_config.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>bottom_driven/communication</GroupName>
           <Files>
+            <File>
+              <FileName>chassis_can.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\communication\chassis_can.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_can.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\communication\chassis_can.h</FilePath>
+            </File>
             <File>
               <FileName>communication.c</FileName>
               <FileType>1</FileType>
@@ -1026,11 +1061,6 @@
               <FilePath>..\user\chassis\chassis.h</FilePath>
             </File>
             <File>
-              <FileName>parameter.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\user\chassis\parameter.h</FilePath>
-            </File>
-            <File>
               <FileName>remote_state.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\user\chassis\remote_state.c</FilePath>
@@ -1039,6 +1069,16 @@
               <FileName>remote_state.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\user\chassis\remote_state.h</FilePath>
+            </File>
+            <File>
+              <FileName>power_communication.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\power_communication.c</FilePath>
+            </File>
+            <File>
+              <FileName>power_communication.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\power_communication.h</FilePath>
             </File>
           </Files>
         </Group>

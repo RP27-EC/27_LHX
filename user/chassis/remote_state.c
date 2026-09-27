@@ -1,28 +1,53 @@
 #include "remote_state.h"
-#include "parameter.h"
+#include "application_config.h"
 #include <string.h>
 
-static RemoteState_t remote_state; /* 遥控任务发布给底盘任务的状态快照。 */
-static bool turnaround_wheel_armed; /* 拨轮回到中位附近后才允许再次触发。 */
-static uint32_t turnaround_request_count; /* 拨轮下降沿事件累计数。 */
-static bool spin_switch_seen; /* 本次进入小陀螺后是否已记录右拨杆初始档位。 */
-static uint8_t spin_previous_switch; /* 小陀螺模式内上一次有效右拨杆档位。 */
-static bool spin_armed; /* 本次进入小陀螺后右拨杆是否真实换过档。 */
-static bool spin_wheel_ready; /* 正拨前必须先回中位。 */
-static bool physical_spin_selected; /* 拨轮切换的小陀螺状态。 */
-static uint8_t previous_left_switch; /* 左拨杆换档时退出小陀螺。 */
-static bool keyboard_seen; /* 上线后的首帧只记录键位，不作为切换动作。 */
-static bool keyboard_active; /* V 键切换的键鼠控制状态。 */
-static uint16_t keyboard_previous_key; /* 上一次键盘位图，用于按下沿判断。 */
-static RemoteMode_t keyboard_mode; /* 键鼠模式下的底盘模式。 */
-static bool keyboard_spin_g_released; /* 进入小陀螺后须先观察 G 松开。 */
-static bool keyboard_spin_armed; /* 本次小陀螺模式内 G 按下后允许自旋。 */
-static bool keyboard_q_released; /* 进入键鼠模式后须先观察 Q 松开。 */
-static bool keyboard_f_released; /* 键鼠发射键先松开才接受按下。 */
-static bool keyboard_friction_on; /* 与上板一致的 F 键保险状态。 */
+static RemoteState_t remote_state; // 遥控任务发布给底盘任务的状态快照。
 
-/* V 进出键鼠；Z/X/C 选跟随/机械/小陀螺；WASD 移动，G 控自旋，Q 调头。
- * 鼠标位移仍转成原有摇杆通道，底盘控制和归中状态机无需另开路径。 */
+typedef struct
+{
+    bool turnaround_wheel_armed; // 拨轮回中后允许再次调头。
+    uint32_t turnaround_request_count; // 调头事件累计数。
+    bool spin_switch_seen; // 已记录小陀螺内右拨杆初始档位。
+    uint8_t spin_previous_switch; // 小陀螺内上一帧右拨杆档位。
+    bool spin_armed; // 小陀螺内右拨杆已换档。
+    bool spin_wheel_ready; // 拨轮回中后允许再次切换。
+    bool spin_selected; // 拨轮选择小陀螺模式。
+    uint8_t previous_left_switch; // 左拨杆变化时取消小陀螺。
+} RemotePhysicalLatch_t;
+
+typedef struct
+{
+    bool seen; // 上线首帧只记录键位。
+    bool active; // V 键选择键鼠控制。
+    uint16_t previous_key; // 上一帧键盘位图。
+    RemoteMode_t mode; // Z/X 选择的基础模式枚举。
+    bool spin_active; // G 键选择小陀螺。
+    bool spin_g_released; // G 先松开才接受按下沿。
+    bool q_released; // Q 先松开才接受调头输入。
+} RemoteKeyboardLatch_t;
+
+typedef struct
+{
+    RemotePhysicalLatch_t physical; // 遥控拨杆与拨轮的边沿锁存。
+    RemoteKeyboardLatch_t keyboard; // 键鼠模式与按键边沿锁存。
+} RemoteStateMachine_t;
+
+static RemoteStateMachine_t machine; // 仅状态机任务修改，不直接暴露给底盘任务。
+
+// 将左拨杆档位映射为模式枚举；非法档位保持失能。
+static RemoteMode_t RemoteState_MapSwitchMode(uint8_t left_switch)
+{
+    if (left_switch == chassis_config.follow_switch_position)
+    { return REMOTE_MODE_FOLLOW; }
+    if (left_switch == CHASSIS_MECHANICAL_SWITCH_POSITION ||
+        left_switch == CHASSIS_MECHANICAL_DOWN_POSITION)
+    { return REMOTE_MODE_MECHANICAL; }
+    return REMOTE_MODE_DISABLED;
+}
+
+// 键鼠：WASD 移动，Z/X 选模式，G 切换小陀螺，Q 调头。
+// 鼠标输入映射到现有摇杆通道。
 static int16_t RemoteState_ClampChannel(int32_t value)
 {
     if (value > 660) { return 660; }
@@ -35,63 +60,45 @@ static void RemoteState_MapKeyboard(RemoteState_t *next,
                                     uint16_t pressed)
 {
     uint16_t key = control->key;
-    int16_t move = RC_KEYBOARD_MOVE_RAW;
+    int16_t move = keyboard_sensitivity_config.move_raw;
     int32_t mouse_x = control->mouse.x;
     int32_t mouse_y = control->mouse.y;
-    RemoteMode_t previous_mode = keyboard_mode;
-
     if (pressed & RC_KEY_Z)
-    { keyboard_mode = REMOTE_MODE_FOLLOW; }
+    {
+        machine.keyboard.mode = REMOTE_MODE_FOLLOW;
+        machine.keyboard.spin_active = false;
+    }
     else if (pressed & RC_KEY_X)
-    { keyboard_mode = REMOTE_MODE_MECHANICAL; }
-    else if ((pressed & RC_KEY_C) && !keyboard_friction_on)
-    { keyboard_mode = REMOTE_MODE_SPIN; }
+    {
+        machine.keyboard.mode = REMOTE_MODE_MECHANICAL;
+        machine.keyboard.spin_active = false;
+    }
+    if (!(key & RC_KEY_G)) { machine.keyboard.spin_g_released = true; }
+    if (machine.keyboard.spin_g_released && (pressed & RC_KEY_G))
+    { machine.keyboard.spin_active = !machine.keyboard.spin_active; }
 
-    if (key & RC_KEY_CTRL) { move = RC_KEYBOARD_SLOW_RAW; }
-    else if (key & RC_KEY_SHIFT) { move = RC_KEYBOARD_SPRINT_RAW; }
-    memset(next->channel, 0, sizeof(next->channel));
-    next->channel[3] = ((key & RC_KEY_W) ? move : 0) -
+    if (key & RC_KEY_CTRL) { move = keyboard_sensitivity_config.slow_raw; }
+    else if (key & RC_KEY_SHIFT) { move = keyboard_sensitivity_config.sprint_raw; }
+    memset(next->input.channel, 0, sizeof(next->input.channel));
+    next->input.channel[3] = ((key & RC_KEY_W) ? move : 0) -
                        ((key & RC_KEY_S) ? move : 0);
-    next->channel[2] = ((key & RC_KEY_D) ? move : 0) -
+    next->input.channel[2] = ((key & RC_KEY_D) ? move : 0) -
                        ((key & RC_KEY_A) ? move : 0);
-    if (control->mouse.right)
+    if (control->mouse.right && keyboard_sensitivity_config.aim_divisor > 0)
     {
-        mouse_x /= RC_KEYBOARD_AIM_DIVISOR;
-        mouse_y /= RC_KEYBOARD_AIM_DIVISOR;
+        mouse_x /= keyboard_sensitivity_config.aim_divisor;
+        mouse_y /= keyboard_sensitivity_config.aim_divisor;
     }
-    next->channel[0] = RemoteState_ClampChannel(
-        mouse_x * RC_KEYBOARD_MOUSE_YAW_GAIN);
-    next->channel[1] = RemoteState_ClampChannel(
-        -mouse_y * RC_KEYBOARD_MOUSE_PITCH_GAIN);
-    if (!(key & RC_KEY_Q)) { keyboard_q_released = true; }
-    if (keyboard_q_released && (key & RC_KEY_Q))
-    { next->channel[4] = -660; }
+    next->input.channel[0] = RemoteState_ClampChannel(
+        mouse_x * keyboard_sensitivity_config.mouse_yaw_gain);
+    next->input.channel[1] = RemoteState_ClampChannel(
+        -mouse_y * keyboard_sensitivity_config.mouse_pitch_gain);
+    if (!(key & RC_KEY_Q)) { machine.keyboard.q_released = true; }
+    if (machine.keyboard.q_released && (key & RC_KEY_Q))
+    { next->input.channel[4] = -660; }
 
-    next->mode = keyboard_mode;
-    if (keyboard_mode != previous_mode)
-    {
-        keyboard_spin_g_released = false;
-        keyboard_spin_armed = false;
-        if (keyboard_mode == REMOTE_MODE_SPIN ||
-            previous_mode == REMOTE_MODE_SPIN)
-        {
-            keyboard_f_released = false;
-            keyboard_friction_on = false;
-        }
-    }
-    if (keyboard_mode == REMOTE_MODE_SPIN)
-    {
-        if (!(key & RC_KEY_G)) { keyboard_spin_g_released = true; }
-        if (keyboard_spin_g_released && (pressed & RC_KEY_G))
-        { keyboard_spin_armed = !keyboard_spin_armed; }
-        next->spin_enabled = keyboard_spin_armed;
-        keyboard_f_released = false;
-        keyboard_friction_on = false;
-        return;
-    }
-    if (!(key & RC_KEY_F)) { keyboard_f_released = true; }
-    if (keyboard_f_released && (pressed & RC_KEY_F))
-    { keyboard_friction_on = !keyboard_friction_on; }
+    next->mode.chassis = machine.keyboard.spin_active ? REMOTE_MODE_SPIN : machine.keyboard.mode;
+    next->safety.spin_enabled = machine.keyboard.spin_active;
 }
 
 void RemoteState_Init(void)
@@ -105,144 +112,132 @@ void RemoteState_Update(const RC_ctrl_t *control, bool online)
     uint32_t primask;
 
     memset(&next, 0, sizeof(next));
-    next.mode = REMOTE_MODE_DISABLED;
+    next.mode.chassis = REMOTE_MODE_DISABLED;
     if (online && control != NULL)
     {
         uint16_t pressed = 0U;
 
-        next.online = true;
-        memcpy(next.channel, control->rc.ch, sizeof(next.channel));
-        if (keyboard_seen)
-        { pressed = control->key & (uint16_t)~keyboard_previous_key; }
+        next.safety.online = true;
+        memcpy(next.input.channel, control->rc.ch, sizeof(next.input.channel));
+        if (machine.keyboard.seen)
+        { pressed = control->key & (uint16_t)~machine.keyboard.previous_key; }
         else
-        { keyboard_seen = true; }
-        keyboard_previous_key = control->key;
+        { machine.keyboard.seen = true; }
+        machine.keyboard.previous_key = control->key;
 
         if (pressed & RC_KEY_V)
         {
-            keyboard_active = !keyboard_active;
-            keyboard_spin_g_released = false;
-            keyboard_spin_armed = false;
-            keyboard_q_released = false;
-            keyboard_f_released = false;
-            keyboard_friction_on = false;
-            keyboard_mode = REMOTE_MODE_DISABLED;
+            machine.keyboard.active = !machine.keyboard.active;
+            machine.keyboard.spin_g_released = false;
+            machine.keyboard.spin_active = false;
+            machine.keyboard.q_released = false;
+            machine.keyboard.mode = REMOTE_MODE_DISABLED;
         }
 
-        if (control->rc.s[0] == CHASSIS_FOLLOW_SWITCH_POSITION)
+        next.mode.chassis = RemoteState_MapSwitchMode(control->rc.s[0]);
+        if (next.mode.chassis == REMOTE_MODE_DISABLED)
         {
-            next.mode = REMOTE_MODE_FOLLOW;
-        }
-        else if (control->rc.s[0] == CHASSIS_MECHANICAL_SWITCH_POSITION ||
-                 control->rc.s[0] == CHASSIS_MECHANICAL_DOWN_POSITION)
-        {
-            next.mode = REMOTE_MODE_MECHANICAL;
-        }
-        else
-        {
-            next.online = false;
-            memset(next.channel, 0, sizeof(next.channel));
+            next.safety.online = false;
+            memset(next.input.channel, 0, sizeof(next.input.channel));
         }
 
-        if (next.online)
+        if (next.safety.online)
         {
             int16_t wheel = control->rc.ch[4];
-            if (control->rc.s[0] != previous_left_switch)
+            if (control->rc.s[0] != machine.physical.previous_left_switch)
             {
-                previous_left_switch = control->rc.s[0];
-                physical_spin_selected = false;
-                spin_wheel_ready = false;
+                machine.physical.previous_left_switch = control->rc.s[0];
+                machine.physical.spin_selected = false;
+                machine.physical.spin_wheel_ready = false;
             }
-            if (keyboard_active)
+            if (machine.keyboard.active)
             {
-                physical_spin_selected = false;
-                spin_wheel_ready = false;
+                machine.physical.spin_selected = false;
+                machine.physical.spin_wheel_ready = false;
             }
             else
             {
-                if (wheel >= -CHASSIS_SPIN_WHEEL_REARM_RAW &&
-                    wheel <= CHASSIS_SPIN_WHEEL_REARM_RAW)
-                { spin_wheel_ready = true; }
-                else if (spin_wheel_ready &&
-                         wheel >= CHASSIS_SPIN_WHEEL_TRIGGER_RAW)
+                if (wheel >= -chassis_config.spin_wheel_rearm_raw &&
+                    wheel <= chassis_config.spin_wheel_rearm_raw)
+                { machine.physical.spin_wheel_ready = true; }
+                else if (machine.physical.spin_wheel_ready &&
+                         wheel >= chassis_config.spin_wheel_trigger_raw)
                 {
-                    spin_wheel_ready = false;
-                    if (physical_spin_selected)
-                    { physical_spin_selected = false; }
+                    machine.physical.spin_wheel_ready = false;
+                    if (machine.physical.spin_selected)
+                    { machine.physical.spin_selected = false; }
                     else if (control->rc.s[1] == RC_SW_DOWN)
-                    { physical_spin_selected = true; }
+                    { machine.physical.spin_selected = true; }
                 }
-                if (physical_spin_selected)
-                { next.mode = REMOTE_MODE_SPIN; }
+                if (machine.physical.spin_selected)
+                { next.mode.chassis = REMOTE_MODE_SPIN; }
             }
         }
 
-        if (next.online && keyboard_active)
+        if (next.safety.online && machine.keyboard.active)
         {
-            if (keyboard_mode == REMOTE_MODE_DISABLED)
-            { keyboard_mode = next.mode; }
+            if (machine.keyboard.mode == REMOTE_MODE_DISABLED)
+            { machine.keyboard.mode = next.mode.chassis; }
             RemoteState_MapKeyboard(&next, control, pressed);
         }
-        next.keyboard_active = next.online && keyboard_active;
+        next.input.keyboard_active = next.safety.online && machine.keyboard.active;
 
-        if (next.online && !keyboard_active &&
-            next.mode == REMOTE_MODE_SPIN &&
+        if (next.safety.online && !machine.keyboard.active &&
+            next.mode.chassis == REMOTE_MODE_SPIN &&
             (control->rc.s[1] == RC_SW_UP ||
              control->rc.s[1] == RC_SW_MID ||
              control->rc.s[1] == RC_SW_DOWN))
         {
-            if (spin_switch_seen &&
-                control->rc.s[1] != spin_previous_switch)
+            if (machine.physical.spin_switch_seen &&
+                control->rc.s[1] != machine.physical.spin_previous_switch)
             {
-                spin_armed = true;
+                machine.physical.spin_armed = true;
             }
-            spin_switch_seen = true;
-            spin_previous_switch = control->rc.s[1];
-            next.spin_enabled = spin_armed &&
+            machine.physical.spin_switch_seen = true;
+            machine.physical.spin_previous_switch = control->rc.s[1];
+            next.safety.spin_enabled = machine.physical.spin_armed &&
                 control->rc.s[1] == CHASSIS_SPIN_SWITCH_1_POSITION;
         }
         else
         {
-            /* 离开模式、断联或非法档位后，下次进入必须重新拨动。 */
-            spin_switch_seen = false;
-            spin_previous_switch = 0U;
-            spin_armed = false;
+            // 离开模式、断联或非法档位后，下次进入必须重新拨动。
+            machine.physical.spin_switch_seen = false;
+            machine.physical.spin_previous_switch = 0U;
+            machine.physical.spin_armed = false;
         }
 
-        if (next.online)
+        if (next.safety.online)
         {
-            if (next.channel[4] > -CHASSIS_TURN_WHEEL_REARM_RAW)
+            if (next.input.channel[4] > -chassis_config.turn_wheel_rearm_raw)
             {
-                turnaround_wheel_armed = true;
+                machine.physical.turnaround_wheel_armed = true;
             }
-            else if (turnaround_wheel_armed &&
-                     next.channel[4] <= -CHASSIS_TURN_WHEEL_TRIGGER_RAW)
+            else if (machine.physical.turnaround_wheel_armed &&
+                     next.input.channel[4] <= -chassis_config.turn_wheel_trigger_raw)
             {
-                turnaround_wheel_armed = false;
-                turnaround_request_count++;
+                machine.physical.turnaround_wheel_armed = false;
+                machine.physical.turnaround_request_count++;
             }
         }
     }
-    if (!next.online)
+    if (!next.safety.online)
     {
-        turnaround_wheel_armed = false;
-        spin_switch_seen = false;
-        spin_previous_switch = 0U;
-        spin_armed = false;
-        spin_wheel_ready = false;
-        physical_spin_selected = false;
-        previous_left_switch = 0U;
-        keyboard_seen = false;
-        keyboard_previous_key = 0U;
-        keyboard_active = false;
-        keyboard_mode = REMOTE_MODE_DISABLED;
-        keyboard_spin_g_released = false;
-        keyboard_spin_armed = false;
-        keyboard_q_released = false;
-        keyboard_f_released = false;
-        keyboard_friction_on = false;
+        machine.physical.turnaround_wheel_armed = false;
+        machine.physical.spin_switch_seen = false;
+        machine.physical.spin_previous_switch = 0U;
+        machine.physical.spin_armed = false;
+        machine.physical.spin_wheel_ready = false;
+        machine.physical.spin_selected = false;
+        machine.physical.previous_left_switch = 0U;
+        machine.keyboard.seen = false;
+        machine.keyboard.previous_key = 0U;
+        machine.keyboard.active = false;
+        machine.keyboard.mode = REMOTE_MODE_DISABLED;
+        machine.keyboard.spin_g_released = false;
+        machine.keyboard.spin_active = false;
+        machine.keyboard.q_released = false;
     }
-    next.turnaround_request_count = turnaround_request_count;
+    next.event.turnaround_request_count = machine.physical.turnaround_request_count;
 
     primask = __get_PRIMASK();
     __disable_irq();

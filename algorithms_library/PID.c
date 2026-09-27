@@ -1,16 +1,8 @@
-/**
- ******************************************************************************
- * @file    PID.c
- * @brief   位置式 / 增量式 PID 控制器实现
- * @note    PID_Calc 与 PID_Calc_Incremental 不能在同一个控制器实例中混用。
- ******************************************************************************
- */
+// 位置式与增量式 PID 不能共用同一个实例。
 
 #include "PID.h"
 
-/**
-  * @brief  将数值限制在指定正负范围内。
-  */
+// 双向限幅。
 static float PID_Clamp(float value, float limit)
 {
     if (value > limit)
@@ -24,18 +16,13 @@ static float PID_Clamp(float value, float limit)
     return value;
 }
 
-/**
-  * @brief  获取浮点数绝对值，避免引入额外数学库依赖。
-  */
+// 浮点绝对值。
 static float PID_Abs(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
-/**
-  * @brief  初始化 PID 参数，并清空历史控制状态。
-  * @param  control_time: 固定调用周期，单位为秒，例如 0.01f 表示 10 ms。
-  */
+// 初始化参数并清空状态；control_time 单位为秒。
 void PID_Init(PID_Controller_t *pid, float kp, float ki, float kd,
               float integral_limit, float output_limit, float control_time)
 {
@@ -50,14 +37,44 @@ void PID_Init(PID_Controller_t *pid, float kp, float ki, float kd,
     pid->IntegralLimit = PID_Abs(integral_limit);
     pid->OutputLimit = PID_Abs(output_limit);
     pid->ControlTime = (control_time > 0.0f) ? control_time : 0.001f;
+    pid->ConfigKp = kp;
+    pid->ConfigKi = ki;
+    pid->ConfigKd = kd;
+    pid->ConfigIntegralLimit = integral_limit;
+    pid->ConfigOutputLimit = output_limit;
+    pid->ConfigControlTime = control_time;
 
     PID_Reset(pid);
 }
 
-/**
-  * @brief  位置式 PID 计算，带积分限幅和抗积分饱和。
-  * @retval 限幅后的绝对控制输出。
-  */
+void PID_UpdateParameters(PID_Controller_t *pid, float kp, float ki, float kd,
+                          float integral_limit, float output_limit,
+                          float control_time)
+{
+    if (pid == 0) { return; }
+    if (pid->ConfigKp == kp && pid->ConfigKi == ki &&
+        pid->ConfigKd == kd &&
+        pid->ConfigIntegralLimit == integral_limit &&
+        pid->ConfigOutputLimit == output_limit &&
+        pid->ConfigControlTime == control_time)
+    { return; }
+    pid->Kp = kp;
+    pid->Ki = ki;
+    pid->Kd = kd;
+    pid->IntegralLimit = PID_Abs(integral_limit);
+    pid->OutputLimit = PID_Abs(output_limit);
+    if (control_time > 0.0f) { pid->ControlTime = control_time; }
+    pid->Integral = PID_Clamp(pid->Integral, pid->IntegralLimit);
+    pid->Output = PID_Clamp(pid->Output, pid->OutputLimit);
+    pid->ConfigKp = kp;
+    pid->ConfigKi = ki;
+    pid->ConfigKd = kd;
+    pid->ConfigIntegralLimit = integral_limit;
+    pid->ConfigOutputLimit = output_limit;
+    pid->ConfigControlTime = control_time;
+}
+
+// 位置式 PID，带积分和输出限幅。
 float PID_Calc(PID_Controller_t *pid, float setpoint, float current_value)
 {
     float candidate_integral;
@@ -73,7 +90,7 @@ float PID_Calc(PID_Controller_t *pid, float setpoint, float current_value)
     pid->Error = setpoint - current_value;
     derivative = (pid->Error - pid->LastError) / pid->ControlTime;
 
-    /* 先计算候选积分值；输出已饱和且误差仍会加剧饱和时，不再积分。 */
+    // 先计算候选积分值；输出已饱和且误差仍会加剧饱和时，不再积分。
     candidate_integral = PID_Clamp(pid->Integral + pid->Error * pid->ControlTime,
                                    pid->IntegralLimit);
     raw_output = pid->Kp * pid->Error
@@ -99,10 +116,7 @@ float PID_Calc(PID_Controller_t *pid, float setpoint, float current_value)
     return pid->Output;
 }
 
-/**
-  * @brief  增量式 PID 计算。
-  * @note   返回累加并限幅后的绝对输出，而不是单独的 Δu，便于直接驱动电机。
-  */
+// 增量式 PID，返回累加后的限幅输出。
 float PID_Calc_Incremental(PID_Controller_t *pid, float setpoint, float current_value)
 {
     float delta_output;
@@ -127,9 +141,7 @@ float PID_Calc_Incremental(PID_Controller_t *pid, float setpoint, float current_
     return pid->Output;
 }
 
-/**
-  * @brief  清空 PID 的误差与输出历史，保留已经设置好的参数。
-  */
+// 清空控制状态，保留参数。
 void PID_Reset(PID_Controller_t *pid)
 {
     if (pid == 0)
