@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_PWR_LDO_SUPPLY,USE_HAL_DRIVER,STM32H723xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library;../bottom_driven;../bottom_driven/telecontrol;../bottom_driven/motor;../bottom_driven/communication;../bottom_driven/IMU;../user/chassis</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library;../bottom_driven;../bottom_driven/telecontrol;../bottom_driven/motor;../bottom_driven/communication;../bottom_driven/IMU;../user;../user/chassis</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;..\bottom_driven\telecontrol;..\bottom_driven\motor;..\bottom_driven\communication;..\bottom_driven\IMU;..\algorithms_library;..\user\chassis</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;..\bottom_driven\telecontrol;..\bottom_driven\motor;..\bottom_driven\communication;..\bottom_driven\IMU;..\algorithms_library;..\user;..\user\chassis</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -983,18 +983,28 @@
             <File>
               <FileName>application_config.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../user/chassis/application_config.c</FilePath>
+              <FilePath>../user/application_config.c</FilePath>
             </File>
             <File>
               <FileName>application_config.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../user/chassis/application_config.h</FilePath>
+              <FilePath>../user/application_config.h</FilePath>
             </File>
           </Files>
         </Group>
         <Group>
           <GroupName>bottom_driven/communication</GroupName>
           <Files>
+            <File>
+              <FileName>power_communication.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\communication\power_communication.c</FilePath>
+            </File>
+            <File>
+              <FileName>power_communication.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\communication\power_communication.h</FilePath>
+            </File>
             <File>
               <FileName>chassis_can.c</FileName>
               <FileType>1</FileType>
@@ -1060,25 +1070,20 @@
               <FileType>5</FileType>
               <FilePath>..\user\chassis\chassis.h</FilePath>
             </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>user</GroupName>
+          <Files>
             <File>
               <FileName>remote_state.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\user\chassis\remote_state.c</FilePath>
+              <FilePath>../user/remote_state.c</FilePath>
             </File>
             <File>
               <FileName>remote_state.h</FileName>
               <FileType>5</FileType>
-              <FilePath>..\user\chassis\remote_state.h</FilePath>
-            </File>
-            <File>
-              <FileName>power_communication.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\user\chassis\power_communication.c</FilePath>
-            </File>
-            <File>
-              <FileName>power_communication.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\user\chassis\power_communication.h</FilePath>
+              <FilePath>../user/remote_state.h</FilePath>
             </File>
           </Files>
         </Group>
