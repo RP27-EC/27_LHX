@@ -1,6 +1,6 @@
 #include "motor2006.h"
 #include "can.h"
-#include "parameter.h"
+#include "peripheral_config.h"
 #include <string.h>
 
 #define MOTOR2006_CAN_FILTER_BANK        3U
@@ -9,18 +9,18 @@
 #define MOTOR2006_ENCODER_MODULUS        8192
 #define MOTOR2006_ENCODER_HALF           4096
 
-Motor2006_Feedback_t motor2006_feedback; /* 最新反馈。 */
-PID_Controller_t motor2006_speed_pid;    /* 速度 PID。 */
+Motor2006_Feedback_t motor2006_feedback; // 最新反馈。
+PID_Controller_t motor2006_speed_pid; // 速度 PID。
 
-/* CAN1 0x200 的全部电流槽必须由同一处拼接，不能分别发送并互相清零。 */
+// CAN1 0x200 的全部电流槽必须由同一处拼接，不能分别发送并互相清零。
 static int16_t group_current[4];
-static uint32_t motor2006_last_command_ms; /* 最近一次 2006 电流命令时间。 */
-static bool motor2006_command_active; /* 超时保护仅监控非零电流命令。 */
+static uint32_t motor2006_last_command_ms; // 最近一次 2006 电流命令时间。
+static bool motor2006_command_active; // 超时保护仅监控非零电流命令。
 
 static int16_t Motor2006_LimitCurrent(int16_t current)
 {
-    if (current > MOTOR2006_CURRENT_LIMIT) { return MOTOR2006_CURRENT_LIMIT; }
-    if (current < -MOTOR2006_CURRENT_LIMIT) { return -MOTOR2006_CURRENT_LIMIT; }
+    if (current > motor2006_config.current_limit) { return motor2006_config.current_limit; }
+    if (current < -motor2006_config.current_limit) { return -motor2006_config.current_limit; }
     return current;
 }
 
@@ -70,11 +70,11 @@ HAL_StatusTypeDef Motor2006_Init(void)
     memset(group_current, 0, sizeof(group_current));
     motor2006_last_command_ms = HAL_GetTick();
     motor2006_command_active = false;
-    PID_Init(&motor2006_speed_pid, MOTOR2006_SPEED_KP,
-             MOTOR2006_SPEED_KI, MOTOR2006_SPEED_KD,
-             MOTOR2006_SPEED_INTEGRAL_LIMIT,
-             MOTOR2006_SPEED_TORQUE_OUTPUT_LIMIT,
-             MOTOR2006_PID_CONTROL_TIME_S);
+    PID_Init(&motor2006_speed_pid, motor2006_config.speed_kp,
+             motor2006_config.speed_ki, motor2006_config.speed_kd,
+             motor2006_config.speed_integral_limit,
+             motor2006_config.speed_torque_output_limit,
+             motor2006_config.pid_control_time_s);
 
     filter.FilterBank = MOTOR2006_CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDLIST;
@@ -134,10 +134,15 @@ HAL_StatusTypeDef Motor2006_SpeedControl(float target_rotor_rad_s)
     if (!Motor2006_GetFeedback(&feedback) || !Motor2006_OnlineCheck())
     { return Motor2006_Stop(); }
     rotor_rad_s = (float)feedback.speed_rpm * 6.283185307f / 60.0f;
+    PID_UpdateParameters(&motor2006_speed_pid,
+        motor2006_config.speed_kp, motor2006_config.speed_ki,
+        motor2006_config.speed_kd, motor2006_config.speed_integral_limit,
+        motor2006_config.speed_torque_output_limit,
+        motor2006_config.pid_control_time_s);
     torque = PID_Calc(&motor2006_speed_pid, target_rotor_rad_s, rotor_rad_s);
-    current = torque / MOTOR2006_TORQUE_CONSTANT;
-    if (current > MOTOR2006_CURRENT_LIMIT) { current = MOTOR2006_CURRENT_LIMIT; }
-    if (current < -MOTOR2006_CURRENT_LIMIT) { current = -MOTOR2006_CURRENT_LIMIT; }
+    current = torque / motor2006_config.torque_constant;
+    if (current > motor2006_config.current_limit) { current = motor2006_config.current_limit; }
+    if (current < -motor2006_config.current_limit) { current = -motor2006_config.current_limit; }
     return Motor2006_SetCurrent((int16_t)current);
 }
 
@@ -162,7 +167,7 @@ bool Motor2006_OnlineCheck(void)
     Motor2006_Feedback_t feedback;
     return Motor2006_GetFeedback(&feedback) &&
            (uint32_t)(HAL_GetTick() - feedback.last_rx_ms) <
-               MOTOR2006_OFFLINE_TIMEOUT_MS;
+               motor2006_config.offline_timeout_ms;
 }
 
 void Motor2006_Heartbeat(void)
@@ -172,7 +177,7 @@ void Motor2006_Heartbeat(void)
     motor2006_feedback.online = Motor2006_OnlineCheck();
     if (motor2006_command_active &&
         (uint32_t)(now - motor2006_last_command_ms) >=
-            MOTOR2006_COMMAND_TIMEOUT_MS)
+            motor2006_config.command_timeout_ms)
     { (void)Motor2006_SetCurrent(0); }
 }
 

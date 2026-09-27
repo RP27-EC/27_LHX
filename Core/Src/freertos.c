@@ -25,16 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "communication.h"
-#include "cloud_terrace.h"
-#include "imu.h"
-#include "parameter.h"
-#include "motor3508.h"
-#include "motor2006.h"
-#include "dial_motor.h"
-#include "shoot_control.h"
-#include "lift_control.h"
-#include "remote_state.h"
+#include "upper_tasks.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,25 +48,25 @@
 
 /* USER CODE END Variables */
 /* Definitions for communication */
-osThreadId_t communicationHandle; /* 板间通信与遥控解析任务句柄。 */
+osThreadId_t communicationHandle;
 const osThreadAttr_t communication_attributes = {
   .name = "communication",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityHigh7,
 };
-/* Definitions for myTask02 */
-osThreadId_t myTask02Handle; /* 云台电机控制任务句柄。 */
-const osThreadAttr_t myTask02_attributes = {
-  .name = "myTask02",
-  .stack_size = 516 * 4,
-  .priority = (osPriority_t) osPriorityHigh5,
+/* Definitions for gimbalControl */
+osThreadId_t gimbalControlHandle;
+const osThreadAttr_t gimbalControl_attributes = {
+  .name = "gimbalControl",
+  .stack_size = 768 * 4,
+  .priority = (osPriority_t) osPriorityHigh2,
 };
-/* Definitions for myTask03 */
-osThreadId_t myTask03Handle; /* 发射机构控制任务句柄。 */
-const osThreadAttr_t myTask03_attributes = {
-  .name = "myTask03",
+/* Definitions for shootControl */
+osThreadId_t shootControlHandle;
+const osThreadAttr_t shootControl_attributes = {
+  .name = "shootControl",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityAboveNormal,
+  .priority = (osPriority_t) osPriorityHigh2,
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -84,8 +75,8 @@ const osThreadAttr_t myTask03_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void up__down_communication(void *argument);
-void motor_control(void *argument);
-void shoot(void *argument);
+void gimbal_control(void *argument);
+void shoot_control(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -119,11 +110,11 @@ void MX_FREERTOS_Init(void) {
   /* creation of communication */
   communicationHandle = osThreadNew(up__down_communication, NULL, &communication_attributes);
 
-  /* creation of myTask02 */
-  myTask02Handle = osThreadNew(motor_control, NULL, &myTask02_attributes);
+  /* creation of gimbalControl */
+  gimbalControlHandle = osThreadNew(gimbal_control, NULL, &gimbalControl_attributes);
 
-  /* creation of myTask03 */
-  myTask03Handle = osThreadNew(shoot, NULL, &myTask03_attributes);
+  /* creation of shootControl */
+  shootControlHandle = osThreadNew(shoot_control, NULL, &shootControl_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -145,113 +136,39 @@ void MX_FREERTOS_Init(void) {
 void up__down_communication(void *argument)
 {
   /* USER CODE BEGIN up__down_communication */
-  uint32_t next_tick;
-  Communication_RcControl_t remote_control;
-
   (void)argument;
-  ShootControl_Init();
-  LiftControl_Init();
-  RemoteState_Init();
-  next_tick = osKernelGetTickCount();
-  /* Infinite loop */
-  for(;;)
-  {
-    Communication_Process();
-    RemoteState_Update(&remote_control,
-                       Communication_RC_Get(&remote_control));
-
-    next_tick += 1U;
-    if (osDelayUntil(next_tick) != osOK)
-    {
-      next_tick = osKernelGetTickCount();
-    }
-  }
+  UpperTasks_RunCommunication();
   /* USER CODE END up__down_communication */
 }
 
-/* USER CODE BEGIN Header_motor_control */
+/* USER CODE BEGIN Header_gimbal_control */
 /**
-* @brief Function implementing the myTask02 thread.
+* @brief 云台和升降控制任务。
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_motor_control */
-void motor_control(void *argument)
+/* USER CODE END Header_gimbal_control */
+void gimbal_control(void *argument)
 {
-  /* USER CODE BEGIN motor_control */
-  uint32_t next_tick;
-
+  /* USER CODE BEGIN gimbal_control */
   (void)argument;
-  CloudTerrace_Init();
-  next_tick = osKernelGetTickCount();
-  for(;;)
-  {
-    /* 先更新 IMU，再用当次数据执行云台闭环。 */
-    (void)GimbalImu_Update();
-    CloudTerrace_Update();
-
-    next_tick += CLOUD_CONTROL_PERIOD_TICKS;
-    if (osDelayUntil(next_tick) != osOK)
-    {
-      next_tick = osKernelGetTickCount();
-    }
-  }
-  /* USER CODE END motor_control */
+  UpperTasks_RunControl();
+  /* USER CODE END gimbal_control */
 }
 
-/* USER CODE BEGIN Header_shoot */
+/* USER CODE BEGIN Header_shoot_control */
 /**
-* @brief Function implementing the myTask03 thread.
+* @brief 发射机构控制任务。
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_shoot */
-void shoot(void *argument)
+/* USER CODE END Header_shoot_control */
+void shoot_control(void *argument)
 {
-  /* USER CODE BEGIN shoot */
-  uint32_t next_tick;
-
+  /* USER CODE BEGIN shoot_control */
   (void)argument;
-  next_tick = osKernelGetTickCount();
-  /* Infinite loop */
-  for(;;)
-  {
-    bool shoot_motors_online;
-    RemoteState_t remote;
-    RemoteShoot_t shoot_mode;
-
-    /* 1 ms 更新在线状态，反馈超过 100 ms 未刷新即掉线。 */
-    Motor3508_Heartbeat();
-    Motor2006_Heartbeat();
-    DialMotor_Heartbeat();
-    shoot_motors_online =
-        Motor3508_OnlineCheck(SHOOT_LEFT_FRIC_MOTOR_ID) &&
-        Motor3508_OnlineCheck(SHOOT_RIGHT_FRIC_MOTOR_ID) &&
-        DialMotor_OnlineCheck();
-    RemoteState_Get(&remote);
-    LiftControl_Update(&remote);
-
-    /* 遥控拨杆沿用原单发/连发；键鼠左键短按单发、长按连发。 */
-    shoot_mode = remote.online && remote.shoot_armed && shoot_motors_online ?
-        remote.shoot : REMOTE_SHOOT_OFF;
-    if (remote.keyboard_active)
-    {
-      ShootControl_UpdateKeyboard(shoot_mode,
-                                  remote.shoot_single_request_count);
-    }
-    else
-    {
-      ShootControl_ResetKeyboard(remote.shoot_single_request_count);
-      ShootControl_Update(shoot_mode, remote.right_up);
-    }
-
-    next_tick += SHOOT_CONTROL_PERIOD_TICKS;
-    if (osDelayUntil(next_tick) != osOK)
-    {
-      next_tick = osKernelGetTickCount();
-    }
-  }
-  /* USER CODE END shoot */
+  UpperTasks_RunShoot();
+  /* USER CODE END shoot_control */
 }
 
 /* Private application code --------------------------------------------------*/

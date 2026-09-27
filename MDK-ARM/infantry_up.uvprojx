@@ -81,7 +81,7 @@
           </BeforeMake>
           <AfterMake>
             <RunUserProg1>0</RunUserProg1>
-            <RunUserProg2>0</RunUserProg2>
+            <RunUserProg2>1</RunUserProg2>
             <UserProg1Name></UserProg1Name>
             <UserProg2Name></UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/motor;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../user;../bottom_driven;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/motor;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../user;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/motor;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../user;../bottom_driven;../bottom_driven/communication;../bottom_driven/motor4310;../bottom_driven/motor;../bottom_driven/IMU;../algorithms_library;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -573,6 +573,31 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>configuration</GroupName>
+          <Files>
+            <File>
+              <FileName>peripheral_config.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../bottom_driven/peripheral_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>peripheral_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../bottom_driven/peripheral_config.h</FilePath>
+            </File>
+            <File>
+              <FileName>application_config.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/application_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>application_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/application_config.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>bottom_driven/communication</GroupName>
           <Files>
             <File>
@@ -653,6 +678,21 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>user/tasks</GroupName>
+          <Files>
+            <File>
+              <FileName>upper_tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/upper_tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>upper_tasks.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/upper_tasks.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>user/cloud_terrace</GroupName>
           <Files>
             <File>
@@ -664,11 +704,6 @@
               <FileName>cloud_terrace.h</FileName>
               <FileType>5</FileType>
               <FilePath>../user/cloud_terrace.h</FilePath>
-            </File>
-            <File>
-              <FileName>parameter.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>../user/parameter.h</FilePath>
             </File>
             <File>
               <FileName>shoot_control.c</FileName>

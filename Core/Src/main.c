@@ -31,6 +31,8 @@
 #include "motor3508.h"
 #include "motor2006.h"
 #include "dial_motor.h"
+#include "peripheral_config.h"
+#include "application_config.h"
 
 /* USER CODE END Includes */
 
@@ -100,6 +102,8 @@ int main(void)
   MX_CAN2_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  UpperPeripheralConfig_InitAll();
+  UpperApplicationConfig_InitAll();
   if (GimbalImu_Init() != HAL_OK)
   {
     /* Yaw 依赖上板 IMU 稳向，初始化失败时不允许进入电机控制。 */

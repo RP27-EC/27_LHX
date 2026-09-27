@@ -1,12 +1,13 @@
 #include "motor4310.h"
 #include "can.h"
+#include "peripheral_config.h"
 #include <string.h>
 
 #define MOTOR4310_STD_ID_TO_FILTER(id) ((uint32_t)(id) << 5U)
 
-Motor4310_Data_t motor4310_data[MOTOR4310_COUNT]; /* Pitch、Yaw 两轴反馈和状态。 */
-PID_Controller_t motor4310_speed_pids[MOTOR4310_COUNT]; /* 两轴速度环 PID。 */
-PID_Controller_t motor4310_position_pids[MOTOR4310_COUNT]; /* 两轴位置外环 PID。 */
+Motor4310_Data_t motor4310_data[MOTOR4310_COUNT]; // Pitch、Yaw 两轴反馈和状态。
+PID_Controller_t motor4310_speed_pids[MOTOR4310_COUNT]; // 两轴速度环 PID。
+PID_Controller_t motor4310_position_pids[MOTOR4310_COUNT]; // 两轴位置外环 PID。
 
 static bool valid_id(Motor4310_Id_t id)
 {
@@ -57,7 +58,7 @@ static HAL_StatusTypeDef motor_init_can(Motor4310_Id_t id)
     uint32_t rx_id = id == MOTOR4310_PITCH ?
         MOTOR4310_PITCH_FEEDBACK_CAN_ID : MOTOR4310_FEEDBACK_CAN_ID;
 
-    /* CAN1 bank 0: Pitch; CAN2 bank 15: Yaw; bank 14: 板间通信。 */
+    // CAN1 bank 0: Pitch; CAN2 bank 15: Yaw; bank 14: 板间通信。
     filter.FilterBank = id == MOTOR4310_PITCH ? 0U : 15U;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
@@ -86,14 +87,14 @@ HAL_StatusTypeDef Motor4310_Init(void)
     memset(motor4310_data, 0, sizeof(motor4310_data));
     for (i = 0U; i < MOTOR4310_COUNT; i++)
     {
-        PID_Init(&motor4310_speed_pids[i], MOTOR4310_SPEED_KP,
-                 MOTOR4310_SPEED_KI, MOTOR4310_SPEED_KD,
-                 MOTOR4310_SPEED_INTEGRAL_LIMIT, MOTOR4310_SPEED_OUTPUT_LIMIT,
-                 MOTOR4310_CONTROL_PERIOD_S);
-        PID_Init(&motor4310_position_pids[i], MOTOR4310_POSITION_KP,
-                 MOTOR4310_POSITION_KI, MOTOR4310_POSITION_KD,
-                 MOTOR4310_POSITION_INTEGRAL_LIMIT,
-                 MOTOR4310_POSITION_OUTPUT_LIMIT, MOTOR4310_CONTROL_PERIOD_S);
+        PID_Init(&motor4310_speed_pids[i], motor4310_config.speed_kp,
+                 motor4310_config.speed_ki, motor4310_config.speed_kd,
+                 motor4310_config.speed_integral_limit, motor4310_config.speed_output_limit,
+                 motor4310_config.control_period_s);
+        PID_Init(&motor4310_position_pids[i], motor4310_config.position_kp,
+                 motor4310_config.position_ki, motor4310_config.position_kd,
+                 motor4310_config.position_integral_limit,
+                 motor4310_config.position_output_limit, motor4310_config.control_period_s);
     }
     if (motor_init_can(MOTOR4310_PITCH) != HAL_OK) { return HAL_ERROR; }
     return motor_init_can(MOTOR4310_YAW);
@@ -115,7 +116,7 @@ bool Motor4310_OnlineCheck(Motor4310_Id_t id)
     Motor4310_Data_t feedback;
     return Motor4310_GetFeedback(id, &feedback) &&
            (uint32_t)(HAL_GetTick() - feedback.last_rx_ms) <
-           MOTOR4310_OFFLINE_TIMEOUT_MS;
+           motor4310_config.offline_timeout_ms;
 }
 
 bool Motor4310_AllOnline(void)
@@ -145,7 +146,7 @@ void Motor4310_Heartbeat(void)
                  motor4310_data[MOTOR4310_YAW].online;
     if (all_online_previous && !all_online)
     {
-        /* 任意一轴断联，清掉两轴闭环状态以免恢复时突然输出。 */
+        // 任意一轴断联，清掉两轴闭环状态以免恢复时突然输出。
         for (id = MOTOR4310_PITCH; id < MOTOR4310_COUNT; id++)
         { Motor4310_ResetControl(id); }
     }
@@ -161,7 +162,7 @@ HAL_StatusTypeDef Motor4310_EnableMotor(Motor4310_Id_t id)
     if (motor4310_data[id].enabled &&
         (Motor4310_OnlineCheck(id) ||
          (uint32_t)(now - motor4310_data[id].last_enable_ms) <
-         MOTOR4310_OFFLINE_TIMEOUT_MS)) { return HAL_OK; }
+         motor4310_config.offline_timeout_ms)) { return HAL_OK; }
     status = motor_command(id, 0xFCU);
     if (status == HAL_OK)
     {
@@ -181,8 +182,8 @@ HAL_StatusTypeDef Motor4310_DisableMotor(Motor4310_Id_t id)
     if (!motor4310_data[id].enabled &&
         motor4310_data[id].disable_command_sent &&
         (uint32_t)(now - motor4310_data[id].last_disable_ms) <
-        MOTOR4310_DISABLE_RETRY_MS) { return HAL_OK; }
-    /* CAN 入队不是电机回执：安全模式中定期重发失能命令。 */
+        motor4310_config.disable_retry_ms) { return HAL_OK; }
+    // CAN 入队不是电机回执：安全模式中定期重发失能命令。
     status = motor_command(id, 0xFDU);
     if (status == HAL_OK)
     {
@@ -217,22 +218,63 @@ HAL_StatusTypeDef Motor4310_SpeedControlMotor(Motor4310_Id_t id,
                                                int16_t target_speed)
 { return Motor4310_SpeedControlWithFeedforward(id, target_speed, 0); }
 
-HAL_StatusTypeDef Motor4310_SpeedControlWithFeedforward(
-    Motor4310_Id_t id, int16_t target_speed, int16_t feedforward_raw)
+// 固定前馈只随目标速度方向改变；零速附近不施加额外转矩。
+static int16_t motor_yaw_speed_feedforward(float torque_raw,
+                                           float target_speed,
+                                           float deadband)
+{
+    float feedforward = motor4310_config.yaw_speed_feedforward_raw;
+
+    if (feedforward < 0.0f) { feedforward = -feedforward; }
+    if (feedforward > 2047.0f) { feedforward = 2047.0f; }
+    if (deadband < 0.0f) { deadband = -deadband; }
+    if (target_speed > deadband) { torque_raw += feedforward; }
+    else if (target_speed < -deadband) { torque_raw -= feedforward; }
+    if (torque_raw > 2047.0f) { torque_raw = 2047.0f; }
+    else if (torque_raw < -2048.0f) { torque_raw = -2048.0f; }
+    return (int16_t)torque_raw;
+}
+
+static HAL_StatusTypeDef motor_speed_control(
+    Motor4310_Id_t id, int16_t target_speed, int16_t feedforward_raw,
+    const Motor4310_PidProfile_t *profile, bool enable_yaw_feedforward)
 {
     Motor4310_Data_t feedback;
     float output;
     int32_t torque;
     if (!valid_id(id) || !Motor4310_AllOnline() ||
         !Motor4310_GetFeedback(id, &feedback)) { return HAL_ERROR; }
+    if (profile != NULL)
+    {
+        PID_UpdateParameters(&motor4310_speed_pids[id],
+            profile->speed_kp, profile->speed_ki, profile->speed_kd,
+            profile->speed_integral_limit, profile->speed_output_limit,
+            motor4310_config.control_period_s);
+    }
+    else
+    {
+        PID_UpdateParameters(&motor4310_speed_pids[id],
+            motor4310_config.speed_kp, motor4310_config.speed_ki,
+            motor4310_config.speed_kd, motor4310_config.speed_integral_limit,
+            motor4310_config.speed_output_limit, motor4310_config.control_period_s);
+    }
     output = PID_Calc(&motor4310_speed_pids[id], (float)target_speed,
                       (float)feedback.speed);
-    /* 前馈由上层计算；电机驱动不关心云台机械结构。 */
     torque = (int32_t)output + feedforward_raw;
+    if (id == MOTOR4310_YAW && enable_yaw_feedforward)
+    {
+        torque = motor_yaw_speed_feedforward(
+            (float)torque, (float)target_speed,
+            motor4310_config.yaw_speed_feedforward_deadband_raw);
+    }
     if (torque > 2047) { torque = 2047; }
     else if (torque < -2048) { torque = -2048; }
     return Motor4310_SetTorqueRawMotor(id, (int16_t)torque);
 }
+
+HAL_StatusTypeDef Motor4310_SpeedControlWithFeedforward(
+    Motor4310_Id_t id, int16_t target_speed, int16_t feedforward_raw)
+{ return motor_speed_control(id, target_speed, feedforward_raw, NULL, true); }
 
 HAL_StatusTypeDef Motor4310_PositionControlMotor(Motor4310_Id_t id,
                                                   int32_t target_position)
@@ -241,12 +283,34 @@ HAL_StatusTypeDef Motor4310_PositionControlMotor(Motor4310_Id_t id,
 HAL_StatusTypeDef Motor4310_PositionControlWithFeedforward(
     Motor4310_Id_t id, int32_t target_position, int16_t feedforward_raw)
 {
+    return Motor4310_PositionControlWithProfile(id, target_position,
+                                                feedforward_raw, NULL, true);
+}
+
+HAL_StatusTypeDef Motor4310_PositionControlWithProfile(
+    Motor4310_Id_t id, int32_t target_position, int16_t feedforward_raw,
+    const Motor4310_PidProfile_t *profile, bool enable_yaw_feedforward)
+{
     float speed;
     if (!valid_id(id) || !Motor4310_AllOnline()) { return HAL_ERROR; }
+    if (profile != NULL)
+    {
+        PID_UpdateParameters(&motor4310_position_pids[id],
+            profile->position_kp, profile->position_ki, profile->position_kd,
+            profile->position_integral_limit, profile->position_output_limit,
+            motor4310_config.control_period_s);
+    }
+    else
+    {
+        PID_UpdateParameters(&motor4310_position_pids[id],
+            motor4310_config.position_kp, motor4310_config.position_ki,
+            motor4310_config.position_kd, motor4310_config.position_integral_limit,
+            motor4310_config.position_output_limit, motor4310_config.control_period_s);
+    }
     speed = PID_Calc(&motor4310_position_pids[id], (float)target_position,
                      (float)motor4310_data[id].total_angle);
-    return Motor4310_SpeedControlWithFeedforward(id, (int16_t)speed,
-                                                  feedforward_raw);
+    return motor_speed_control(id, (int16_t)speed, feedforward_raw, profile,
+                               enable_yaw_feedforward);
 }
 
 HAL_StatusTypeDef Motor4310_Enable(void)
@@ -285,11 +349,10 @@ void Motor4310_ParseFeedbackMotor(Motor4310_Id_t id,
     counts_per_round = (int32_t)(MOTOR4310_ECD_PER_ROUND + 0.5f);
     if (!motor->initialized)
     {
-        /* 上电后以编码器数值 0 为整体零点，而不是以第一帧位置为零点。 */
-        motor->zero_angle = 0U;
+        // 上电后以编码器数值 0 为整体零点，而不是以第一帧位置为零点。
         motor->last_angle = angle;
         motor->total_angle = (int32_t)angle;
-        /* 例如编码器 65534 应视作零点附近的 -1，而非 +65534。 */
+        // 将跨圈附近的编码器值映射到零点附近。
         if (motor->total_angle > counts_per_round / 2)
         {
             motor->total_angle -= counts_per_round;

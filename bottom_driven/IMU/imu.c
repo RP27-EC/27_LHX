@@ -1,10 +1,10 @@
 #include "imu.h"
-#include "parameter.h"
+#include "peripheral_config.h"
 #include "spi.h"
 #include <math.h>
 #include <string.h>
 
-/* 上板 BMI088：SPI1，PA4 加速度计 CS，PB0 陀螺仪 CS。 */
+// 上板 BMI088：SPI1，PA4 加速度计 CS，PB0 陀螺仪 CS。
 #define IMU_ACCEL_CS_PORT              GPIOA
 #define IMU_ACCEL_CS_PIN               GPIO_PIN_4
 #define IMU_GYRO_CS_PORT               GPIOB
@@ -30,14 +30,16 @@
 #define BMI088_ACC_SENSITIVITY         0.0008974358974f
 #define BMI088_GYRO_SENSITIVITY        0.0010652644360f
 #define IMU_RAD_TO_DEG                 57.2957795131f
+#define IMU_SPI_TIMEOUT_MS             2U
+#define IMU_BURST_MAX_BYTES            6U
 
-static float gyro_bias[3];        /* 标定得到的三轴陀螺仪零偏。 */
-static float integral_feedback[3];/* 姿态融合中用于消除漂移的积分反馈。 */
-static uint32_t last_update_ms;   /* 上一次姿态更新的毫秒时间戳。 */
-static float yaw_last_deg;        /* 上一周期单圈 Yaw 角，用于跨圈判断。 */
-static int32_t yaw_rounds;        /* Yaw 跨越正负 180 度的累计圈数。 */
+static float gyro_bias[3]; // 标定得到的三轴陀螺仪零偏。
+static float integral_feedback[3]; // 姿态融合中用于消除漂移的积分反馈。
+static uint32_t last_update_ms; // 上一次姿态更新的毫秒时间戳。
+static float yaw_last_deg; // 上一周期单圈 Yaw 角，用于跨圈判断。
+static int32_t yaw_rounds; // Yaw 跨越正负 180 度的累计圈数。
 
-volatile GimbalImu_Data_t gimbal_imu; /* 供控制任务和调试器读取的 IMU 快照。 */
+volatile GimbalImu_Data_t gimbal_imu; // 云台 IMU 数据。
 
 static void imu_delay_us(uint32_t us)
 {
@@ -55,61 +57,68 @@ static void imu_delay_us(uint32_t us)
     while ((uint32_t)(DWT->CYCCNT - start) < ticks) { }
 }
 
-static uint8_t imu_spi_byte(uint8_t value)
-{
-    uint8_t result = 0U;
-    (void)HAL_SPI_TransmitReceive(&hspi1, &value, &result, 1U, 10U);
-    return result;
-}
-
 static void imu_select(GPIO_TypeDef *port, uint16_t pin, bool selected)
 {
     HAL_GPIO_WritePin(port, pin, selected ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 
-static void imu_write(GPIO_TypeDef *port, uint16_t pin,
+static bool imu_transfer(GPIO_TypeDef *port, uint16_t pin,
+                         uint8_t *tx, uint8_t *rx, uint16_t size)
+{
+    HAL_StatusTypeDef status;
+
+    imu_select(port, pin, true);
+    status = HAL_SPI_TransmitReceive(&hspi1, tx, rx, size,
+                                     IMU_SPI_TIMEOUT_MS);
+    imu_select(port, pin, false);
+    return status == HAL_OK;
+}
+
+static bool imu_write(GPIO_TypeDef *port, uint16_t pin,
                       uint8_t reg, uint8_t value)
 {
-    imu_select(port, pin, true);
-    (void)imu_spi_byte(reg);
-    (void)imu_spi_byte(value);
-    imu_select(port, pin, false);
+    uint8_t tx[2] = {reg, value};
+    uint8_t rx[2];
+    bool ok = imu_transfer(port, pin, tx, rx, sizeof(tx));
+
     imu_delay_us(150U);
+    return ok;
 }
 
 static uint8_t imu_read_reg(GPIO_TypeDef *port, uint16_t pin,
                             uint8_t reg, bool accel)
 {
-    uint8_t result;
+    uint8_t tx[3] = {0U, 0x55U, 0x55U};
+    uint8_t rx[3];
+    uint16_t size = accel ? 3U : 2U;
 
-    imu_select(port, pin, true);
-    (void)imu_spi_byte(reg | 0x80U);
-    if (accel) { (void)imu_spi_byte(0x55U); }
-    result = imu_spi_byte(0x55U);
-    imu_select(port, pin, false);
-    return result;
+    tx[0] = reg | 0x80U;
+    if (!imu_transfer(port, pin, tx, rx, size)) { return 0xFFU; }
+    return rx[size - 1U];
 }
 
-static void imu_read_burst(GPIO_TypeDef *port, uint16_t pin, uint8_t reg,
+static bool imu_read_burst(GPIO_TypeDef *port, uint16_t pin, uint8_t reg,
                            bool accel, uint8_t *data, uint32_t length)
 {
-    uint32_t index;
+    uint8_t tx[IMU_BURST_MAX_BYTES + 2U];
+    uint8_t rx[IMU_BURST_MAX_BYTES + 2U];
+    uint32_t prefix = accel ? 2U : 1U;
+    uint32_t size = length + prefix;
 
-    imu_select(port, pin, true);
-    (void)imu_spi_byte(reg | 0x80U);
-    if (accel) { (void)imu_spi_byte(0x55U); }
-    for (index = 0U; index < length; index++)
-    {
-        data[index] = imu_spi_byte(0x55U);
-    }
-    imu_select(port, pin, false);
+    if (data == NULL || length == 0U || length > IMU_BURST_MAX_BYTES)
+    { return false; }
+    memset(tx, 0x55, size);
+    tx[0] = reg | 0x80U;
+    if (!imu_transfer(port, pin, tx, rx, (uint16_t)size)) { return false; }
+    memcpy(data, &rx[prefix], length);
+    return true;
 }
 
 static bool imu_verify(GPIO_TypeDef *port, uint16_t pin,
                        uint8_t reg, uint8_t value, bool accel)
 {
-    imu_write(port, pin, reg, value);
-    return imu_read_reg(port, pin, reg, accel) == value;
+    return imu_write(port, pin, reg, value) &&
+           imu_read_reg(port, pin, reg, accel) == value;
 }
 
 static uint8_t bmi088_init(void)
@@ -118,7 +127,7 @@ static uint8_t bmi088_init(void)
     imu_select(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN, false);
     HAL_Delay(10U);
 
-    /* BMI088 加速度计进入 SPI 模式时需要连续读取两次。 */
+    // BMI088 加速度计进入 SPI 模式时需要连续读取两次。
     (void)imu_read_reg(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
                        BMI088_ACC_CHIP_ID, true);
     if (imu_read_reg(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
@@ -126,8 +135,8 @@ static uint8_t bmi088_init(void)
     {
         return 0x80U;
     }
-    imu_write(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
-              BMI088_ACC_SOFTRESET, 0xB6U);
+    if (!imu_write(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
+                   BMI088_ACC_SOFTRESET, 0xB6U)) { return 0x81U; }
     HAL_Delay(80U);
     (void)imu_read_reg(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
                        BMI088_ACC_CHIP_ID, true);
@@ -153,8 +162,8 @@ static uint8_t bmi088_init(void)
     {
         return 0x40U;
     }
-    imu_write(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN,
-              BMI088_GYRO_SOFTRESET, 0xB6U);
+    if (!imu_write(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN,
+                   BMI088_GYRO_SOFTRESET, 0xB6U)) { return 0x41U; }
     HAL_Delay(80U);
     if (imu_read_reg(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN,
                      BMI088_GYRO_CHIP_ID, false) != BMI088_GYRO_CHIP_ID_VALUE)
@@ -178,8 +187,8 @@ static bool imu_read_sensor(float gyro[3], float accel[3], float *temperature)
     uint8_t data[6];
     int16_t raw;
 
-    imu_read_burst(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
-                   BMI088_ACC_X_L, true, data, 6U);
+    if (!imu_read_burst(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
+                        BMI088_ACC_X_L, true, data, 6U)) { return false; }
     raw = (int16_t)(((uint16_t)data[1] << 8) | data[0]);
     accel[0] = (float)raw * BMI088_ACC_SENSITIVITY;
     raw = (int16_t)(((uint16_t)data[3] << 8) | data[2]);
@@ -192,8 +201,8 @@ static bool imu_read_sensor(float gyro[3], float accel[3], float *temperature)
     {
         return false;
     }
-    imu_read_burst(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN,
-                   BMI088_GYRO_X_L, false, data, 6U);
+    if (!imu_read_burst(IMU_GYRO_CS_PORT, IMU_GYRO_CS_PIN,
+                        BMI088_GYRO_X_L, false, data, 6U)) { return false; }
     raw = (int16_t)(((uint16_t)data[1] << 8) | data[0]);
     gyro[0] = (float)raw * BMI088_GYRO_SENSITIVITY;
     raw = (int16_t)(((uint16_t)data[3] << 8) | data[2]);
@@ -201,8 +210,8 @@ static bool imu_read_sensor(float gyro[3], float accel[3], float *temperature)
     raw = (int16_t)(((uint16_t)data[5] << 8) | data[4]);
     gyro[2] = (float)raw * BMI088_GYRO_SENSITIVITY;
 
-    imu_read_burst(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
-                   BMI088_ACC_TEMP_M, true, data, 2U);
+    if (!imu_read_burst(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN,
+                        BMI088_ACC_TEMP_M, true, data, 2U)) { return false; }
     raw = (int16_t)(((uint16_t)data[0] << 3) | (data[1] >> 5));
     if (raw > 1023) { raw -= 2048; }
     *temperature = (float)raw * 0.125f + 23.0f;
@@ -233,12 +242,12 @@ static void imu_update_attitude(float gx, float gy, float gz,
         ex = ay * vz - az * vy;
         ey = az * vx - ax * vz;
         ez = ax * vy - ay * vx;
-        integral_feedback[0] += GIMBAL_IMU_ATTITUDE_KI * ex * dt;
-        integral_feedback[1] += GIMBAL_IMU_ATTITUDE_KI * ey * dt;
-        integral_feedback[2] += GIMBAL_IMU_ATTITUDE_KI * ez * dt;
-        gx += GIMBAL_IMU_ATTITUDE_KP * ex + integral_feedback[0];
-        gy += GIMBAL_IMU_ATTITUDE_KP * ey + integral_feedback[1];
-        gz += GIMBAL_IMU_ATTITUDE_KP * ez + integral_feedback[2];
+        integral_feedback[0] += gimbal_imu_config.attitude_ki * ex * dt;
+        integral_feedback[1] += gimbal_imu_config.attitude_ki * ey * dt;
+        integral_feedback[2] += gimbal_imu_config.attitude_ki * ez * dt;
+        gx += gimbal_imu_config.attitude_kp * ex + integral_feedback[0];
+        gy += gimbal_imu_config.attitude_kp * ey + integral_feedback[1];
+        gz += gimbal_imu_config.attitude_kp * ez + integral_feedback[2];
     }
 
     nq0 = q0 + 0.5f * (-q1 * gx - q2 * gy - q3 * gz) * dt;
@@ -285,7 +294,7 @@ HAL_StatusTypeDef GimbalImu_Init(void)
     yaw_last_deg = 0.0f;
     yaw_rounds = 0;
 
-    /* SPI1 和相关 GPIO 已由 CubeMX 在 MX_SPI1_Init/MX_GPIO_Init 中配置。 */
+    // SPI1 和相关 GPIO 已由 CubeMX 在 MX_SPI1_Init/MX_GPIO_Init 中配置。
     if ((hspi1.Instance != SPI1) ||
         (HAL_SPI_GetState(&hspi1) == HAL_SPI_STATE_RESET))
     {
@@ -297,23 +306,23 @@ HAL_StatusTypeDef GimbalImu_Init(void)
     gimbal_imu.init_error = error;
     if (error != 0U) { return HAL_ERROR; }
 
-    /* 上电时保持云台静止，标定陀螺仪零偏。 */
-    for (index = 0U; index < GIMBAL_IMU_CALIBRATION_SAMPLES; index++)
+    // 上电时保持云台静止，标定陀螺仪零偏。
+    for (index = 0U; index < gimbal_imu_config.calibration_samples; index++)
     {
         if (!imu_read_sensor(gyro, accel, &temperature))
         {
             gimbal_imu.init_error = 0x83U;
             return HAL_ERROR;
         }
-        /* 传感器到车体坐标绕 Z 轴 180°。 */
+        // 传感器到车体坐标绕 Z 轴 180°。
         bias_sum[0] -= gyro[0];
         bias_sum[1] -= gyro[1];
         bias_sum[2] += gyro[2];
         HAL_Delay(1U);
     }
-    gyro_bias[0] = bias_sum[0] / (float)GIMBAL_IMU_CALIBRATION_SAMPLES;
-    gyro_bias[1] = bias_sum[1] / (float)GIMBAL_IMU_CALIBRATION_SAMPLES;
-    gyro_bias[2] = bias_sum[2] / (float)GIMBAL_IMU_CALIBRATION_SAMPLES;
+    gyro_bias[0] = bias_sum[0] / (float)gimbal_imu_config.calibration_samples;
+    gyro_bias[1] = bias_sum[1] / (float)gimbal_imu_config.calibration_samples;
+    gyro_bias[2] = bias_sum[2] / (float)gimbal_imu_config.calibration_samples;
     gimbal_imu.calibrated = true;
     gimbal_imu.online = true;
     last_update_ms = HAL_GetTick();
@@ -334,7 +343,7 @@ bool GimbalImu_Update(void)
         return false;
     }
 
-    /* 绕 Z 轴 180° 的坐标变换：X、Y 取反，Z 不变。 */
+    // 绕 Z 轴 180° 的坐标变换：X、Y 取反，Z 不变。
     gyro[0] = -gyro[0] - gyro_bias[0];
     gyro[1] = -gyro[1] - gyro_bias[1];
     gyro[2] =  gyro[2] - gyro_bias[2];
@@ -344,12 +353,12 @@ bool GimbalImu_Update(void)
     now_ms = HAL_GetTick();
     dt = (float)(uint32_t)(now_ms - last_update_ms) * 0.001f;
     last_update_ms = now_ms;
-    if (dt <= 0.0f || dt > 0.02f) { dt = GIMBAL_IMU_UPDATE_PERIOD_S; }
+    if (dt <= 0.0f || dt > 0.02f) { dt = gimbal_imu_config.update_period_s; }
 
     memcpy((void *)gimbal_imu.gyro_rad_s, gyro, sizeof(gyro));
     memcpy((void *)gimbal_imu.accel_m_s2, accel, sizeof(accel));
     gimbal_imu.temperature_c = temperature;
-    gimbal_imu.yaw_rate_deg_s += GIMBAL_IMU_YAW_RATE_FILTER_ALPHA *
+    gimbal_imu.yaw_rate_deg_s += gimbal_imu_config.yaw_rate_filter_alpha *
         (gyro[2] * IMU_RAD_TO_DEG - gimbal_imu.yaw_rate_deg_s);
     imu_update_attitude(gyro[0], gyro[1], gyro[2],
                         accel[0], accel[1], accel[2], dt);

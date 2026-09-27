@@ -4,6 +4,7 @@
 #include "motor3508.h"
 #include "motor2006.h"
 #include "dial_motor.h"
+#include "peripheral_config.h"
 #include <float.h>
 #include <string.h>
 
@@ -16,18 +17,18 @@
 #define COMM_RC_PART_D2             0x02U
 
 static volatile Communication_CanRxFrame_t
-    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; /* D1~D5 各自的最新接收快照。 */
-static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE]; /* D1~D3 拼接中的遥控原始帧。 */
-static volatile uint8_t communication_rc_assembly_mask; /* 已收到 D1/D2 分片的位掩码。 */
-static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; /* 提交给任务解析的完整遥控快照。 */
-static volatile bool communication_rc_snapshot_ready; /* 是否有完整遥控帧等待任务解析。 */
-static volatile uint32_t communication_rc_snapshot_ms; /* 完整遥控帧拼接完成的时间。 */
+    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; // D1~D5 各自的最新接收快照。
+static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE]; // D1~D3 拼接中的遥控原始帧。
+static volatile uint8_t communication_rc_assembly_mask; // 已收到 D1/D2 分片的位掩码。
+static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; // 提交给任务解析的完整遥控快照。
+static volatile bool communication_rc_snapshot_ready; // 是否有完整遥控帧等待任务解析。
+static volatile uint32_t communication_rc_snapshot_ms; // 完整遥控帧拼接完成的时间。
 
-Communication_RcControl_t communication_rc; /* 当前已解析的遥控器数据。 */
-volatile bool communication_rc_online = false; /* 遥控链路当前是否在线。 */
-volatile uint32_t communication_rc_valid_count = 0U; /* 累计有效遥控帧数。 */
-volatile uint32_t communication_rc_last_valid_ms = 0U; /* 最近有效遥控帧时间。 */
-volatile uint32_t communication_rc_assembly_error_count = 0U; /* D1~D3 拼帧错误数。 */
+Communication_RcControl_t communication_rc; // 当前已解析的遥控器数据。
+volatile bool communication_rc_online = false; // 遥控链路当前是否在线。
+volatile uint32_t communication_rc_valid_count = 0U; // 累计有效遥控帧数。
+volatile uint32_t communication_rc_last_valid_ms = 0U; // 最近有效遥控帧时间。
+volatile uint32_t communication_rc_assembly_error_count = 0U; // D1~D3 拼帧错误数。
 
 static void Communication_RC_SetSafe(void)
 {
@@ -58,7 +59,7 @@ static bool Communication_RC_D3PaddingIsZero(
     return true;
 }
 
-/* 中断中只做分包拼接和快照提交，不在这里进行业务解析。 */
+// 中断中只做分包拼接和快照提交，不在这里进行业务解析。
 static void Communication_RC_AcceptFragment(
     uint16_t std_id,
     const uint8_t data[COMM_CAN_FRAME_SIZE])
@@ -104,7 +105,7 @@ static void Communication_RC_AcceptFragment(
         communication_rc_assembly_mask = 0U;
     }
 
-    /* D4 底盘角速度、D5 四轮转速由通用 CAN 快照保存。 */
+    // D4 底盘角速度、D5 四轮转速由通用 CAN 快照保存。
 }
 
 static int32_t Communication_CAN_RxIndex(uint16_t std_id)
@@ -122,11 +123,7 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
     CAN_FilterTypeDef filter = {0};
     HAL_StatusTypeDef status;
 
-    /*
-     * bxCAN 16 位列表模式一组正好容纳 4 个标准 ID，因而只接收
-     * 0xD1、0xD2、0xD3、0xD4；D5 由 bank 16 单独接收。
-     * CAN2 使用从过滤器组 14 开始的共享过滤器区域。
-     */
+    // CAN2 bank 14 接收 D1~D4，bank 16 接收 D5。
     filter.FilterBank = COMM_CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDLIST;
     filter.FilterScale = CAN_FILTERSCALE_16BIT;
@@ -144,7 +141,7 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
         return status;
     }
 
-    /* bank 15 留给 Yaw 电机；bank 16 单独精确接收 D5 四轮转速。 */
+    // bank 15 留给 Yaw 电机；bank 16 单独精确接收 D5 四轮转速。
     filter.FilterBank = COMM_CAN_WHEEL_FILTER_BANK;
     filter.FilterIdHigh = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D5);
     filter.FilterIdLow = filter.FilterIdHigh;
@@ -165,7 +162,7 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
     communication_rc_assembly_error_count = 0U;
     Communication_RC_SetSafe();
 
-    /* Yaw 电机与板间通信共用 CAN2，允许 Motor4310_Init 已启动总线。 */
+    // Yaw 电机与板间通信共用 CAN2，允许 Motor4310_Init 已启动总线。
     if (HAL_CAN_GetState(&hcan2) == HAL_CAN_STATE_READY)
     {
         status = HAL_CAN_Start(&hcan2);
@@ -237,34 +234,13 @@ HAL_StatusTypeDef Communication_CAN_SendLiftLock(bool hold, uint8_t sequence)
     return Communication_CAN_SendC2(data);
 }
 
-bool Communication_CAN_ChassisWheelsStopped(uint32_t request_start_ms)
-{
-    Communication_CanRxFrame_t frame;
-    uint32_t index;
-    int16_t speed;
-
-    if (!Communication_CAN_GetLatest(COMM_CAN_RX_ID_D5, &frame) ||
-        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
-            LIFT_CHASSIS_SPEED_TIMEOUT_MS ||
-        (int32_t)(frame.last_rx_ms - request_start_ms) < 0)
-    { return false; }
-    for (index = 0U; index < 4U; index++)
-    {
-        speed = (int16_t)((uint16_t)frame.data[index * 2U] |
-                          ((uint16_t)frame.data[index * 2U + 1U] << 8U));
-        if (speed > LIFT_CHASSIS_STOP_SPEED_RPM ||
-            speed < -LIFT_CHASSIS_STOP_SPEED_RPM)
-        { return false; }
-    }
-    return true;
-}
-
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg)
 {
-    return Communication_CAN_SendYawState(angle_deg, false);
+    return Communication_CAN_SendYawState(angle_deg, false, false);
 }
 
-HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning)
+HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
+                                                  bool allow_turn)
 {
     uint8_t data[COMM_CAN_FRAME_SIZE] = {0};
     int16_t encoded;
@@ -276,7 +252,8 @@ HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning)
     encoded = (int16_t)(angle_deg * 100.0f);
     data[0] = (uint8_t)(uint16_t)encoded;
     data[1] = (uint8_t)((uint16_t)encoded >> 8);
-    data[2] = turning ? 0x03U : 0x01U;
+    data[2] = 0x01U | (turning ? 0x02U : 0U) |
+              (allow_turn ? 0x04U : 0U);
     return Communication_CAN_SendC1(data);
 }
 
@@ -288,7 +265,7 @@ bool Communication_CAN_GetChassisYawRate(float *rate_deg_s)
     if (rate_deg_s == NULL ||
         !Communication_CAN_GetLatest(COMM_CAN_RX_ID_D4, &frame) ||
         (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
-            CLOUD_FOLLOW_RATE_TIMEOUT_MS ||
+            communication_config.yaw_rate_timeout_ms ||
         (frame.data[2] & 0x01U) == 0U)
     {
         return false;
@@ -325,7 +302,7 @@ bool Communication_CAN_GetLatest(uint16_t std_id,
     return frame->received;
 }
 
-bool Communication_RC_Parse(
+static bool Communication_RC_Parse(
     const uint8_t frame[COMM_RC_FRAME_SIZE],
     Communication_RcControl_t *control)
 {
@@ -431,7 +408,7 @@ void Communication_Process(void)
     now_ms = HAL_GetTick();
     if ((!communication_rc_online) ||
         ((uint32_t)(now_ms - communication_rc_last_valid_ms) >=
-         COMM_RC_TIMEOUT_MS))
+         communication_config.timeout_ms))
     {
         Communication_RC_SetSafe();
     }
@@ -452,7 +429,7 @@ bool Communication_RC_Get(Communication_RcControl_t *control)
     *control = communication_rc;
     online = communication_rc_online &&
              (uint32_t)(HAL_GetTick() - communication_rc_last_valid_ms) <
-             COMM_RC_TIMEOUT_MS;
+             communication_config.timeout_ms;
     __set_PRIMASK(saved_primask);
 
     return online;
@@ -462,18 +439,10 @@ bool Communication_RC_IsOnline(void)
 {
     return communication_rc_online &&
            (uint32_t)(HAL_GetTick() - communication_rc_last_valid_ms) <
-           COMM_RC_TIMEOUT_MS;
+           communication_config.timeout_ms;
 }
 
-__weak void Communication_CAN_OnReceive(
-    uint16_t std_id,
-    const uint8_t data[COMM_CAN_FRAME_SIZE])
-{
-    (void)std_id;
-    (void)data;
-}
-
-/* CAN1/2 RX0 IRQ 均由 CubeMX 生成，在此统一分发。 */
+// CAN1/2 RX0 IRQ 均由 CubeMX 生成，在此统一分发。
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     CAN_RxHeaderTypeDef header;
@@ -490,7 +459,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         return;
     }
 
-    /* 一次中断排空 FIFO0，避免高频报文在队列中积压。 */
+    // 一次中断排空 FIFO0，避免高频报文在队列中积压。
     while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0U)
     {
         if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &header, data) != HAL_OK)
@@ -507,7 +476,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
         if (hcan->Instance == CAN1)
         {
-            /* CAN1 共用：Pitch 4310、两路 3508、M2006 和 LK4005。 */
+            // CAN1 共用：Pitch 4310、两路 3508、M2006 和 LK4005。
             Motor4310_ProcessCanFrame(hcan, header.StdId, data);
             Motor3508_ProcessCanFrame(hcan, header.StdId, data);
             Motor2006_ProcessCanFrame(hcan, header.StdId, data);
@@ -534,6 +503,5 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         communication_rx_frames[index].received = true;
 
         Communication_RC_AcceptFragment((uint16_t)header.StdId, data);
-        Communication_CAN_OnReceive((uint16_t)header.StdId, data);
     }
 }

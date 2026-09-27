@@ -1,25 +1,28 @@
 #include "dial_motor.h"
 #include "can.h"
+#include "peripheral_config.h"
 #include <string.h>
 
 #define DIAL_MOTOR_CAN_FILTER_BANK        2U
 #define DIAL_MOTOR_CAN_SLAVE_START_BANK   14U
 #define DIAL_MOTOR_STD_ID_TO_FILTER(id)   ((uint32_t)(id) << 5U)
 
-DialMotor_Feedback_t dial_motor_feedback; /* LK4005 拨盘电机反馈快照。 */
-PID_Controller_t dial_motor_position_pid; /* 拨盘累计位置外环 PID。 */
-PID_Controller_t dial_motor_speed_pid;    /* 拨盘速度内环 PID。 */
-PID_Controller_t dial_motor_continuous_speed_pid; /* 连发独立速度环，供调试器观察。 */
+DialMotor_Feedback_t dial_motor_feedback; // LK4005 拨盘电机反馈快照。
+PID_Controller_t dial_motor_position_pid; // 拨盘累计位置外环 PID。
+PID_Controller_t dial_motor_speed_pid; // 拨盘速度内环 PID。
+PID_Controller_t dial_motor_continuous_speed_pid; // 连发速度环。
+static uint32_t dial_motor_last_tx_ms; // 上一条控制帧入队的时间。
+static bool dial_motor_tx_sent; // 上电后是否发过控制帧。
 
 static int16_t DialMotor_LimitCurrent(int16_t current)
 {
-    if (current > DIAL_MOTOR_CURRENT_LIMIT)
+    if (current > dial_motor_config.current_limit)
     {
-        return DIAL_MOTOR_CURRENT_LIMIT;
+        return dial_motor_config.current_limit;
     }
-    if (current < -DIAL_MOTOR_CURRENT_LIMIT)
+    if (current < -dial_motor_config.current_limit)
     {
-        return -DIAL_MOTOR_CURRENT_LIMIT;
+        return -dial_motor_config.current_limit;
     }
     return current;
 }
@@ -29,10 +32,24 @@ static HAL_StatusTypeDef DialMotor_Send(
 {
     CAN_TxHeaderTypeDef header = {0};
     uint32_t mailbox;
+    uint32_t now_ms;
+    HAL_StatusTypeDef status;
 
     if (data == NULL)
     {
         return HAL_ERROR;
+    }
+
+    // 保留收发间隔；未到时间留给下一控制周期重试，不阻塞发射任务。
+    now_ms = HAL_GetTick();
+    if ((dial_motor_feedback.received &&
+         (uint32_t)(now_ms - dial_motor_feedback.last_rx_ms) <
+             dial_motor_config.tx_guard_ms) ||
+        (dial_motor_tx_sent &&
+         (uint32_t)(now_ms - dial_motor_last_tx_ms) <
+             dial_motor_config.tx_guard_ms))
+    {
+        return HAL_BUSY;
     }
     if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) == 0U)
     {
@@ -44,7 +61,13 @@ static HAL_StatusTypeDef DialMotor_Send(
     header.RTR = CAN_RTR_DATA;
     header.DLC = DIAL_MOTOR_FRAME_SIZE;
     header.TransmitGlobalTime = DISABLE;
-    return HAL_CAN_AddTxMessage(&hcan1, &header, (uint8_t *)data, &mailbox);
+    status = HAL_CAN_AddTxMessage(&hcan1, &header, (uint8_t *)data, &mailbox);
+    if (status == HAL_OK)
+    {
+        dial_motor_last_tx_ms = HAL_GetTick();
+        dial_motor_tx_sent = true;
+    }
+    return status;
 }
 
 static HAL_StatusTypeDef DialMotor_SendSimpleCommand(uint8_t command)
@@ -60,27 +83,29 @@ HAL_StatusTypeDef DialMotor_Init(void)
     HAL_StatusTypeDef status;
 
     memset(&dial_motor_feedback, 0, sizeof(dial_motor_feedback));
+    dial_motor_last_tx_ms = 0U;
+    dial_motor_tx_sent = false;
     PID_Init(&dial_motor_position_pid,
-             DIAL_MOTOR_POSITION_KP,
-             DIAL_MOTOR_POSITION_KI,
-             DIAL_MOTOR_POSITION_KD,
-             DIAL_MOTOR_POSITION_INTEGRAL_LIMIT,
-             DIAL_MOTOR_POSITION_SPEED_LIMIT_DPS,
-             DIAL_MOTOR_PID_CONTROL_TIME_S);
+             dial_motor_config.position_kp,
+             dial_motor_config.position_ki,
+             dial_motor_config.position_kd,
+             dial_motor_config.position_integral_limit,
+             dial_motor_config.position_speed_limit_dps,
+             dial_motor_config.pid_control_time_s);
     PID_Init(&dial_motor_speed_pid,
-             DIAL_MOTOR_SPEED_KP,
-             DIAL_MOTOR_SPEED_KI,
-             DIAL_MOTOR_SPEED_KD,
-             DIAL_MOTOR_SPEED_INTEGRAL_LIMIT,
-             DIAL_MOTOR_SPEED_OUTPUT_LIMIT,
-             DIAL_MOTOR_PID_CONTROL_TIME_S);
+             dial_motor_config.speed_kp,
+             dial_motor_config.speed_ki,
+             dial_motor_config.speed_kd,
+             dial_motor_config.speed_integral_limit,
+             dial_motor_config.speed_output_limit,
+             dial_motor_config.pid_control_time_s);
     PID_Init(&dial_motor_continuous_speed_pid,
-             DIAL_MOTOR_CONTINUOUS_SPEED_KP,
-             DIAL_MOTOR_CONTINUOUS_SPEED_KI,
-             DIAL_MOTOR_CONTINUOUS_SPEED_KD,
-             DIAL_MOTOR_SPEED_INTEGRAL_LIMIT,
-             DIAL_MOTOR_SPEED_OUTPUT_LIMIT,
-             DIAL_MOTOR_PID_CONTROL_TIME_S);
+             dial_motor_config.continuous_speed_kp,
+             dial_motor_config.continuous_speed_ki,
+             dial_motor_config.continuous_speed_kd,
+             dial_motor_config.speed_integral_limit,
+             dial_motor_config.speed_output_limit,
+             dial_motor_config.pid_control_time_s);
 
     filter.FilterBank = DIAL_MOTOR_CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
@@ -165,6 +190,17 @@ HAL_StatusTypeDef DialMotor_PositionControl(int64_t target_encoder_total)
         return HAL_ERROR;
     }
 
+    PID_UpdateParameters(&dial_motor_position_pid,
+        dial_motor_config.position_kp, dial_motor_config.position_ki,
+        dial_motor_config.position_kd,
+        dial_motor_config.position_integral_limit,
+        dial_motor_config.position_speed_limit_dps,
+        dial_motor_config.pid_control_time_s);
+    PID_UpdateParameters(&dial_motor_speed_pid,
+        dial_motor_config.speed_kp, dial_motor_config.speed_ki,
+        dial_motor_config.speed_kd, dial_motor_config.speed_integral_limit,
+        dial_motor_config.speed_output_limit,
+        dial_motor_config.pid_control_time_s);
     target_speed_dps = PID_Calc(&dial_motor_position_pid,
                                 (float)target_encoder_total,
                                 (float)feedback.encoder_total);
@@ -186,6 +222,13 @@ HAL_StatusTypeDef DialMotor_SpeedControl(float target_speed_dps)
         return HAL_ERROR;
     }
 
+    PID_UpdateParameters(&dial_motor_continuous_speed_pid,
+        dial_motor_config.continuous_speed_kp,
+        dial_motor_config.continuous_speed_ki,
+        dial_motor_config.continuous_speed_kd,
+        dial_motor_config.speed_integral_limit,
+        dial_motor_config.speed_output_limit,
+        dial_motor_config.pid_control_time_s);
     current = PID_Calc(&dial_motor_continuous_speed_pid,
                        target_speed_dps, (float)feedback.speed_dps);
     return DialMotor_SetTorqueCurrent((int16_t)current);
@@ -211,7 +254,7 @@ bool DialMotor_OnlineCheck(void)
     DialMotor_Feedback_t feedback;
     return DialMotor_GetFeedback(&feedback) &&
            (uint32_t)(HAL_GetTick() - feedback.last_rx_ms) <
-               DIAL_MOTOR_OFFLINE_TIMEOUT_MS;
+               dial_motor_config.offline_timeout_ms;
 }
 
 void DialMotor_Heartbeat(void)
@@ -239,7 +282,7 @@ void DialMotor_ProcessCanFrame(
     dial_motor_feedback.received = true;
     dial_motor_feedback.online = true;
 
-    /* 这类应答共用相同的温度/电流/速度/编码器布局。 */
+    // 这类应答共用相同的温度/电流/速度/编码器布局。
     if (data[0] != DIAL_MOTOR_CMD_TORQUE && data[0] != 0xA2U &&
         (data[0] < 0xA3U || data[0] > 0xA8U))
     {

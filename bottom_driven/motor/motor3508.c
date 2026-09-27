@@ -1,37 +1,38 @@
 #include "motor3508.h"
 #include "motor2006.h"
 #include "can.h"
+#include "peripheral_config.h"
 #include <string.h>
 
 #define MOTOR3508_CAN_FILTER_BANK          1U
 #define MOTOR3508_CAN_SLAVE_START_BANK     14U
 #define MOTOR3508_STD_ID_TO_FILTER16(id)   ((uint32_t)(id) << 5U)
 
-Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT]; /* 两个摩擦轮电机反馈。 */
-PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];    /* 两个摩擦轮速度 PID。 */
+Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT]; // 两个摩擦轮电机反馈。
+PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT]; // 两个摩擦轮速度 PID。
 
 static int16_t Motor3508_LimitCurrent(float value)
 {
-    if (value > (float)MOTOR3508_CURRENT_LIMIT)
+    if (value > (float)motor3508_config.current_limit)
     {
-        return (int16_t)MOTOR3508_CURRENT_LIMIT;
+        return (int16_t)motor3508_config.current_limit;
     }
-    if (value < -(float)MOTOR3508_CURRENT_LIMIT)
+    if (value < -(float)motor3508_config.current_limit)
     {
-        return (int16_t)-MOTOR3508_CURRENT_LIMIT;
+        return (int16_t)-motor3508_config.current_limit;
     }
     return (int16_t)value;
 }
 
 static float Motor3508_LimitSpeed(float value)
 {
-    if (value > MOTOR3508_MAX_SPEED_RPM)
+    if (value > motor3508_config.max_speed_rpm)
     {
-        return MOTOR3508_MAX_SPEED_RPM;
+        return motor3508_config.max_speed_rpm;
     }
-    if (value < -MOTOR3508_MAX_SPEED_RPM)
+    if (value < -motor3508_config.max_speed_rpm)
     {
-        return -MOTOR3508_MAX_SPEED_RPM;
+        return -motor3508_config.max_speed_rpm;
     }
     return value;
 }
@@ -46,21 +47,21 @@ HAL_StatusTypeDef Motor3508_Init(void)
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
         PID_Init(&motor3508_speed_pid[index],
-                 MOTOR3508_SPEED_KP,
-                 MOTOR3508_SPEED_KI,
-                 MOTOR3508_SPEED_KD,
-                 MOTOR3508_SPEED_INTEGRAL_LIMIT,
-                 MOTOR3508_SPEED_OUTPUT_LIMIT,
-                 MOTOR3508_PID_CONTROL_TIME_S);
+                 motor3508_config.speed_kp,
+                 motor3508_config.speed_ki,
+                 motor3508_config.speed_kd,
+                 motor3508_config.speed_integral_limit,
+                 motor3508_config.speed_output_limit,
+                 motor3508_config.pid_control_time_s);
     }
 
-    /* 16 bit ID-list 模式精确接收两个摩擦轮 0x201/0x202。 */
+    // 16 bit ID-list 模式精确接收两个摩擦轮 0x201/0x202。
     filter.FilterBank = MOTOR3508_CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDLIST;
     filter.FilterScale = CAN_FILTERSCALE_16BIT;
     filter.FilterIdHigh = MOTOR3508_STD_ID_TO_FILTER16(0x201U);
     filter.FilterIdLow = MOTOR3508_STD_ID_TO_FILTER16(0x202U);
-    /* 同一 bank 有四个 16 bit list 槽，后两槽重复有效 ID。 */
+    // 同一 bank 有四个 16 bit list 槽，后两槽重复有效 ID。
     filter.FilterMaskIdHigh = MOTOR3508_STD_ID_TO_FILTER16(0x201U);
     filter.FilterMaskIdLow = MOTOR3508_STD_ID_TO_FILTER16(0x202U);
     filter.FilterFIFOAssignment = CAN_RX_FIFO0;
@@ -72,7 +73,7 @@ HAL_StatusTypeDef Motor3508_Init(void)
         return status;
     }
 
-    /* CAN1 通常已由 4310 驱动启动，仍允许本驱动独立初始化。 */
+    // CAN1 通常已由 4310 驱动启动，仍允许本驱动独立初始化。
     if (HAL_CAN_GetState(&hcan1) == HAL_CAN_STATE_READY)
     {
         status = HAL_CAN_Start(&hcan1);
@@ -93,7 +94,7 @@ HAL_StatusTypeDef Motor3508_Init(void)
 HAL_StatusTypeDef Motor3508_SendCurrent(int16_t current_1,
                                        int16_t current_2)
 {
-    /* 0x200 群组帧第 4 槽由 M2006 使用，统一拼帧避免摩擦轮清零该槽。 */
+    // 0x200 群组帧第 4 槽由 M2006 使用，统一拼帧避免摩擦轮清零该槽。
     return Motor2006_SendFrictionCurrents(
         Motor3508_LimitCurrent((float)current_1),
         Motor3508_LimitCurrent((float)current_2));
@@ -107,10 +108,15 @@ HAL_StatusTypeDef Motor3508_SpeedControl(int16_t target_speed_rpm)
     uint32_t index;
 
     base_target = Motor3508_LimitSpeed((float)target_speed_rpm);
-    target[0] = base_target * MOTOR3508_LEFT_DIRECTION;
-    target[1] = base_target * MOTOR3508_RIGHT_DIRECTION;
+    target[0] = base_target * motor3508_config.left_direction;
+    target[1] = base_target * motor3508_config.right_direction;
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
+        PID_UpdateParameters(&motor3508_speed_pid[index],
+            motor3508_config.speed_kp, motor3508_config.speed_ki,
+            motor3508_config.speed_kd, motor3508_config.speed_integral_limit,
+            motor3508_config.speed_output_limit,
+            motor3508_config.pid_control_time_s);
         current[index] = Motor3508_LimitCurrent(
             PID_Calc(&motor3508_speed_pid[index],
                      target[index],
@@ -155,7 +161,7 @@ bool Motor3508_OnlineCheck(uint8_t motor_id)
     Motor3508_Feedback_t feedback;
     return Motor3508_GetFeedback(motor_id, &feedback) &&
            (uint32_t)(HAL_GetTick() - feedback.last_rx_ms) <
-               MOTOR3508_OFFLINE_TIMEOUT_MS;
+               motor3508_config.offline_timeout_ms;
 }
 
 bool Motor3508_AllOnline(void)

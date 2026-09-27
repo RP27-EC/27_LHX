@@ -9,31 +9,85 @@ extern "C" {
 #include <stdint.h>
 #include "remote_state.h"
 
+#define SHOOT_LEFT_FRIC_MOTOR_ID     1U
+#define SHOOT_RIGHT_FRIC_MOTOR_ID    2U
+#define SHOOT_DIAL_ONE_BULLET_COUNTS 65536LL
+
 typedef enum
 {
-    SHOOT_DIAL_IDLE = 0,       /* 保持当前位置，等待单发触发。 */
-    SHOOT_DIAL_FEED,           /* 向累计单发目标正向供弹。 */
-    SHOOT_DIAL_CONTINUOUS,     /* 速度闭环连续供弹。 */
-    SHOOT_DIAL_STUCK_REVERSE,  /* 堵转后沿反方向退让。 */
-    SHOOT_DIAL_STUCK_RELOAD    /* 退让后重新追踪原供弹目标。 */
+    SHOOT_DIAL_IDLE = 0, // 保持当前位置，等待单发触发。
+    SHOOT_DIAL_FEED, // 向累计单发目标正向供弹。
+    SHOOT_DIAL_CONTINUOUS, // 速度闭环连续供弹。
+    SHOOT_DIAL_STUCK_REVERSE, // 堵转后沿反方向退让。
+    SHOOT_DIAL_STUCK_RELOAD // 退让后重新追踪原供弹目标。
 } ShootDialState_t;
 
-extern volatile ShootDialState_t shoot_dial_state; /* 当前拨盘状态机状态。 */
-extern volatile uint32_t shoot_single_count;       /* 已完成的单发次数。 */
-extern volatile uint32_t shoot_dial_stuck_count;  /* 拨盘堵转恢复次数。 */
+typedef struct
+{
+    ShootDialState_t state; // 拨盘当前状态枚举。
+    uint32_t state_start_ms; // 当前状态进入时间，ms。
+    int64_t target; // 拨盘累计编码器目标。
+    bool target_synced; // 目标已与实测位置同步。
+} ShootDialMotionState_t;
+
+typedef struct
+{
+    uint32_t block_tick; // 堵转条件连续满足的控制周期数。
+    int64_t feed_target; // 退让前保存的供弹目标。
+    int8_t motion_direction; // 堵转前方向，取值为 -1 或 1。
+    bool continuous; // 堵转前处于连发模式。
+} ShootDialRecoveryState_t;
+
+typedef struct
+{
+    bool stopped; // 安全态零电流命令已成功入队。
+    uint32_t last_stop_ms; // 最近一次零电流命令入队时间，ms。
+} ShootDialStopState_t;
+
+typedef struct
+{
+    bool last_right_up; // 上周期右拨杆上档状态。
+    RemoteShoot_t last_mode; // 上周期发射模式枚举。
+} ShootRemoteEdgeState_t;
+
+typedef struct
+{
+    uint32_t single_seen; // 已读取的键鼠短按事件序号。
+    bool single_pending; // 暂存下一次短按请求。
+    bool single_active; // 单发需保持位控至完成。
+    bool single_started; // 拨盘已进入供弹或堵转恢复。
+} ShootKeyboardSingleState_t;
+
+typedef struct
+{
+    uint32_t single; // 已完成的累计单发次数。
+    uint32_t stuck; // 累计触发堵转恢复的次数。
+} ShootCounterState_t;
+
+typedef struct
+{
+    ShootDialMotionState_t dial; // 拨盘位置目标与状态机。
+    ShootDialRecoveryState_t recovery; // 堵转检测与恢复过程。
+    ShootDialStopState_t stop; // 安全态零电流命令重发状态。
+    ShootRemoteEdgeState_t remote; // 遥控拨杆边沿和模式记忆。
+    ShootKeyboardSingleState_t keyboard; // 键鼠单发事件锁存。
+    ShootCounterState_t count; // 调试器可查看的累计计数。
+} ShootControlState_t;
+
+extern volatile ShootControlState_t shoot_control_state;
 
 void ShootControl_Init(void);
 
-/* 每 1 ms 调用；单发仅在右拨杆进入上档的边沿触发。 */
+// 随发射任务调用；单发仅在右拨杆进入上档的边沿触发。
 void ShootControl_Update(RemoteShoot_t mode, bool right_up);
-/* 键鼠短按事件锁存至一发完成；长按沿用原连发速度环。 */
+// 键鼠短按事件锁存至一发完成；长按沿用原连发速度环。
 void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
                                  uint32_t single_request_count);
-/* 退出键鼠模式时取消未完成的键鼠请求，后续恢复遥控拨杆逻辑。 */
+// 退出键鼠模式时取消未完成的键鼠请求，后续恢复遥控拨杆逻辑。
 void ShootControl_ResetKeyboard(uint32_t single_request_count);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* SHOOT_CONTROL_H */
+#endif // SHOOT_CONTROL_H
