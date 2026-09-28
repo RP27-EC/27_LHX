@@ -59,10 +59,10 @@ void PowerCommunicationConfig_Init(void)
     power_communication_config.offline_timeout_ms = 100U; // 两路状态帧独立判断在线。
     power_communication_config.tx_period_ms = 20U; // 基础控制帧每 20 ms 发送一次。
     power_communication_config.chassis_power_buffer = 0U; // 暂不接裁判系统缓冲量。
-    power_communication_config.chassis_power_limit = 300U; // 固定协议值，不做动态功耗限制。
+    power_communication_config.chassis_power_limit = 300U; // 固定协议值
     power_communication_config.cap_power_out_limit = -300; // 模板默认放电字段。
     power_communication_config.cap_power_in_limit = 300U; // 模板默认充电字段。
-    power_communication_config.cap_enabled = true; // 与模板基础控制一致，默认开启超电。
+    power_communication_config.cap_enabled = true; // 默认开启超电。
     power_communication_config.turbo_enabled = false;
     power_communication_config.precharge_enabled = false;
 }
