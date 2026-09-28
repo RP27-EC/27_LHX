@@ -16,6 +16,16 @@ void Motor4310Config_Init(void)
     motor4310_config.position_kd = 0.004f; // 4310 位置环微分增益。
     motor4310_config.position_integral_limit = 100.0f; // 位置环积分项限幅。
     motor4310_config.position_output_limit = 600.0f; // 位置环目标速度限幅。
+    motor4310_config.pitch_pid.position_kp = 0.3f; // Pitch 位置环比例增益。
+    motor4310_config.pitch_pid.position_ki = 0.0f; // Pitch 位置环积分增益。
+    motor4310_config.pitch_pid.position_kd = 0.004f; // Pitch 位置环微分增益。
+    motor4310_config.pitch_pid.position_integral_limit = 100.0f; // Pitch 位置环积分限幅。
+    motor4310_config.pitch_pid.position_output_limit = 600.0f; // Pitch 目标速度限幅。
+    motor4310_config.pitch_pid.speed_kp = 1.2f; // Pitch 速度环比例增益。
+    motor4310_config.pitch_pid.speed_ki = 0.0f; // Pitch 速度环积分增益。
+    motor4310_config.pitch_pid.speed_kd = 0.003f; // Pitch 速度环微分增益。
+    motor4310_config.pitch_pid.speed_integral_limit = 200.0f; // Pitch 速度环积分限幅。
+    motor4310_config.pitch_pid.speed_output_limit = 2047.0f; // Pitch 转矩码限幅。
     motor4310_config.yaw_near_pid.position_kp = 0.2f; // 近点位置环比例增益。
     motor4310_config.yaw_near_pid.position_ki = 0.0f; // 近点位置环积分增益。
     motor4310_config.yaw_near_pid.position_kd = 0.01f; // 近点位置环微分增益。

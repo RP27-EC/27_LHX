@@ -13,8 +13,7 @@
 
 typedef struct
 {
-    bool speed_mode; // true 为遥控速度输入，false 为零速角度保持。
-    int32_t hold_angle; // 速度输入归零瞬间锁定的 Pitch 累计编码器角度。
+    float target_counts; // Pitch 累计位置目标；摇杆改变目标，松杆保持不变。
 } PitchControl_t;
 
 volatile CloudTerrace_HomeState_t cloud_terrace_home_state =
@@ -29,7 +28,7 @@ static int32_t yaw_turn_target; // 本次调头的 Yaw 累计编码器目标。
 static uint16_t yaw_turn_stable_cycles; // 调头到位的连续控制周期数。
 static bool turn_wheel_armed; // 拨轮回到中位后重新允许下降沿。
 static bool turn_requested; // 拨轮事件已触发，等待归中完成后执行。
-static PitchControl_t pitch_control; // Pitch 速度/保持模式内部状态。
+static PitchControl_t pitch_control; // Pitch 位控目标状态。
 static PID_Controller_t yaw_angle_pid; // Yaw 角度外环 PID。
 static PID_Controller_t yaw_rate_pid; // Yaw 角速度内环 PID。
 
@@ -53,7 +52,7 @@ static void cloud_reset_home(void)
     yaw_mechanical_mode = false;
     yaw_mechanical_in_deadzone = false;
     yaw_mechanical_target = 0;
-    pitch_control.speed_mode = false;
+    pitch_control.target_counts = 0.0f;
     PID_Reset(&yaw_angle_pid);
     PID_Reset(&yaw_rate_pid);
     cloud_yaw_imu_online = false;
@@ -75,7 +74,7 @@ void CloudTerrace_Init(void)
     PID_Init(&yaw_rate_pid, cloud_config.yaw_rate_kp, cloud_config.yaw_rate_ki,
              cloud_config.yaw_rate_kd, cloud_config.yaw_rate_integral_limit,
              cloud_config.yaw_torque_limit_raw, motor4310_config.control_period_s);
-    pitch_control.hold_angle = 0;
+    pitch_control.target_counts = 0.0f;
     cloud_reset_home();
 }
 
@@ -102,15 +101,16 @@ static int32_t cloud_nearest_front_target(bool reversed, int32_t current)
     return target;
 }
 
-// Pitch 重力补偿采用余弦转矩曲线；驱动接收原始转矩码前馈。
-static int16_t cloud_pitch_gravity(uint16_t encoder_angle)
+// 以归中点为零角度，重力前馈仅保留 k*cos(theta)。
+static int16_t cloud_pitch_gravity(const Motor4310_Data_t *feedback)
 {
-    float motor_rad = (float)encoder_angle *
-                      (2.0f * MOTOR4310_PMAX / 65535.0f) - MOTOR4310_PMAX;
-    float gravity_nm = cosf(motor_rad - cloud_config.pitch_gravity_center_rad) *
-                       cloud_config.pitch_gravity_k + cloud_config.pitch_gravity_b;
-    return (int16_t)(gravity_nm * cloud_config.pitch_gravity_scale *
-                     (4095.0f / (2.0f * CLOUD_MOTOR_TORQUE_MAX_NM)));
+    float theta = (float)(feedback->total_angle - home_target[MOTOR4310_PITCH]) *
+                  (2.0f * MOTOR4310_PMAX / MOTOR4310_ECD_PER_ROUND);
+    float torque_raw = cloud_config.pitch_gravity_k * cosf(theta) *
+                       (4095.0f / (2.0f * CLOUD_MOTOR_TORQUE_MAX_NM));
+    if (torque_raw > 2047.0f) { torque_raw = 2047.0f; }
+    else if (torque_raw < -2048.0f) { torque_raw = -2048.0f; }
+    return (int16_t)torque_raw;
 }
 
 static bool cloud_at_home(const Motor4310_Data_t *feedback, int32_t target,
@@ -147,7 +147,7 @@ static bool cloud_home_step(void)
 
     pitch_status = Motor4310_PositionControlWithFeedforward(
         MOTOR4310_PITCH, home_target[MOTOR4310_PITCH],
-        cloud_pitch_gravity(pitch.angle));
+        cloud_pitch_gravity(&pitch));
     yaw_status = Motor4310_PositionControlWithProfile(
         MOTOR4310_YAW, home_target[MOTOR4310_YAW], 0, NULL, false);
     if (pitch_status != HAL_OK || yaw_status != HAL_OK)
@@ -409,10 +409,9 @@ static void cloud_send_yaw_angle(bool allow_turn)
 static void cloud_control_pitch(int16_t input)
 {
     Motor4310_Data_t feedback;
-    int32_t lower, upper, remaining = 0, boundary = 0;
-    int32_t slow_counts;
-    int16_t speed, threshold, gravity;
-    bool moving, at_boundary = false;
+    int32_t lower, upper;
+    float lead_counts;
+    int16_t gravity;
 
     if (!Motor4310_GetFeedback(MOTOR4310_PITCH, &feedback)) { return; }
     lower = home_target[MOTOR4310_PITCH] +
@@ -427,55 +426,29 @@ static void cloud_control_pitch(int16_t input)
     }
     upper = home_target[MOTOR4310_PITCH] +
             Motor4310_PositionToEcd(0.0f, cloud_config.pitch_max_deg);
-    gravity = cloud_pitch_gravity(feedback.angle);
-    threshold = pitch_control.speed_mode ? cloud_config.rc_speed_exit :
-                                           cloud_config.rc_speed_enter;
-    moving = input > threshold || input < -threshold;
-    if (input < 0)
+    gravity = cloud_pitch_gravity(&feedback);
+    if (input > cloud_config.rc_speed_enter ||
+        input < -cloud_config.rc_speed_enter)
     {
-        remaining = feedback.total_angle - lower;
-        if (remaining <= 0)
-        { moving = false; at_boundary = true; boundary = lower; }
+        // 遥控只积分位置目标，不切换到底层速度控制。
+        pitch_control.target_counts += (float)input / CLOUD_RC_MAX_VALUE *
+            cloud_config.pitch_command_rate_deg_s *
+            motor4310_config.control_period_s *
+            (MOTOR4310_ECD_PER_ROUND / 360.0f);
+        lead_counts = cloud_config.pitch_target_lead_deg *
+                      (MOTOR4310_ECD_PER_ROUND / 360.0f);
+        if (lead_counts < 0.0f) { lead_counts = 0.0f; }
+        if (pitch_control.target_counts > (float)feedback.total_angle + lead_counts)
+        { pitch_control.target_counts = (float)feedback.total_angle + lead_counts; }
+        else if (pitch_control.target_counts < (float)feedback.total_angle - lead_counts)
+        { pitch_control.target_counts = (float)feedback.total_angle - lead_counts; }
     }
-    else if (input > 0)
-    {
-        remaining = upper - feedback.total_angle;
-        if (remaining <= 0)
-        { moving = false; at_boundary = true; boundary = upper; }
-    }
-
-    if (moving)
-    {
-        if (!pitch_control.speed_mode)
-        {
-            Motor4310_ResetControl(MOTOR4310_PITCH);
-            pitch_control.speed_mode = true;
-        }
-        speed = (int16_t)((float)input / CLOUD_RC_MAX_VALUE *
-                          cloud_config.pitch_max_speed_raw);
-        // 接近参数设定的机械边界时减速，边界处转为位置保持。
-        slow_counts = Motor4310_PositionToEcd(0.0f,
-                                               cloud_config.pitch_limit_slow_deg);
-        if (remaining < slow_counts)
-        { speed = (int16_t)((int32_t)speed * remaining / slow_counts); }
-        (void)Motor4310_SpeedControlWithFeedforward(MOTOR4310_PITCH,
-                                                    speed, gravity);
-    }
-    else
-    {
-        if (pitch_control.speed_mode)
-        {
-            // 松杆时锁存实际角度，不回到归中点。
-            pitch_control.hold_angle = feedback.total_angle;
-            Motor4310_ResetControl(MOTOR4310_PITCH);
-            pitch_control.speed_mode = false;
-        }
-        if (at_boundary) { pitch_control.hold_angle = boundary; }
-        if (pitch_control.hold_angle < lower) { pitch_control.hold_angle = lower; }
-        if (pitch_control.hold_angle > upper) { pitch_control.hold_angle = upper; }
-        (void)Motor4310_PositionControlWithFeedforward(
-            MOTOR4310_PITCH, pitch_control.hold_angle, gravity);
-    }
+    if (pitch_control.target_counts < (float)lower)
+    { pitch_control.target_counts = (float)lower; }
+    if (pitch_control.target_counts > (float)upper)
+    { pitch_control.target_counts = (float)upper; }
+    (void)Motor4310_PositionControlWithFeedforward(
+        MOTOR4310_PITCH, (int32_t)pitch_control.target_counts, gravity);
 }
 
 void CloudTerrace_Update(void)
@@ -523,8 +496,7 @@ void CloudTerrace_Update(void)
     if (!cloud_home_step()) { return; }
     if (!targets_initialized)
     {
-        pitch_control.hold_angle = home_target[MOTOR4310_PITCH];
-        pitch_control.speed_mode = false;
+        pitch_control.target_counts = (float)home_target[MOTOR4310_PITCH];
         targets_initialized = true;
     }
 

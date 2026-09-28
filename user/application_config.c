@@ -65,9 +65,8 @@ volatile CloudConfig cloud_config;
 void CloudConfig_Init(void)
 {
     cloud_config.control_period_ticks = 4U; // 云台与升降任务控制周期，tick。
-    cloud_config.rc_speed_enter = 15; // 摇杆进入速控的原始值阈值。
-    cloud_config.rc_speed_exit = 8; // 摇杆退出速控的原始值阈值。
-    cloud_config.pitch_max_speed_raw = 150; // Pitch 满杆速度目标，电机原始码。
+    cloud_config.rc_speed_enter = 15; // 摇杆输入死区，原始通道值。
+    cloud_config.pitch_command_rate_deg_s = 150.0f; // Pitch 满杆位置目标变化率，度/s。
     cloud_config.yaw_command_rate_deg_s = 200.0f; // Yaw 满杆目标角变化率，度/s。
     cloud_config.yaw_rc_direction = 1.0f; // Yaw 摇杆输入方向系数。
     cloud_config.yaw_angle_kp = 10.0f; // Yaw 角度外环比例增益。
@@ -90,7 +89,7 @@ void CloudConfig_Init(void)
     cloud_config.pitch_min_deg = (-7.0f); // Pitch 相对机械零点的下限，度。
     cloud_config.lift_pitch_clearance_deg = 1.0f; // 升降低位时 Pitch 的抬起余量，度。
     cloud_config.pitch_max_deg = 30.0f; // Pitch 相对机械零点的上限，度。
-    cloud_config.pitch_limit_slow_deg = 5.0f; // Pitch 靠近机械限位的减速区，度。
+    cloud_config.pitch_target_lead_deg = 5.0f; // 目标最多领先实际位置 5°。
     cloud_config.turn_wheel_trigger_raw = 200; // 拨轮调头触发阈值，原始码。
     cloud_config.turn_wheel_rearm_raw = 50; // 拨轮调头重新布防阈值，原始码。
     cloud_config.spin_wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
@@ -99,10 +98,7 @@ void CloudConfig_Init(void)
     cloud_config.turn_tolerance_deg = 3.0f; // 调头目标角的到位误差，度。
     cloud_config.turn_speed_raw_max = 20; // 调头到位时的速度原始码上限。
     cloud_config.turn_stable_cycles = 5U; // 4 ms×5 次，调头连续到位约 20 ms。
-    cloud_config.pitch_gravity_center_rad = 2.678706762f; // Pitch 重力补偿余弦中心角，rad。
-    cloud_config.pitch_gravity_k = 4.2072f; // Pitch 重力补偿余弦幅值，N·m。
-    cloud_config.pitch_gravity_b = (-2.496f); // Pitch 重力补偿恒定偏置，N·m。
-    cloud_config.pitch_gravity_scale = 0.65f; // Pitch 重力补偿整体比例。
+    cloud_config.pitch_gravity_k = 1.1f; // 归中点处约等于原重力前馈，N·m。
 }
 
 volatile KeyboardSensitivityConfig keyboard_sensitivity_config;

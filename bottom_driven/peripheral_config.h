@@ -32,6 +32,7 @@ typedef struct
     float position_kd; // 位置环微分增益；0 为关闭。
     float position_integral_limit; // 位置环积分项绝对值上限。
     float position_output_limit; // 位置环速度原始码目标上限。
+    Motor4310_PidProfile_t pitch_pid; // Pitch 独立位置-速度串级 PID 参数。
     Motor4310_PidProfile_t yaw_near_pid; // 机械模式近点 Yaw 串级 PID 参数。
     float yaw_speed_feedforward_raw; // Yaw 速度目标非零时叠加的固定转矩码幅值。
     float yaw_speed_feedforward_deadband_raw; // 驱动速度环目标的前馈启用死区，原始码。

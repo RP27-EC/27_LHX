@@ -67,9 +67,8 @@ void ShootConfig_Init(void);
 typedef struct
 {
     uint32_t control_period_ticks; // 云台与升降任务控制周期，当前 4 ms。
-    int32_t rc_speed_enter; // 静止转运动的摇杆阈值，原始通道值。
-    int32_t rc_speed_exit; // 运动转保持的较小阈值，构成滞回。
-    int32_t pitch_max_speed_raw; // Pitch 满杆速度目标，电机速度原始码。
+    int32_t rc_speed_enter; // 摇杆输入死区，原始通道值。
+    float pitch_command_rate_deg_s; // Pitch 满杆位置目标变化率，度/s。
     float yaw_command_rate_deg_s; // 满杆目标角变化率；每周期增量=ch/660×设定角速度×控制周期。
     float yaw_rc_direction; // 摇杆方向系数；调用处已将 ch[0] 取反。
     float yaw_angle_kp; // Yaw 角度误差 deg 到目标 deg/s 的比例增益。
@@ -92,7 +91,7 @@ typedef struct
     float pitch_min_deg; // 相对归中点的 Pitch 下限，度。
     float lift_pitch_clearance_deg; // 升降下降/低位时 Pitch 的正角度控制余量。
     float pitch_max_deg; // 相对归中点的 Pitch 上限，度。
-    float pitch_limit_slow_deg; // 距限位不足 5° 时按剩余距离线性减速。
+    float pitch_target_lead_deg; // 位置目标最多领先实际角度的幅度，防止积累过大误差。
     int32_t turn_wheel_trigger_raw; // ch[4]≤-200 视为向上拨到触发位。
     int32_t turn_wheel_rearm_raw; // ch[4]>-50 时重新允许下一次触发。
     int32_t spin_wheel_trigger_raw; // 拨轮正向越过此值切换小陀螺。
@@ -101,10 +100,7 @@ typedef struct
     float turn_tolerance_deg; // Yaw 距反向车头目标的到位角差。
     int32_t turn_speed_raw_max; // 到位还要求 |Yaw 电机速度原始码|≤20。
     uint32_t turn_stable_cycles; // 连续到位周期数；4 ms×5=20 ms。
-    float pitch_gravity_center_rad; // 余弦重力曲线中心角，rad。
-    float pitch_gravity_k; // 余弦项幅值，N·m。
-    float pitch_gravity_b; // 恒定转矩偏置，N·m。
-    float pitch_gravity_scale; // 总体前馈比例；减小可降低整条重力曲线幅值。
+    float pitch_gravity_k; // Pitch 重力前馈系数，N·m；前馈=k*cos(相对机械零点角)。
 } CloudConfig;
 extern volatile CloudConfig cloud_config;
 void CloudConfig_Init(void);

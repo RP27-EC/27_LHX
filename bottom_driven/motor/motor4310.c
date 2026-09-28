@@ -84,17 +84,35 @@ static HAL_StatusTypeDef motor_init_can(Motor4310_Id_t id)
 HAL_StatusTypeDef Motor4310_Init(void)
 {
     uint32_t i;
+    Motor4310_PidProfile_t pitch_pid = motor4310_config.pitch_pid;
     memset(motor4310_data, 0, sizeof(motor4310_data));
     for (i = 0U; i < MOTOR4310_COUNT; i++)
     {
-        PID_Init(&motor4310_speed_pids[i], motor4310_config.speed_kp,
-                 motor4310_config.speed_ki, motor4310_config.speed_kd,
-                 motor4310_config.speed_integral_limit, motor4310_config.speed_output_limit,
-                 motor4310_config.control_period_s);
-        PID_Init(&motor4310_position_pids[i], motor4310_config.position_kp,
-                 motor4310_config.position_ki, motor4310_config.position_kd,
-                 motor4310_config.position_integral_limit,
-                 motor4310_config.position_output_limit, motor4310_config.control_period_s);
+        if (i == MOTOR4310_PITCH)
+        {
+            PID_Init(&motor4310_speed_pids[i], pitch_pid.speed_kp,
+                     pitch_pid.speed_ki, pitch_pid.speed_kd,
+                     pitch_pid.speed_integral_limit, pitch_pid.speed_output_limit,
+                     motor4310_config.control_period_s);
+            PID_Init(&motor4310_position_pids[i], pitch_pid.position_kp,
+                     pitch_pid.position_ki, pitch_pid.position_kd,
+                     pitch_pid.position_integral_limit,
+                     pitch_pid.position_output_limit,
+                     motor4310_config.control_period_s);
+        }
+        else
+        {
+            PID_Init(&motor4310_speed_pids[i], motor4310_config.speed_kp,
+                     motor4310_config.speed_ki, motor4310_config.speed_kd,
+                     motor4310_config.speed_integral_limit,
+                     motor4310_config.speed_output_limit,
+                     motor4310_config.control_period_s);
+            PID_Init(&motor4310_position_pids[i], motor4310_config.position_kp,
+                     motor4310_config.position_ki, motor4310_config.position_kd,
+                     motor4310_config.position_integral_limit,
+                     motor4310_config.position_output_limit,
+                     motor4310_config.control_period_s);
+        }
     }
     if (motor_init_can(MOTOR4310_PITCH) != HAL_OK) { return HAL_ERROR; }
     return motor_init_can(MOTOR4310_YAW);
@@ -240,15 +258,22 @@ static HAL_StatusTypeDef motor_speed_control(
     const Motor4310_PidProfile_t *profile, bool enable_yaw_feedforward)
 {
     Motor4310_Data_t feedback;
+    Motor4310_PidProfile_t pitch_pid;
+    const Motor4310_PidProfile_t *active_profile = profile;
     float output;
     int32_t torque;
     if (!valid_id(id) || !Motor4310_AllOnline() ||
         !Motor4310_GetFeedback(id, &feedback)) { return HAL_ERROR; }
-    if (profile != NULL)
+    if (active_profile == NULL && id == MOTOR4310_PITCH)
+    {
+        pitch_pid = motor4310_config.pitch_pid;
+        active_profile = &pitch_pid;
+    }
+    if (active_profile != NULL)
     {
         PID_UpdateParameters(&motor4310_speed_pids[id],
-            profile->speed_kp, profile->speed_ki, profile->speed_kd,
-            profile->speed_integral_limit, profile->speed_output_limit,
+            active_profile->speed_kp, active_profile->speed_ki, active_profile->speed_kd,
+            active_profile->speed_integral_limit, active_profile->speed_output_limit,
             motor4310_config.control_period_s);
     }
     else
@@ -291,13 +316,21 @@ HAL_StatusTypeDef Motor4310_PositionControlWithProfile(
     Motor4310_Id_t id, int32_t target_position, int16_t feedforward_raw,
     const Motor4310_PidProfile_t *profile, bool enable_yaw_feedforward)
 {
+    Motor4310_PidProfile_t pitch_pid;
+    const Motor4310_PidProfile_t *active_profile = profile;
     float speed;
     if (!valid_id(id) || !Motor4310_AllOnline()) { return HAL_ERROR; }
-    if (profile != NULL)
+    if (active_profile == NULL && id == MOTOR4310_PITCH)
+    {
+        pitch_pid = motor4310_config.pitch_pid;
+        active_profile = &pitch_pid;
+    }
+    if (active_profile != NULL)
     {
         PID_UpdateParameters(&motor4310_position_pids[id],
-            profile->position_kp, profile->position_ki, profile->position_kd,
-            profile->position_integral_limit, profile->position_output_limit,
+            active_profile->position_kp, active_profile->position_ki,
+            active_profile->position_kd, active_profile->position_integral_limit,
+            active_profile->position_output_limit,
             motor4310_config.control_period_s);
     }
     else
@@ -309,7 +342,7 @@ HAL_StatusTypeDef Motor4310_PositionControlWithProfile(
     }
     speed = PID_Calc(&motor4310_position_pids[id], (float)target_position,
                      (float)motor4310_data[id].total_angle);
-    return motor_speed_control(id, (int16_t)speed, feedforward_raw, profile,
+    return motor_speed_control(id, (int16_t)speed, feedforward_raw, active_profile,
                                enable_yaw_feedforward);
 }
 
