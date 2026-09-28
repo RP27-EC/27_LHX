@@ -37,6 +37,8 @@ typedef struct
     float position_min_speed_rad_s; // 未到位时克服静摩擦的最小目标速度。
     float hold_speed_rad_s; // 位置保持被外力推开后的最大回位速度。
     int32_t position_tolerance_counts; // 位控到位允许的编码器误差。
+    float low_mode_block_turns; // 距低位目标不超过此转子圈数时禁止调头和小陀螺。
+    float low_mode_release_turns; // 离低位目标超过此圈数才解除禁止，须大于进入阈值。
     uint32_t lock_tx_period_ms; // C2 锁车请求发送周期。
     uint32_t chassis_lock_settle_ms; // 发出锁车请求后的等待时间。
     int32_t chassis_release_rpm; // 转子速度低于此值才解除底盘锁车。

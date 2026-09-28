@@ -456,6 +456,7 @@ void CloudTerrace_Update(void)
     RemoteState_t remote;
     HAL_StatusTypeDef pitch_enable, yaw_enable;
     bool turn_blocked;
+    bool lift_modes_blocked;
 
     Motor4310_Heartbeat();
     RemoteState_Get(&remote);
@@ -473,9 +474,17 @@ void CloudTerrace_Update(void)
         return;
     }
 
+    lift_modes_blocked = LiftControl_SpecialModesBlocked(&remote);
     turn_blocked = (remote.mode.chassis == REMOTE_MODE_SPIN &&
                     remote.safety.spin_enabled) ||
                    LiftControl_TurnaroundBlocked(&remote);
+    if (lift_modes_blocked && cloud_turnaround_active)
+    {
+        cloud_turnaround_active = false;
+        yaw_turn_stable_cycles = 0U;
+        turn_requested = false;
+        Motor4310_ResetControl(MOTOR4310_YAW);
+    }
     cloud_turn_wheel_update(remote.input.channel[4], !turn_blocked);
     if (turn_blocked && !cloud_turnaround_active)
     { turn_requested = false; }

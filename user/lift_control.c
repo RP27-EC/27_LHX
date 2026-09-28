@@ -47,6 +47,10 @@ static uint32_t chassis_hold_tx_ms;
 static uint32_t chassis_hold_start_ms;
 static bool offline_release_timing;
 static uint32_t offline_release_start_ms;
+static bool low_mode_blocked;
+static bool descent_mode_blocked;
+static bool descent_release_timing;
+static uint32_t descent_release_start_ms;
 
 static int32_t LiftControl_Abs(int32_t value)
 {
@@ -441,6 +445,10 @@ void LiftControl_Init(void)
     chassis_hold_start_ms = 0U;
     offline_release_timing = false;
     offline_release_start_ms = 0U;
+    low_mode_blocked = false;
+    descent_mode_blocked = false;
+    descent_release_timing = false;
+    descent_release_start_ms = 0U;
     LiftControl_StopAndRelease(HAL_GetTick());
 }
 
@@ -456,29 +464,86 @@ bool LiftControl_GetStallSnapshot(LiftControl_StallSnapshot_t *snapshot)
     return snapshot->valid;
 }
 
-bool LiftControl_TurnaroundBlocked(const RemoteState_t *remote)
+bool LiftControl_SpecialModesBlocked(const RemoteState_t *remote)
 {
-    if (calibration_active ||
-        lift_control_state == LIFT_CALIBRATING_UP ||
-        lift_control_state == LIFT_ASCENDING ||
-        lift_control_state == LIFT_DESCENDING ||
-        requested_direction == LIFT_ASCENDING ||
-        requested_direction == LIFT_DESCENDING)
-    { return true; }
+    Motor2006_Feedback_t feedback;
+    bool feedback_online;
+    bool descending_command;
+    int32_t down_speed_rpm = 0;
+    uint32_t now = HAL_GetTick();
+
+    feedback_online = Motor2006_OnlineCheck() &&
+                      Motor2006_GetFeedback(&feedback);
+    if (lift_calibrated && feedback_online)
+    {
+        float bottom_distance_turns =
+            (float)LiftControl_Abs(feedback.encoder_total -
+                                   lift_bottom_encoder_total) /
+            LIFT_ENCODER_COUNTS_PER_TURN;
+        float release_turns = lift_config.low_mode_release_turns;
+        if (release_turns <= lift_config.low_mode_block_turns)
+        { release_turns = lift_config.low_mode_block_turns + 1.0f; }
+        if (bottom_distance_turns <= lift_config.low_mode_block_turns)
+        { low_mode_blocked = true; }
+        else if (bottom_distance_turns >= release_turns)
+        { low_mode_blocked = false; }
+        down_speed_rpm = (int32_t)feedback.speed_rpm * LiftControl_DownSign();
+    }
+    else if (!lift_calibrated)
+    { low_mode_blocked = false; }
+
+    // 位控保持时的短暂下行纠偏不是一次下降指令，不能据此反复切断自旋。
+    descending_command = requested_direction == LIFT_DESCENDING;
     if (remote != NULL && remote->safety.online &&
         remote->safety.lift_enabled)
     {
         if (remote->input.keyboard_active)
         {
-            return ((remote->event.lift_toggle_request_count -
-                     keyboard_lift_seen) & 1U) != 0U;
+            bool pending = keyboard_lift_pending ||
+                (((remote->event.lift_toggle_request_count -
+                   keyboard_lift_seen) & 1U) != 0U);
+            descending_command = descending_command ||
+                (pending && lift_hold_target_valid &&
+                LiftControl_Abs(lift_hold_target_encoder_total -
+                                lift_top_encoder_total) <=
+                LiftControl_Abs(lift_hold_target_encoder_total -
+                                lift_bottom_encoder_total));
         }
-        return right_switch_seen &&
+        else if (right_switch_seen &&
             remote->input.lift_right_switch != previous_right_switch &&
-            (remote->input.lift_right_switch == COMM_RC_SW_DOWN ||
-             remote->input.lift_right_switch == COMM_RC_SW_MID);
+            remote->input.lift_right_switch == COMM_RC_SW_DOWN)
+        { descending_command = true; }
     }
-    return false;
+    // 下行指令立刻生效；中途取消指令后，实测停止下降并稳定 100 ms 才放行。
+    if (descending_command ||
+        (feedback_online && down_speed_rpm >
+            lift_config.chassis_release_rpm * 3))
+    {
+        descent_mode_blocked = true;
+        descent_release_timing = false;
+    }
+    else if (descent_mode_blocked && feedback_online &&
+             down_speed_rpm <= lift_config.chassis_release_rpm)
+    {
+        if (!descent_release_timing)
+        {
+            descent_release_timing = true;
+            descent_release_start_ms = now;
+        }
+        else if ((uint32_t)(now - descent_release_start_ms) >= 100U)
+        { descent_mode_blocked = false; }
+    }
+    else
+    { descent_release_timing = false; }
+
+    return descent_mode_blocked || low_mode_blocked;
+}
+
+bool LiftControl_TurnaroundBlocked(const RemoteState_t *remote)
+{
+    return calibration_active ||
+           lift_control_state == LIFT_CALIBRATING_UP ||
+           LiftControl_SpecialModesBlocked(remote);
 }
 
 void LiftControl_Update(const RemoteState_t *remote)

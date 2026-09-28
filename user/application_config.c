@@ -35,6 +35,8 @@ void LiftConfig_Init(void)
     lift_config.position_min_speed_rad_s = 10.0f; // 未到位时的最小目标速度，rad/s。
     lift_config.hold_speed_rad_s = 25.0f; // 外力偏离目标后回位的速度上限，rad/s。
     lift_config.position_tolerance_counts = 200; // 位控允许的到位误差，编码器计数。
+    lift_config.low_mode_block_turns = 5.0f; // 距低位目标 5 转子圈内进入禁止区。
+    lift_config.low_mode_release_turns = 8.0f; // 上升离开低位 8 转子圈后解除禁止。
     lift_config.lock_tx_period_ms = 10U; // 向下板发送锁车请求的间隔，ms。
     lift_config.chassis_lock_settle_ms = 20U; // 发出锁车请求后的等待时间，ms。
     lift_config.chassis_release_rpm = 10; // 低于该转速时可释放底盘锁定，rpm。
@@ -98,7 +100,7 @@ void CloudConfig_Init(void)
     cloud_config.turn_tolerance_deg = 3.0f; // 调头目标角的到位误差，度。
     cloud_config.turn_speed_raw_max = 20; // 调头到位时的速度原始码上限。
     cloud_config.turn_stable_cycles = 5U; // 4 ms×5 次，调头连续到位约 20 ms。
-    cloud_config.pitch_gravity_k = 1.1f; // 归中点处约等于原重力前馈，N·m。
+    cloud_config.pitch_gravity_k = 1.1f; // 归中点处约等于重力前馈，N·m。
 }
 
 volatile KeyboardSensitivityConfig keyboard_sensitivity_config;

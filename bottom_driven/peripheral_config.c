@@ -13,9 +13,9 @@ void Motor4310Config_Init(void)
     motor4310_config.speed_output_limit = 2047.0f; // 速度环转矩码输出限幅。
     motor4310_config.position_kp = 0.3f; // 4310 位置环比例增益。
     motor4310_config.position_ki = 0.0f; // 4310 位置环积分增益。
-    motor4310_config.position_kd = 0.004f; // 4310 位置环微分增益。
+    motor4310_config.position_kd = 0.005f; // 4310 位置环微分增益。
     motor4310_config.position_integral_limit = 100.0f; // 位置环积分项限幅。
-    motor4310_config.position_output_limit = 600.0f; // 位置环目标速度限幅。
+    motor4310_config.position_output_limit = 500.0f; // 位置环目标速度限幅。
     motor4310_config.pitch_pid.position_kp = 0.3f; // Pitch 位置环比例增益。
     motor4310_config.pitch_pid.position_ki = 0.0f; // Pitch 位置环积分增益。
     motor4310_config.pitch_pid.position_kd = 0.004f; // Pitch 位置环微分增益。
@@ -26,18 +26,18 @@ void Motor4310Config_Init(void)
     motor4310_config.pitch_pid.speed_kd = 0.003f; // Pitch 速度环微分增益。
     motor4310_config.pitch_pid.speed_integral_limit = 200.0f; // Pitch 速度环积分限幅。
     motor4310_config.pitch_pid.speed_output_limit = 2047.0f; // Pitch 转矩码限幅。
-    motor4310_config.yaw_near_pid.position_kp = 0.2f; // 近点位置环比例增益。
+    motor4310_config.yaw_near_pid.position_kp = 0.04f; // 近点位置环比例增益。
     motor4310_config.yaw_near_pid.position_ki = 0.0f; // 近点位置环积分增益。
-    motor4310_config.yaw_near_pid.position_kd = 0.01f; // 近点位置环微分增益。
+    motor4310_config.yaw_near_pid.position_kd = 0.003f; // 近点位置环微分增益。
     motor4310_config.yaw_near_pid.position_integral_limit = 0.0f; // 近点位置环积分限幅。
-    motor4310_config.yaw_near_pid.position_output_limit = 50.0f; // 近点目标速度限幅。
-    motor4310_config.yaw_near_pid.speed_kp = 1.2f; // 近点速度环比例增益。
+    motor4310_config.yaw_near_pid.position_output_limit = 12.0f; // 近点目标速度限幅。
+    motor4310_config.yaw_near_pid.speed_kp = 1.0f; // 近点速度环比例增益。
     motor4310_config.yaw_near_pid.speed_ki = 0.0f; // 近点速度环积分增益。
     motor4310_config.yaw_near_pid.speed_kd = 0.005f; // 近点速度环微分增益。
     motor4310_config.yaw_near_pid.speed_integral_limit = 0.0f; // 近点速度环积分限幅。
-    motor4310_config.yaw_near_pid.speed_output_limit = 200.0f; // 近点转矩码限幅。
-    motor4310_config.yaw_speed_feedforward_raw = 500.0f; // Yaw 转动时按目标方向叠加的固定转矩码。
-    motor4310_config.yaw_speed_feedforward_deadband_raw = 300.0f; // 4310 原始目标速度超过此值才加前馈。
+    motor4310_config.yaw_near_pid.speed_output_limit = 300.0f; // 近点转矩码限幅。
+    motor4310_config.yaw_speed_feedforward_raw = 200.0f; // Yaw 转动时按目标方向叠加的固定转矩码。
+    motor4310_config.yaw_speed_feedforward_deadband_raw = 500.0f; // 4310 原始目标速度超过此值才加前馈。
     motor4310_config.control_period_s = 0.004f; // PID 控制周期，s。
 }
 

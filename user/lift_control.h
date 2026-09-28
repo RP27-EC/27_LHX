@@ -47,6 +47,7 @@ extern volatile bool lift_pitch_nonnegative_required;
 void LiftControl_Init(void);
 void LiftControl_Update(const RemoteState_t *remote);
 bool LiftControl_GetStallSnapshot(LiftControl_StallSnapshot_t *snapshot);
+bool LiftControl_SpecialModesBlocked(const RemoteState_t *remote); // 正在下降或位于低位时禁止调头和小陀螺。
 bool LiftControl_TurnaroundBlocked(const RemoteState_t *remote);
 
 #endif // LIFT_CONTROL_H
