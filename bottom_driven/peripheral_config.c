@@ -49,6 +49,7 @@ void CommunicationConfig_Init(void)
 {
     communication_config.retry_ms = 100U; // CAN2 Bus-Off 后的重启重试间隔，ms。
     communication_config.yaw_angle_timeout_ms = 100U; // 上板 Yaw 角度帧有效期，ms。
+    communication_config.spin_state_timeout_ms = 150U; // 单次 C1 丢帧不立即中断自旋，失联仍停车。
     communication_config.lift_lock_timeout_ms = 150U; // 升降锁车请求失联后释放时间，ms。
 }
 

@@ -52,6 +52,7 @@ typedef struct
 {
     uint32_t retry_ms; // CAN2 Bus-Off 后两次 Stop/Start 尝试的最短间隔。
     uint32_t yaw_angle_timeout_ms; // C1 云台机械角度帧的有效期。
+    uint32_t spin_state_timeout_ms; // C1 自旋模式位的独立有效期；明确禁止仍立即生效。
     uint32_t lift_lock_timeout_ms; // C2 升降锁车请求的有效期。
 } CommunicationConfig;
 extern volatile CommunicationConfig communication_config;

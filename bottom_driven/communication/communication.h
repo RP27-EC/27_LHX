@@ -53,6 +53,9 @@ bool Communication_GetYawAngle(float *angle_deg);
 // 读取 C1 的机械角、调头中及允许调头标志；帧超时/无效时返回 false。
 bool Communication_GetYawState(float *angle_deg, bool *turning,
                                bool *turn_allowed);
+bool Communication_GetSpinState(bool *upper_selected, bool *spin_allowed);
+// C1 bit5：上板确认升降接近低位；帧超时则返回 false。
+bool Communication_GetBottomModeBlocked(void);
 bool Communication_GetLiftLock(uint8_t *sequence);
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
 // D5 每个电机占两个字节，int16 小端，单位 rpm。

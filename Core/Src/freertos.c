@@ -56,6 +56,10 @@ volatile uint32_t rc_task_frame_count = 0; // 有效帧计数。
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+// Keil Watch: 0=可自旋/未选中，1=本地未布防，2=C1超时，3=上板未选中，
+// 4=上板明确禁止，5=需重新布防，6=底盘锁车或电机/遥控离线，7=升降低位。
+volatile uint8_t chassis_spin_block_reason = 0U;
+volatile uint32_t chassis_spin_stop_count = 0U;
 
 /* USER CODE END Variables */
 /* Definitions for Control_Parsing */
@@ -194,6 +198,16 @@ void motor3508_speed_control(void *argument)
   RemoteState_t remote;
   bool turn_hold;
   bool lift_hold;
+  bool upper_spin_selected = false;
+  bool spin_allowed = false;
+  bool spin_frame_valid;
+  bool bottom_mode_blocked;
+  bool spin_drive_enabled;
+  bool spin_was_driving = false;
+  bool spin_rearm_required = false;
+  bool spin_session_started = false;
+  bool spin_fault_timing = false;
+  uint32_t spin_fault_start_ms = 0U;
   uint8_t lift_sequence = 0U;
   uint32_t last_wheel_speed_tx_ms = 0U;
   bool wheel_feedback_valid;
@@ -210,6 +224,39 @@ void motor3508_speed_control(void *argument)
     RemoteState_Get(&remote);
     turn_hold = false;
     lift_hold = Communication_GetLiftLock(&lift_sequence);
+    spin_frame_valid = Communication_GetSpinState(&upper_spin_selected,
+                                                  &spin_allowed);
+    bottom_mode_blocked = Communication_GetBottomModeBlocked();
+    if (remote.mode.chassis != REMOTE_MODE_SPIN)
+    {
+      spin_rearm_required = false;
+      spin_session_started = false;
+      spin_fault_timing = false;
+    }
+    else if (!remote.safety.spin_enabled)
+    {
+      spin_rearm_required = false;
+      spin_fault_timing = false;
+      if (spin_frame_valid && upper_spin_selected && spin_allowed)
+      { spin_session_started = true; }
+    }
+    else if (spin_frame_valid && upper_spin_selected && spin_allowed)
+    {
+      spin_session_started = true;
+      spin_fault_timing = false;
+    }
+    else if (spin_session_started)
+    {
+      // 失去许可立即停转；持续失效才要求重新拨档。
+      if (!spin_fault_timing)
+      {
+        spin_fault_timing = true;
+        spin_fault_start_ms = HAL_GetTick();
+      }
+      else if ((uint32_t)(HAL_GetTick() - spin_fault_start_ms) >=
+                    chassis_config.spin_fault_rearm_ms)
+      { spin_rearm_required = true; }
+    }
     if (!remote.safety.online)
     { Chassis_TurnaroundReset(remote.event.turnaround_request_count); }
     else
@@ -219,15 +266,54 @@ void motor3508_speed_control(void *argument)
           !(remote.mode.chassis == REMOTE_MODE_SPIN &&
             remote.safety.spin_enabled) && !lift_hold);
     }
+    // 自旋由本板遥控档位和上板模式许可共同决定；Yaw 角仅用于平移坐标。
+    spin_drive_enabled = remote.mode.chassis == REMOTE_MODE_SPIN &&
+                         remote.safety.online && remote.safety.spin_enabled &&
+                         Motor3508_OnlineCheck() && !turn_hold && !lift_hold &&
+                         !bottom_mode_blocked &&
+                         spin_frame_valid && upper_spin_selected &&
+                         spin_allowed && !spin_rearm_required;
+    if (remote.mode.chassis != REMOTE_MODE_SPIN)
+    { chassis_spin_block_reason = 0U; }
+    else if (!remote.safety.online || !Motor3508_OnlineCheck() ||
+             turn_hold || lift_hold)
+    { chassis_spin_block_reason = 6U; }
+    else if (!remote.safety.spin_enabled)
+    { chassis_spin_block_reason = 1U; }
+    else if (bottom_mode_blocked)
+    { chassis_spin_block_reason = 7U; }
+    else if (!spin_frame_valid)
+    { chassis_spin_block_reason = 2U; }
+    else if (!upper_spin_selected)
+    { chassis_spin_block_reason = 3U; }
+    else if (!spin_allowed)
+    { chassis_spin_block_reason = 4U; }
+    else if (spin_rearm_required)
+    { chassis_spin_block_reason = 5U; }
+    else { chassis_spin_block_reason = 0U; }
+    if (spin_was_driving && !spin_drive_enabled)
+    { chassis_spin_stop_count++; }
+    spin_was_driving = spin_drive_enabled;
     if (remote.safety.online && Motor3508_OnlineCheck() && !turn_hold && !lift_hold)
     {
-      if (remote.mode.chassis == REMOTE_MODE_SPIN)
+      if (bottom_mode_blocked &&
+          (remote.mode.chassis == REMOTE_MODE_FOLLOW ||
+           remote.mode.chassis == REMOTE_MODE_SPIN))
+      {
+        // 上板低位锁定 Yaw 时，本板同步改用机械底盘，避免继续追随云台角。
+        Chassis_FollowReset();
+        Chassis_SpinReset();
+        Chassis_MechanicalUpdate(remote.input.channel[3] * chassis_config.forward_scale,
+                                 remote.input.channel[2] * chassis_config.left_scale,
+                                 remote.input.channel[0] * chassis_config.rotate_scale);
+      }
+      else if (remote.mode.chassis == REMOTE_MODE_SPIN)
       {
         // 小陀螺按云台朝向平移，右上档自旋。
         Chassis_FollowReset();
         Chassis_SpinUpdate(remote.input.channel[3] * chassis_config.forward_scale,
                            remote.input.channel[2] * chassis_config.left_scale,
-                           remote.safety.spin_enabled);
+                           spin_drive_enabled);
       }
       else if (remote.mode.chassis == REMOTE_MODE_FOLLOW)
       {

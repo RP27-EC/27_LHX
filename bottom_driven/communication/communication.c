@@ -197,6 +197,30 @@ bool Communication_GetYawState(float *angle_deg, bool *turning,
     return true;
 }
 
+bool Communication_GetSpinState(bool *upper_selected, bool *spin_allowed)
+{
+    Communication_RxFrame frame;
+
+    if (upper_selected == NULL || spin_allowed == NULL ||
+        !Communication_GetRxFrame(COMMUNICATION_RX_ID_C1, &frame) ||
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
+            communication_config.spin_state_timeout_ms)
+    { return false; }
+    *upper_selected = (frame.data[2] & 0x10U) != 0U;
+    *spin_allowed = (frame.data[2] & 0x08U) != 0U;
+    return true;
+}
+
+bool Communication_GetBottomModeBlocked(void)
+{
+    Communication_RxFrame frame;
+
+    return Communication_GetRxFrame(COMMUNICATION_RX_ID_C1, &frame) &&
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) <
+            communication_config.spin_state_timeout_ms &&
+        (frame.data[2] & 0x20U) != 0U;
+}
+
 bool Communication_GetLiftLock(uint8_t *sequence)
 {
     Communication_RxFrame frame;

@@ -38,6 +38,7 @@ typedef struct
     float spin_rotate_sign; // 旋转分量的方向系数；改为 -1 可反转。
     float spin_slew_rpm_per_tick; // 自旋分量每控制周期的最大变化量，rpm。
     float spin_yaw_angle_sign; // 云台相对车头角进坐标旋转前的符号系数。
+    uint32_t spin_fault_rearm_ms; // 自旋许可连续丢失超过此时间才锁存重新拨档。
     uint32_t follow_switch_position; // DBUS 左拨杆上档值，选择底盘跟随云台。
     float follow_deadband_deg; // 相对所选正方向误差≤5° 时不输出角度跟随分量。
     float follow_kp_rpm_per_deg; // 每超出死区 1°，增加 80 rpm 底盘旋转分量。
