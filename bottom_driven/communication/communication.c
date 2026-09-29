@@ -236,24 +236,34 @@ HAL_StatusTypeDef Communication_CAN_SendLiftLock(bool hold, uint8_t sequence)
 
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg)
 {
-    return Communication_CAN_SendYawState(angle_deg, false, false);
+    return Communication_CAN_SendYawState(angle_deg, false, false, false,
+                                          false, true, false);
 }
 
 HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
-                                                  bool allow_turn)
+                                                  bool allow_turn,
+                                                  bool allow_spin,
+                                                  bool spin_selected,
+                                                  bool angle_valid,
+                                                  bool bottom_mode_blocked)
 {
     uint8_t data[COMM_CAN_FRAME_SIZE] = {0};
     int16_t encoded;
 
-    if (!(angle_deg >= -FLT_MAX && angle_deg <= FLT_MAX))
+    if (angle_valid && !(angle_deg >= -FLT_MAX && angle_deg <= FLT_MAX))
     { return HAL_ERROR; }
+    if (!angle_valid) { angle_deg = 0.0f; }
     if (angle_deg > 327.67f) { angle_deg = 327.67f; }
     else if (angle_deg < -327.68f) { angle_deg = -327.68f; }
     encoded = (int16_t)(angle_deg * 100.0f);
     data[0] = (uint8_t)(uint16_t)encoded;
     data[1] = (uint8_t)((uint16_t)encoded >> 8);
-    data[2] = 0x01U | (turning ? 0x02U : 0U) |
-              (allow_turn ? 0x04U : 0U);
+    data[2] = (angle_valid ? 0x01U : 0U) |
+              (turning ? 0x02U : 0U) |
+              (allow_turn ? 0x04U : 0U) |
+              (allow_spin ? 0x08U : 0U) |
+              (spin_selected ? 0x10U : 0U) |
+              (bottom_mode_blocked ? 0x20U : 0U);
     return Communication_CAN_SendC1(data);
 }
 

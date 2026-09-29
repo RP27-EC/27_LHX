@@ -2,6 +2,8 @@
 #include "cloud_terrace.h"
 #include "communication.h"
 #include "motor2006.h"
+#include "motor4310.h"
+#include "imu.h"
 #include "application_config.h"
 #include "stm32f4xx_hal.h"
 
@@ -11,8 +13,10 @@ volatile LiftControl_State_t lift_control_state;
 volatile LiftControl_WaitReason_t lift_wait_reason;
 volatile bool lift_calibrated;
 volatile int32_t lift_top_encoder_total;
+volatile int32_t lift_top_contact_encoder_total;
 volatile int32_t lift_bottom_encoder_total;
 volatile bool lift_pitch_nonnegative_required;
+volatile LiftSafetyState_t lift_safety_state;
 
 static LiftControl_StallSnapshot_t stall_snapshot;
 static bool right_switch_seen;
@@ -21,7 +25,6 @@ static uint32_t keyboard_lift_seen;
 static bool keyboard_lift_pending;
 static LiftControl_State_t requested_direction;
 static bool calibration_active;
-static bool calibration_contact_pending;
 static bool calibration_armed;
 static bool calibration_fault_latched;
 static bool calibration_drive_started;
@@ -47,8 +50,10 @@ static uint32_t chassis_hold_tx_ms;
 static uint32_t chassis_hold_start_ms;
 static bool offline_release_timing;
 static uint32_t offline_release_start_ms;
-static bool low_mode_blocked;
+static bool upper_mode_zone;
 static bool descent_mode_blocked;
+static bool down_motion_timing;
+static uint32_t down_motion_start_ms;
 static bool descent_release_timing;
 static uint32_t descent_release_start_ms;
 
@@ -209,14 +214,9 @@ static bool LiftControl_PitchRequired(const Motor2006_Feedback_t *feedback)
 {
     if (!lift_calibrated) { return false; }
     if (!lift_hold_target_valid) { return false; }
-    return LiftControl_Abs(lift_hold_target_encoder_total -
-                           lift_bottom_encoder_total) <
-               LiftControl_Abs(lift_hold_target_encoder_total -
-                           lift_top_encoder_total) ||
-           LiftControl_Abs(feedback->encoder_total -
-                           lift_bottom_encoder_total) <
-               LiftControl_Abs(feedback->encoder_total -
-                           lift_top_encoder_total);
+    (void)feedback;
+    // 下降开始前先抬 Pitch；离开顶部安全区后保持抬起直到归位。
+    return requested_direction == LIFT_DESCENDING || !upper_mode_zone;
 }
 
 static bool LiftControl_PowerOnLimit(const Motor2006_Feedback_t *feedback,
@@ -304,8 +304,13 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
 static bool LiftControl_PositionArrived(const Motor2006_Feedback_t *feedback,
                                         int32_t target)
 {
+    int32_t tolerance = lift_config.position_tolerance_counts;
+
+    if (lift_calibrated && target == lift_top_encoder_total &&
+        lift_config.top_arrival_tolerance_counts > tolerance)
+    { tolerance = lift_config.top_arrival_tolerance_counts; }
     return LiftControl_Abs(target - feedback->encoder_total) <=
-           lift_config.position_tolerance_counts;
+           tolerance;
 }
 
 static LiftControl_State_t LiftControl_DirectionTo(int32_t error)
@@ -376,10 +381,8 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
             LiftControl_CalibrationFail(LIFT_STALLED);
             return;
         }
-        // 碰顶即完成校准；五圈只用于后续高位目标，不在此处回退。
-        top = feedback->encoder_total + LiftControl_DownSign() *
-            (int32_t)(lift_config.top_clearance_turns *
-                      LIFT_ENCODER_COUNTS_PER_TURN);
+        // 碰顶位置即高位目标；低位仍从该机械顶点向下计算。
+        top = feedback->encoder_total;
         bottom = feedback->encoder_total + LiftControl_DownSign() *
             (int32_t)(lift_config.travel_turns *
                       LIFT_ENCODER_COUNTS_PER_TURN);
@@ -392,10 +395,10 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
             return;
         }
         lift_top_encoder_total = top;
+        lift_top_contact_encoder_total = feedback->encoder_total;
         lift_bottom_encoder_total = bottom;
-        lift_hold_target_encoder_total = feedback->encoder_total;
-        lift_hold_target_valid = false;
-        calibration_contact_pending = true;
+        lift_hold_target_encoder_total = top;
+        lift_hold_target_valid = true;
         calibration_active = false;
         lift_calibrated = true;
         right_switch_seen = false;
@@ -415,6 +418,7 @@ void LiftControl_Init(void)
     lift_wait_reason = LIFT_WAIT_REMOTE;
     lift_calibrated = false;
     lift_top_encoder_total = 0;
+    lift_top_contact_encoder_total = 0;
     lift_bottom_encoder_total = 0;
     lift_pitch_nonnegative_required = false;
     stall_snapshot.valid = false;
@@ -424,7 +428,6 @@ void LiftControl_Init(void)
     previous_right_switch = 0U;
     requested_direction = LIFT_STOPPED;
     calibration_active = false;
-    calibration_contact_pending = false;
     calibration_armed = true;
     calibration_fault_latched = false;
     calibration_drive_started = false;
@@ -445,8 +448,20 @@ void LiftControl_Init(void)
     chassis_hold_start_ms = 0U;
     offline_release_timing = false;
     offline_release_start_ms = 0U;
-    low_mode_blocked = false;
+    lift_safety_state.from_top_turns = -1.0f;
+    lift_safety_state.position_valid = false;
+    lift_safety_state.upper_zone = false;
+    lift_safety_state.bottom_mode_blocked = false;
+    lift_safety_state.yaw_home_required = false;
+    lift_safety_state.descending = false;
+    lift_safety_state.special_allowed = false;
+    lift_safety_state.spin_allowed = false;
+    lift_safety_state.shoot_allowed = false;
+    lift_safety_state.update_ms = 0U;
+    upper_mode_zone = false;
     descent_mode_blocked = false;
+    down_motion_timing = false;
+    down_motion_start_ms = 0U;
     descent_release_timing = false;
     descent_release_start_ms = 0U;
     LiftControl_StopAndRelease(HAL_GetTick());
@@ -464,35 +479,68 @@ bool LiftControl_GetStallSnapshot(LiftControl_StallSnapshot_t *snapshot)
     return snapshot->valid;
 }
 
-bool LiftControl_SpecialModesBlocked(const RemoteState_t *remote)
+void LiftControl_SafetyUpdate(const RemoteState_t *remote)
 {
     Motor2006_Feedback_t feedback;
+    GimbalImu_Data_t imu;
+    LiftSafetyState_t next = {0};
     bool feedback_online;
     bool descending_command;
+    bool pending_lift_command = false;
+    bool confirmed_down_motion = false;
+    bool pending_descent = false;
+    bool imu_ready;
     int32_t down_speed_rpm = 0;
     uint32_t now = HAL_GetTick();
+    uint32_t primask;
+    float exit_turns = lift_config.special_exit_from_top_turns;
+    float top_margin_turns = (float)lift_config.top_arrival_tolerance_counts /
+                             LIFT_ENCODER_COUNTS_PER_TURN;
+    float bottom_margin_turns = (float)lift_config.position_tolerance_counts /
+                                LIFT_ENCODER_COUNTS_PER_TURN;
 
+    next.from_top_turns = -1.0f;
+    next.update_ms = now;
     feedback_online = Motor2006_OnlineCheck() &&
                       Motor2006_GetFeedback(&feedback);
     if (lift_calibrated && feedback_online)
     {
-        float bottom_distance_turns =
-            (float)LiftControl_Abs(feedback.encoder_total -
-                                   lift_bottom_encoder_total) /
+        next.from_top_turns = (float)(feedback.encoder_total -
+            lift_top_contact_encoder_total) * LiftControl_DownSign() /
             LIFT_ENCODER_COUNTS_PER_TURN;
-        float release_turns = lift_config.low_mode_release_turns;
-        if (release_turns <= lift_config.low_mode_block_turns)
-        { release_turns = lift_config.low_mode_block_turns + 1.0f; }
-        if (bottom_distance_turns <= lift_config.low_mode_block_turns)
-        { low_mode_blocked = true; }
-        else if (bottom_distance_turns >= release_turns)
-        { low_mode_blocked = false; }
+        next.position_valid = next.from_top_turns >= -top_margin_turns &&
+            next.from_top_turns <= lift_config.travel_turns +
+                                   bottom_margin_turns &&
+            !calibration_active &&
+            lift_control_state != LIFT_STALLED &&
+            lift_control_state != LIFT_AT_LIMIT;
         down_speed_rpm = (int32_t)feedback.speed_rpm * LiftControl_DownSign();
     }
-    else if (!lift_calibrated)
-    { low_mode_blocked = false; }
-
-    // 位控保持时的短暂下行纠偏不是一次下降指令，不能据此反复切断自旋。
+    if (exit_turns <= lift_config.special_enter_from_top_turns)
+    { exit_turns = lift_config.special_enter_from_top_turns + 1.0f; }
+    if (!next.position_valid || lift_config.special_enter_from_top_turns <= 0.0f)
+    { upper_mode_zone = false; }
+    else if (next.from_top_turns <= lift_config.special_enter_from_top_turns)
+    { upper_mode_zone = true; }
+    else if (next.from_top_turns > exit_turns)
+    { upper_mode_zone = false; }
+    next.upper_zone = upper_mode_zone;
+    // 低位锁定只由已校准的位置解除；反馈暂失效时保留上次锁定状态。
+    next.bottom_mode_blocked = lift_safety_state.bottom_mode_blocked;
+    if (lift_calibrated && feedback_online)
+    {
+        float enter_turns = lift_config.bottom_mode_enter_turns;
+        float exit_turns = lift_config.bottom_mode_exit_turns;
+        if (enter_turns < 0.0f) { enter_turns = 0.0f; }
+        if (exit_turns <= enter_turns) { exit_turns = enter_turns + 1.0f; }
+        if (next.from_top_turns >= lift_config.travel_turns - enter_turns)
+        { next.bottom_mode_blocked = true; }
+        else if (next.from_top_turns <= lift_config.travel_turns - exit_turns)
+        { next.bottom_mode_blocked = false; }
+    }
+    // 目标与实际运动分开：短暂的位控纠偏不算新的下降指令。
+    // 顶部自由瞄准期间也持续更新归零计时，避免下一次升降沿用旧的稳定记录。
+    (void)LiftControl_YawStable(now);
     descending_command = requested_direction == LIFT_DESCENDING;
     if (remote != NULL && remote->safety.online &&
         remote->safety.lift_enabled)
@@ -502,59 +550,116 @@ bool LiftControl_SpecialModesBlocked(const RemoteState_t *remote)
             bool pending = keyboard_lift_pending ||
                 (((remote->event.lift_toggle_request_count -
                    keyboard_lift_seen) & 1U) != 0U);
-            descending_command = descending_command ||
-                (pending && lift_hold_target_valid &&
+            pending_lift_command = pending;
+            pending_descent = pending && lift_hold_target_valid &&
                 LiftControl_Abs(lift_hold_target_encoder_total -
                                 lift_top_encoder_total) <=
                 LiftControl_Abs(lift_hold_target_encoder_total -
-                                lift_bottom_encoder_total));
+                                lift_bottom_encoder_total);
         }
         else if (right_switch_seen &&
-            remote->input.lift_right_switch != previous_right_switch &&
-            remote->input.lift_right_switch == COMM_RC_SW_DOWN)
-        { descending_command = true; }
+            remote->input.lift_right_switch != previous_right_switch)
+        {
+            pending_lift_command =
+                remote->input.lift_right_switch == COMM_RC_SW_DOWN ||
+                remote->input.lift_right_switch == COMM_RC_SW_MID;
+            pending_descent =
+                remote->input.lift_right_switch == COMM_RC_SW_DOWN;
+        }
     }
-    // 下行指令立刻生效；中途取消指令后，实测停止下降并稳定 100 ms 才放行。
-    if (descending_command ||
-        (feedback_online && down_speed_rpm >
-            lift_config.chassis_release_rpm * 3))
+    descending_command = descending_command || pending_descent;
+    next.yaw_home_required = lift_calibrated &&
+        (requested_direction != LIFT_STOPPED || pending_lift_command);
+    // 安全快照先于云台控制更新，使新下降指令当周期就能抬起 Pitch。
+    lift_pitch_nonnegative_required = remote != NULL &&
+        remote->safety.online && feedback_online &&
+        (pending_descent || LiftControl_PitchRequired(&feedback));
+    // 遥控下降请求立即撤销许可；高位位控的短暂下行纠偏不算下降。
+    if (feedback_online && down_speed_rpm >
+        lift_config.special_down_speed_enter_rpm)
+    {
+        if (!down_motion_timing)
+        {
+            down_motion_timing = true;
+            down_motion_start_ms = now;
+        }
+        confirmed_down_motion = (uint32_t)(now - down_motion_start_ms) >=
+            lift_config.special_down_motion_confirm_ms;
+    }
+    else { down_motion_timing = false; }
+    if (descending_command || confirmed_down_motion)
     {
         descent_mode_blocked = true;
         descent_release_timing = false;
     }
     else if (descent_mode_blocked && feedback_online &&
-             down_speed_rpm <= lift_config.chassis_release_rpm)
+             down_speed_rpm <= lift_config.special_down_speed_release_rpm)
     {
         if (!descent_release_timing)
         {
             descent_release_timing = true;
             descent_release_start_ms = now;
         }
-        else if ((uint32_t)(now - descent_release_start_ms) >= 100U)
+        else if ((uint32_t)(now - descent_release_start_ms) >=
+                     lift_config.special_down_stop_stable_ms)
         { descent_mode_blocked = false; }
     }
     else
     { descent_release_timing = false; }
 
-    return descent_mode_blocked || low_mode_blocked;
+    next.descending = descent_mode_blocked;
+    imu_ready = GimbalImu_Get(&imu);
+    next.special_allowed = remote != NULL && remote->safety.online &&
+        next.upper_zone && !next.descending &&
+        cloud_terrace_home_state == CLOUD_TERRACE_HOME_DONE &&
+        Motor4310_AllOnline() &&
+        (remote->mode.chassis == REMOTE_MODE_MECHANICAL || imu_ready);
+    next.spin_allowed = next.special_allowed && imu_ready;
+    // 键鼠机械模式可用 B 升降、F 发射；仅物理左下档独占右拨杆。
+    next.shoot_allowed = next.special_allowed &&
+        !(remote->safety.lift_enabled && !remote->input.keyboard_active);
+
+    primask = __get_PRIMASK();
+    __disable_irq();
+    lift_safety_state = next;
+    __set_PRIMASK(primask);
 }
 
-bool LiftControl_TurnaroundBlocked(const RemoteState_t *remote)
+bool LiftControl_SafetyGet(LiftSafetyState_t *state)
 {
-    return calibration_active ||
-           lift_control_state == LIFT_CALIBRATING_UP ||
-           LiftControl_SpecialModesBlocked(remote);
+    uint32_t primask;
+
+    if (state == NULL) { return false; }
+    primask = __get_PRIMASK();
+    __disable_irq();
+    *state = lift_safety_state;
+    __set_PRIMASK(primask);
+    if (state->update_ms == 0U ||
+        (uint32_t)(HAL_GetTick() - state->update_ms) >=
+            lift_config.special_state_timeout_ms)
+    {
+        state->position_valid = false;
+        state->upper_zone = false;
+        state->descending = true;
+        state->yaw_home_required = true;
+        state->special_allowed = false;
+        state->spin_allowed = false;
+        state->shoot_allowed = false;
+        return false;
+    }
+    return true;
 }
 
 void LiftControl_Update(const RemoteState_t *remote)
 {
     Motor2006_Feedback_t feedback;
+    LiftSafetyState_t safety;
     LiftControl_State_t direction;
     uint32_t now = HAL_GetTick();
     int32_t target, error;
     bool top_contact = false;
     bool motor_ready;
-    bool target_selected = false;
+    bool safety_valid;
     float speed_limit;
 
     if (remote != NULL)
@@ -609,7 +714,32 @@ void LiftControl_Update(const RemoteState_t *remote)
         return;
     }
 
-    if (!LiftControl_YawStable(now))
+    safety_valid = LiftControl_SafetyGet(&safety);
+    if (!safety_valid)
+    {
+        // 云台计算耗时不应让同一控制周期的升降指令被误判为旧快照。
+        LiftControl_SafetyUpdate(remote);
+        safety_valid = LiftControl_SafetyGet(&safety);
+    }
+    if (!safety_valid)
+    {
+        // 云台任务超期时不沿用旧目标；恢复后仍须新的换档/按键事件。
+        keyboard_lift_pending = false;
+        right_switch_seen = false;
+        requested_direction = LIFT_STOPPED;
+        if (lift_calibrated)
+        {
+            lift_hold_target_encoder_total = feedback.encoder_total;
+            lift_hold_target_valid = true;
+        }
+        LiftControl_SafetyPause(now, LIFT_WAIT_SAFETY_STATE,
+                                calibration_active);
+        return;
+    }
+
+    // 新升降边沿在 Yaw 未归零时保持待执行；归零稳定后才读取目标并驱动 2006。
+    if ((safety.yaw_home_required || !safety.upper_zone || safety.descending) &&
+        !LiftControl_YawStable(now))
     {
         LiftControl_SafetyPause(now, LIFT_WAIT_YAW, calibration_active);
         return;
@@ -649,7 +779,7 @@ void LiftControl_Update(const RemoteState_t *remote)
     LiftControl_SendChassisHold(false, now);
 
     // 断联或未对准后重新上线时，以当前实测位置作为安全保持点。
-    if (!lift_hold_target_valid && !calibration_contact_pending)
+    if (!lift_hold_target_valid)
     {
         lift_hold_target_encoder_total = feedback.encoder_total;
         lift_hold_target_valid = true;
@@ -658,9 +788,12 @@ void LiftControl_Update(const RemoteState_t *remote)
     if (!remote->safety.lift_enabled)
     {
         right_switch_seen = false;
-        if (requested_direction != LIFT_STOPPED)
-        { lift_hold_target_encoder_total = feedback.encoder_total; }
-        requested_direction = LIFT_STOPPED;
+        if (!(requested_direction == LIFT_ASCENDING && safety.upper_zone))
+        {
+            if (requested_direction != LIFT_STOPPED)
+            { lift_hold_target_encoder_total = feedback.encoder_total; }
+            requested_direction = LIFT_STOPPED;
+        }
     }
     else if (remote->input.keyboard_active)
     {
@@ -683,7 +816,6 @@ void LiftControl_Update(const RemoteState_t *remote)
                 requested_direction = LIFT_DESCENDING;
             }
             LiftControl_ResetStallCheck();
-            target_selected = true;
         }
     }
     else if (!right_switch_seen)
@@ -695,26 +827,16 @@ void LiftControl_Update(const RemoteState_t *remote)
     else if (remote->input.lift_right_switch != previous_right_switch)
     {
         previous_right_switch = remote->input.lift_right_switch;
-        requested_direction = remote->input.lift_right_switch == COMM_RC_SW_DOWN ?
-            LIFT_DESCENDING : remote->input.lift_right_switch == COMM_RC_SW_MID ?
-            LIFT_ASCENDING : LIFT_STOPPED;
+        if (remote->input.lift_right_switch == COMM_RC_SW_DOWN)
+        { requested_direction = LIFT_DESCENDING; }
+        else if (remote->input.lift_right_switch == COMM_RC_SW_MID)
+        { requested_direction = LIFT_ASCENDING; }
+        else if (!(requested_direction == LIFT_ASCENDING && safety.upper_zone))
+        { requested_direction = LIFT_STOPPED; }
         lift_hold_target_encoder_total = requested_direction == LIFT_DESCENDING ?
             lift_bottom_encoder_total : requested_direction == LIFT_ASCENDING ?
             lift_top_encoder_total : feedback.encoder_total;
         LiftControl_ResetStallCheck();
-        target_selected = requested_direction != LIFT_STOPPED;
-    }
-
-    if (calibration_contact_pending)
-    {
-        if (!target_selected)
-        {
-            // 等待首次高/低位指令，避免校准后自动顶住机械限位。
-            LiftControl_StopAndRelease(now);
-            return;
-        }
-        calibration_contact_pending = false;
-        lift_hold_target_valid = true;
     }
 
     target = lift_hold_target_encoder_total;
@@ -752,6 +874,24 @@ void LiftControl_Update(const RemoteState_t *remote)
     }
     if (LiftControl_StallCheck(&feedback, direction, now, &top_contact))
     {
+        if (direction == LIFT_ASCENDING &&
+            target == lift_top_encoder_total && top_contact &&
+            lift_config.top_contact_window_turns > 0.0f &&
+            LiftControl_Abs(feedback.encoder_total -
+                            lift_top_contact_encoder_total) <=
+                (int32_t)(lift_config.top_contact_window_turns *
+                          LIFT_ENCODER_COUNTS_PER_TURN))
+        {
+            // 靠近顶部的碰顶是正常到位；底部绝对目标保持不变。
+            lift_top_encoder_total = feedback.encoder_total;
+            lift_top_contact_encoder_total = feedback.encoder_total;
+            lift_hold_target_encoder_total = feedback.encoder_total;
+            requested_direction = LIFT_STOPPED;
+            lift_control_state = LIFT_READY;
+            stall_snapshot.valid = false;
+            LiftControl_RunSpeed(0.0f);
+            return;
+        }
         requested_direction = LIFT_STOPPED;
         lift_control_state = LIFT_STALLED;
         LiftControl_StopAndRelease(now);

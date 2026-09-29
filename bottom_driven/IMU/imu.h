@@ -20,7 +20,7 @@ typedef struct
     uint32_t update_count; // 成功完成姿态更新的累计次数。
     uint8_t init_error; // 初始化阶段累计检测到的错误数。
     bool calibrated; // 陀螺仪零偏标定是否完成。
-    bool online; // 最近一次传感器读取是否成功。
+    bool online; // 最近成功读取仍在允许时限内。
 } GimbalImu_Data_t;
 
 // BMI088 使用 SPI1；SPI 与两个片选引脚须在硬件初始化中配置。

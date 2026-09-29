@@ -33,6 +33,7 @@ typedef struct
 {
     int16_t channel[5]; // 同一遥控快照内的五路通道。
     uint8_t lift_right_switch; // 升降模式下的右拨杆档位。
+    uint8_t right_switch; // 物理右拨杆档位，供发射任务识别手动布防边沿。
     bool keyboard_active; // V 键选择键鼠输入。
     bool right_up; // 右拨杆上档或鼠标左键按下。
 } RemoteInputState_t;

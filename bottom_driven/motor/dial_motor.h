@@ -40,7 +40,18 @@ typedef struct
     volatile uint32_t rx_count; // 累计接收的有效反馈帧数。
 } DialMotor_Feedback_t;
 
+typedef struct
+{
+    uint32_t queued_count; // 成功放入 CAN1 发送邮箱的帧数。
+    uint32_t guard_busy_count; // 收发间隔未满足而跳过的次数。
+    uint32_t mailbox_busy_count; // CAN1 发送邮箱全满的次数。
+    uint32_t send_error_count; // HAL 发送失败次数。
+    uint8_t last_command; // 最近成功入队的命令字。
+    int16_t last_current_raw; // 最近成功入队的 A1 电流命令。
+} DialMotor_TxDiagnostics_t;
+
 extern DialMotor_Feedback_t dial_motor_feedback;
+extern volatile DialMotor_TxDiagnostics_t dial_motor_tx_diagnostics;
 extern PID_Controller_t dial_motor_position_pid;
 extern PID_Controller_t dial_motor_speed_pid;
 extern PID_Controller_t dial_motor_continuous_speed_pid; // 连发独立速度环。

@@ -28,6 +28,9 @@ static int32_t yaw_turn_target; // 本次调头的 Yaw 累计编码器目标。
 static uint16_t yaw_turn_stable_cycles; // 调头到位的连续控制周期数。
 static bool turn_wheel_armed; // 拨轮回到中位后重新允许下降沿。
 static bool turn_requested; // 拨轮事件已触发，等待归中完成后执行。
+static bool spin_rearm_required; // 许可持续失效后须退出再进入小陀螺。
+static bool spin_fault_timing; // 自旋许可丢失计时中。
+static uint32_t spin_fault_start_ms; // 本次许可丢失的起始时刻。
 static PitchControl_t pitch_control; // Pitch 位控目标状态。
 static PID_Controller_t yaw_angle_pid; // Yaw 角度外环 PID。
 static PID_Controller_t yaw_rate_pid; // Yaw 角速度内环 PID。
@@ -46,6 +49,8 @@ static void cloud_reset_home(void)
     if (cloud_turnaround_active) { turn_requested = true; }
     cloud_turnaround_active = false;
     yaw_turn_stable_cycles = 0U;
+    spin_rearm_required = true;
+    spin_fault_timing = false;
     cloud_terrace_home_state = CLOUD_TERRACE_HOME_WAIT;
     home_stable_cycles = 0U;
     targets_initialized = false;
@@ -101,7 +106,7 @@ static int32_t cloud_nearest_front_target(bool reversed, int32_t current)
     return target;
 }
 
-// 以归中点为零角度，重力前馈仅保留 k*cos(theta)。
+// 以归中点为零角度，重力前馈k*cos(theta)。
 static int16_t cloud_pitch_gravity(const Motor4310_Data_t *feedback)
 {
     float theta = (float)(feedback->total_angle - home_target[MOTOR4310_PITCH]) *
@@ -331,12 +336,12 @@ static void cloud_control_yaw(int16_t input)
                                       cloud_yaw_torque_raw);
 }
 
-static void cloud_control_yaw_mechanical(bool use_near_pid)
+static void cloud_control_yaw_mechanical(bool use_near_pid, bool force_home)
 {
     Motor4310_Data_t yaw;
     float error_deg;
 
-    if (!yaw_mechanical_mode)
+    if (!yaw_mechanical_mode || (force_home && cloud_front_reversed))
     {
         if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
         {
@@ -345,7 +350,7 @@ static void cloud_control_yaw_mechanical(bool use_near_pid)
         }
 
         // 前/后方向只改变目标，不重新定义开机校准的机械零点。
-        cloud_front_reversed = fabsf(cloud_wrap_yaw_deg(
+        cloud_front_reversed = !force_home && fabsf(cloud_wrap_yaw_deg(
             (float)(yaw.total_angle - home_target[MOTOR4310_YAW]) *
             360.0f / MOTOR4310_ECD_PER_ROUND)) >= cloud_config.front_switch_deg;
         yaw_mechanical_target = cloud_nearest_front_target(
@@ -396,14 +401,20 @@ static void cloud_control_yaw_mechanical(bool use_near_pid)
     }
 }
 
-static void cloud_send_yaw_angle(bool allow_turn)
+static void cloud_send_yaw_angle(bool allow_turn, bool allow_spin,
+                                 bool spin_selected, bool bottom_mode_blocked)
 {
-    float relative_deg;
+    float relative_deg = 0.0f;
+    bool angle_valid = cloud_terrace_home_state == CLOUD_TERRACE_HOME_DONE &&
+        Motor4310_OnlineCheck(MOTOR4310_YAW) &&
+        cloud_yaw_relative_deg(&relative_deg);
 
-    if (!cloud_yaw_relative_deg(&relative_deg)) { return; }
-    // 传机械归中后的相对车头角，而非电机编码器原始零点。
+    // 角度不可用时仍发安全模式状态；下板的自旋档位不依赖角度有效位。
+    if (!angle_valid) { allow_turn = false; allow_spin = false; }
     (void)Communication_CAN_SendYawState(relative_deg,
-                                         cloud_turnaround_active, allow_turn);
+                                         cloud_turnaround_active, allow_turn,
+                                         allow_spin, spin_selected,
+                                         angle_valid, bottom_mode_blocked);
 }
 
 static void cloud_control_pitch(int16_t input)
@@ -451,15 +462,25 @@ static void cloud_control_pitch(int16_t input)
         MOTOR4310_PITCH, (int32_t)pitch_control.target_counts, gravity);
 }
 
-void CloudTerrace_Update(void)
+void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
 {
     RemoteState_t remote;
+    LiftSafetyState_t safety;
     HAL_StatusTypeDef pitch_enable, yaw_enable;
     bool turn_blocked;
-    bool lift_modes_blocked;
+    bool mode_permitted;
+    bool spin_permitted;
+    bool bottom_mode_blocked;
+    bool yaw_home_required;
+    bool safety_valid;
 
     Motor4310_Heartbeat();
-    RemoteState_Get(&remote);
+    if (remote_snapshot == NULL) { return; }
+    remote = *remote_snapshot;
+    safety_valid = LiftControl_SafetyGet(&safety);
+    mode_permitted = safety_valid && safety.special_allowed;
+    bottom_mode_blocked = safety.bottom_mode_blocked;
+    yaw_home_required = safety.yaw_home_required;
     if (remote.mode.chassis != REMOTE_MODE_FOLLOW &&
         remote.mode.chassis != REMOTE_MODE_MECHANICAL &&
         remote.mode.chassis != REMOTE_MODE_SPIN)
@@ -469,16 +490,39 @@ void CloudTerrace_Update(void)
         turn_requested = false;
         turn_wheel_armed = false;
         cloud_front_reversed = false;
+        cloud_send_yaw_angle(false, false, false, bottom_mode_blocked);
         (void)Motor4310_DisableMotor(MOTOR4310_PITCH);
         (void)Motor4310_DisableMotor(MOTOR4310_YAW);
         return;
     }
 
-    lift_modes_blocked = LiftControl_SpecialModesBlocked(&remote);
+    if (remote.mode.chassis != REMOTE_MODE_SPIN ||
+        !remote.safety.spin_enabled)
+    {
+        // 退出自旋或主动回保险后允许下一次启动。
+        spin_rearm_required = false;
+        spin_fault_timing = false;
+    }
+    else if (!safety.spin_allowed)
+    {
+        // 失去许可当周期停转；只有持续失效才锁存，避免单帧抖动永久停转。
+        if (!spin_fault_timing)
+        {
+            spin_fault_timing = true;
+            spin_fault_start_ms = HAL_GetTick();
+        }
+        else if ((uint32_t)(HAL_GetTick() - spin_fault_start_ms) >=
+                     cloud_config.spin_fault_rearm_ms)
+        { spin_rearm_required = true; }
+    }
+    else { spin_fault_timing = false; }
+    spin_permitted = remote.mode.chassis == REMOTE_MODE_SPIN &&
+                     safety.spin_allowed && !spin_rearm_required &&
+                     !cloud_turnaround_active && !yaw_home_required;
     turn_blocked = (remote.mode.chassis == REMOTE_MODE_SPIN &&
                     remote.safety.spin_enabled) ||
-                   LiftControl_TurnaroundBlocked(&remote);
-    if (lift_modes_blocked && cloud_turnaround_active)
+                   !mode_permitted || yaw_home_required;
+    if (turn_blocked && cloud_turnaround_active)
     {
         cloud_turnaround_active = false;
         yaw_turn_stable_cycles = 0U;
@@ -500,9 +544,18 @@ void CloudTerrace_Update(void)
         { (void)Motor4310_SetTorqueRawMotor(MOTOR4310_PITCH, 0); }
         if (Motor4310_OnlineCheck(MOTOR4310_YAW))
         { (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0); }
+        cloud_send_yaw_angle(false, false,
+                             remote.mode.chassis == REMOTE_MODE_SPIN,
+                             bottom_mode_blocked);
         return;
     }
-    if (!cloud_home_step()) { return; }
+    if (!cloud_home_step())
+    {
+        cloud_send_yaw_angle(false, false,
+                             remote.mode.chassis == REMOTE_MODE_SPIN,
+                             bottom_mode_blocked);
+        return;
+    }
     if (!targets_initialized)
     {
         pitch_control.target_counts = (float)home_target[MOTOR4310_PITCH];
@@ -516,14 +569,20 @@ void CloudTerrace_Update(void)
         // 下板已由同一拨轮边沿先行停车；此时只让云台轴执行控制。
         cloud_turn_step();
         cloud_control_pitch(remote.input.channel[1]);
-        cloud_send_yaw_angle(!turn_blocked);
+        cloud_send_yaw_angle(!turn_blocked, false,
+                             remote.mode.chassis == REMOTE_MODE_SPIN,
+                             bottom_mode_blocked);
         return;
     }
 
-    if (!lift_calibrated || remote.mode.chassis == REMOTE_MODE_MECHANICAL)
+    if (!lift_calibrated || bottom_mode_blocked || yaw_home_required ||
+        remote.mode.chassis == REMOTE_MODE_MECHANICAL)
     {
-        // 首次校准前持续对准机械正方向，避免稳向停在升降死区外。
-        cloud_control_yaw_mechanical(remote.mode.chassis == REMOTE_MODE_MECHANICAL);
+        // 升降指令或低位联锁强制回机械正方向，再由升降任务确认稳定。
+        cloud_control_yaw_mechanical(
+            bottom_mode_blocked || yaw_home_required ||
+                remote.mode.chassis == REMOTE_MODE_MECHANICAL,
+            bottom_mode_blocked || yaw_home_required);
     }
     else
     {
@@ -531,5 +590,7 @@ void CloudTerrace_Update(void)
         cloud_control_yaw(-remote.input.channel[0]);
     }
     cloud_control_pitch(remote.input.channel[1]);
-    cloud_send_yaw_angle(!turn_blocked);
+    cloud_send_yaw_angle(!turn_blocked, spin_permitted,
+                         remote.mode.chassis == REMOTE_MODE_SPIN,
+                         bottom_mode_blocked);
 }

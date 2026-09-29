@@ -8,6 +8,7 @@
 #define DIAL_MOTOR_STD_ID_TO_FILTER(id)   ((uint32_t)(id) << 5U)
 
 DialMotor_Feedback_t dial_motor_feedback; // LK4005 拨盘电机反馈快照。
+volatile DialMotor_TxDiagnostics_t dial_motor_tx_diagnostics; // CAN1 发送诊断。
 PID_Controller_t dial_motor_position_pid; // 拨盘累计位置外环 PID。
 PID_Controller_t dial_motor_speed_pid; // 拨盘速度内环 PID。
 PID_Controller_t dial_motor_continuous_speed_pid; // 连发速度环。
@@ -49,10 +50,12 @@ static HAL_StatusTypeDef DialMotor_Send(
          (uint32_t)(now_ms - dial_motor_last_tx_ms) <
              dial_motor_config.tx_guard_ms))
     {
+        dial_motor_tx_diagnostics.guard_busy_count++;
         return HAL_BUSY;
     }
     if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) == 0U)
     {
+        dial_motor_tx_diagnostics.mailbox_busy_count++;
         return HAL_BUSY;
     }
 
@@ -66,7 +69,15 @@ static HAL_StatusTypeDef DialMotor_Send(
     {
         dial_motor_last_tx_ms = HAL_GetTick();
         dial_motor_tx_sent = true;
+        dial_motor_tx_diagnostics.queued_count++;
+        dial_motor_tx_diagnostics.last_command = data[0];
+        if (data[0] == DIAL_MOTOR_CMD_TORQUE)
+        {
+            dial_motor_tx_diagnostics.last_current_raw =
+                (int16_t)(((uint16_t)data[5] << 8U) | data[4]);
+        }
     }
+    else { dial_motor_tx_diagnostics.send_error_count++; }
     return status;
 }
 
@@ -83,6 +94,8 @@ HAL_StatusTypeDef DialMotor_Init(void)
     HAL_StatusTypeDef status;
 
     memset(&dial_motor_feedback, 0, sizeof(dial_motor_feedback));
+    memset((void *)&dial_motor_tx_diagnostics, 0,
+           sizeof(dial_motor_tx_diagnostics));
     dial_motor_last_tx_ms = 0U;
     dial_motor_tx_sent = false;
     PID_Init(&dial_motor_position_pid,

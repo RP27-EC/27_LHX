@@ -223,17 +223,11 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
 
     if (mode == REMOTE_SHOOT_OFF || mode == REMOTE_SHOOT_READY)
     {
-        if (mode == REMOTE_SHOOT_OFF)
-        {
-            (void)Motor3508_Stop();
-        }
-        else
-        {
-            (void)Motor3508_SpeedControl(shoot_config.fric_target_speed_rpm);
-        }
+        if (mode == REMOTE_SHOOT_OFF) { (void)Motor3508_Stop(); }
         // 安全态持续发送零电流，与正常控制共用 A1 回报链路。
         DialMotor_ResetControl();
         if ((!shoot_control_state.stop.stopped ||
+             !DialMotor_OnlineCheck() ||
              (uint32_t)(HAL_GetTick() - shoot_control_state.stop.last_stop_ms) >=
                  shoot_config.dial_safe_stop_retry_ms) &&
             DialMotor_SetTorqueCurrent(0) == HAL_OK)
@@ -241,6 +235,9 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
             shoot_control_state.stop.stopped = true;
             shoot_control_state.stop.last_stop_ms = HAL_GetTick();
         }
+        // 待发时先给拨盘保活，再发摩擦轮 0x200，避免邮箱被占满。
+        if (mode == REMOTE_SHOOT_READY)
+        { (void)Motor3508_SpeedControl(shoot_config.fric_target_speed_rpm); }
         shoot_control_state.dial.state = SHOOT_DIAL_IDLE;
         shoot_control_state.recovery.block_tick = 0U;
         shoot_control_state.dial.target_synced = false;
@@ -249,7 +246,6 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
         return;
     }
 
-    (void)Motor3508_SpeedControl(shoot_config.fric_target_speed_rpm);
     shoot_control_state.stop.stopped = false;
     if (mode != shoot_control_state.remote.last_mode)
     {
@@ -259,6 +255,8 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
         DialMotor_ResetControl();
     }
     Shoot_DialUpdate(single_rising, mode == REMOTE_SHOOT_CONTINUOUS);
+    // 4005 控制帧优先入队，随后再发送摩擦轮群组帧。
+    (void)Motor3508_SpeedControl(shoot_config.fric_target_speed_rpm);
     shoot_control_state.remote.last_right_up = right_up;
     shoot_control_state.remote.last_mode = mode;
 }

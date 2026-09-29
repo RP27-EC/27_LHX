@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "remote_state.h"
 
 #define CLOUD_RC_MAX_VALUE        660.0f
 #define CLOUD_MOTOR_TORQUE_MAX_NM 10.0f
@@ -28,7 +29,7 @@ extern volatile float cloud_yaw_rate_target_deg_s; // Yaw 角速度环目标值�
 extern volatile int16_t cloud_yaw_torque_raw; // Yaw 原始转矩输出。
 
 void CloudTerrace_Init(void);
-void CloudTerrace_Update(void);
+void CloudTerrace_Update(const RemoteState_t *remote_snapshot);
 bool CloudTerrace_LiftYawAligned(void); // 归中完成且 Yaw 位于开机机械 0° 死区内。
 bool CloudTerrace_LiftPitchNonnegative(void); // Pitch 相对归中点不低于 0°。
 

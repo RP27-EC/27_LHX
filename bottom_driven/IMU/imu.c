@@ -36,6 +36,7 @@
 static float gyro_bias[3]; // 标定得到的三轴陀螺仪零偏。
 static float integral_feedback[3]; // 姿态融合中用于消除漂移的积分反馈。
 static uint32_t last_update_ms; // 上一次姿态更新的毫秒时间戳。
+static uint32_t last_success_ms; // 上一次完整读取 BMI088 的时间。
 static float yaw_last_deg; // 上一周期单圈 Yaw 角，用于跨圈判断。
 static int32_t yaw_rounds; // Yaw 跨越正负 180 度的累计圈数。
 
@@ -293,6 +294,7 @@ HAL_StatusTypeDef GimbalImu_Init(void)
     gimbal_imu.quaternion[0] = 1.0f;
     yaw_last_deg = 0.0f;
     yaw_rounds = 0;
+    last_success_ms = 0U;
 
     // SPI1 和相关 GPIO 已由 CubeMX 在 MX_SPI1_Init/MX_GPIO_Init 中配置。
     if ((hspi1.Instance != SPI1) ||
@@ -326,6 +328,7 @@ HAL_StatusTypeDef GimbalImu_Init(void)
     gimbal_imu.calibrated = true;
     gimbal_imu.online = true;
     last_update_ms = HAL_GetTick();
+    last_success_ms = last_update_ms;
     return HAL_OK;
 }
 
@@ -339,7 +342,9 @@ bool GimbalImu_Update(void)
 
     if (!imu_read_sensor(gyro, accel, &temperature))
     {
-        gimbal_imu.online = false;
+        if ((uint32_t)(HAL_GetTick() - last_success_ms) >=
+            gimbal_imu_config.read_timeout_ms)
+        { gimbal_imu.online = false; }
         return false;
     }
 
@@ -351,6 +356,7 @@ bool GimbalImu_Update(void)
     accel[1] = -accel[1];
 
     now_ms = HAL_GetTick();
+    last_success_ms = now_ms;
     dt = (float)(uint32_t)(now_ms - last_update_ms) * 0.001f;
     last_update_ms = now_ms;
     if (dt <= 0.0f || dt > 0.02f) { dt = gimbal_imu_config.update_period_s; }

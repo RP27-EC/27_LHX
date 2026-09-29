@@ -38,8 +38,16 @@ static void UpperTasks_CommunicationStep(void)
 
 static void UpperTasks_ShootStep(void)
 {
+    static bool shoot_rearm_required = true;
+    static bool last_input_valid;
+    static bool last_keyboard_active;
+    static bool last_shoot_armed;
+    static uint8_t last_right_switch;
     bool friction_motors_online;
     bool dial_motor_online;
+    bool manual_rearm = false;
+    bool shoot_allowed;
+    LiftSafetyState_t safety;
     RemoteState_t remote;
     RemoteShoot_t shoot_mode;
 
@@ -51,8 +59,35 @@ static void UpperTasks_ShootStep(void)
     dial_motor_online = DialMotor_OnlineCheck();
     RemoteState_Get(&remote);
 
+    shoot_allowed = LiftControl_SafetyGet(&safety) && safety.shoot_allowed &&
+                    remote.mode.chassis != REMOTE_MODE_SPIN;
+    if (last_input_valid && remote.safety.online &&
+        remote.input.keyboard_active == last_keyboard_active)
+    {
+        if (remote.input.keyboard_active)
+        { manual_rearm = !last_shoot_armed && remote.safety.shoot_armed; }
+        else
+        {
+            // 许可恢复后必须从保险下档主动拨出；快速越过中档也有效。
+            manual_rearm = last_right_switch == COMM_RC_SW_DOWN &&
+                           remote.input.right_switch != COMM_RC_SW_DOWN &&
+                           remote.safety.shoot_armed;
+        }
+    }
+    if (!shoot_allowed || !remote.safety.online ||
+        (last_input_valid &&
+         last_keyboard_active != remote.input.keyboard_active))
+    { shoot_rearm_required = true; }
+    else if (manual_rearm)
+    { shoot_rearm_required = false; }
+    last_input_valid = remote.safety.online;
+    last_keyboard_active = remote.input.keyboard_active;
+    last_shoot_armed = remote.safety.shoot_armed;
+    last_right_switch = remote.input.right_switch;
+
     shoot_mode = remote.safety.online && remote.safety.shoot_armed &&
-        friction_motors_online ? remote.mode.shooting : REMOTE_SHOOT_OFF;
+        shoot_allowed && !shoot_rearm_required && friction_motors_online ?
+        remote.mode.shooting : REMOTE_SHOOT_OFF;
     // 拨盘离线时只允许摩擦轮待发，不允许供弹。
     if (!dial_motor_online && shoot_mode != REMOTE_SHOOT_OFF)
     { shoot_mode = REMOTE_SHOOT_READY; }
@@ -81,11 +116,12 @@ static void UpperTasks_ControlStep(void)
 {
     RemoteState_t remote;
 
-    // 升降依据本周期云台位置更新。
+    // 一次遥控快照先判安全，再供云台和升降使用；C1 不会落后一整周期。
     (void)GimbalImu_Update();
-    CloudTerrace_Update();
     Motor2006_Heartbeat();
     RemoteState_Get(&remote);
+    LiftControl_SafetyUpdate(&remote);
+    CloudTerrace_Update(&remote);
     LiftControl_Update(&remote);
 }
 

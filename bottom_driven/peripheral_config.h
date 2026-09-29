@@ -112,6 +112,7 @@ typedef struct
     float attitude_kp; // 加速度重力方向修正姿态的比例增益。
     float attitude_ki; // 姿态误差积分修正增益。
     float yaw_rate_filter_alpha; // 角速度低通新样本权重；1 为直接采用新值。
+    uint32_t read_timeout_ms; // 连续未读到 IMU 超过此时间才判离线。
 } GimbalImuConfig;
 extern volatile GimbalImuConfig gimbal_imu_config;
 void GimbalImuConfig_Init(void);

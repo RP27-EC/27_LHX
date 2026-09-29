@@ -31,14 +31,22 @@ typedef struct
     uint32_t up_stall_time_ms; // 上升堵转判据持续时间。
     float calibrate_up_speed_rad_s; // 找顶部时的转子速度，低于正常位控速度。
     uint32_t calibrate_timeout_ms; // 找顶部的超时时间。
-    float top_clearance_turns; // 碰顶点到后续高位目标的预留圈数；校准时不回退。
     float travel_turns; // 碰顶点到低位目标的转子圈数。
+    float bottom_mode_enter_turns; // 距低位目标不超过此转子圈数时禁止云台跟随/小陀螺。
+    float bottom_mode_exit_turns; // 离开低位目标超过此转子圈数后解除禁止；须大于进入值。
     float position_kp_rad_s_per_turn; // 每圈位置误差对应的转子目标速度。
     float position_min_speed_rad_s; // 未到位时克服静摩擦的最小目标速度。
     float hold_speed_rad_s; // 位置保持被外力推开后的最大回位速度。
     int32_t position_tolerance_counts; // 位控到位允许的编码器误差。
-    float low_mode_block_turns; // 距低位目标不超过此转子圈数时禁止调头和小陀螺。
-    float low_mode_release_turns; // 离低位目标超过此圈数才解除禁止，须大于进入阈值。
+    int32_t top_arrival_tolerance_counts; // 顶部硬限位的到位容差，避免反复顶限位。
+    float top_contact_window_turns; // 回顶部时，仅此范围内的真实碰顶可视为到位。
+    float special_enter_from_top_turns; // 距校准机械顶点不超过此圈数，进入特殊模式安全区。
+    float special_exit_from_top_turns; // 离机械顶点超过此圈数，退出安全区；须大于进入值。
+    int32_t special_down_speed_enter_rpm; // 实测向下转速超过此值时撤销特殊模式。
+    uint32_t special_down_motion_confirm_ms; // 无下降指令时，持续下行多久才判定为真实下降。
+    int32_t special_down_speed_release_rpm; // 转速回落到此值以下才开始解除下降锁定。
+    uint32_t special_down_stop_stable_ms; // 下降停止后连续稳定时间。
+    uint32_t special_state_timeout_ms; // 上板安全快照超时，超时后一律禁止。
     uint32_t lock_tx_period_ms; // C2 锁车请求发送周期。
     uint32_t chassis_lock_settle_ms; // 发出锁车请求后的等待时间。
     int32_t chassis_release_rpm; // 转子速度低于此值才解除底盘锁车。
@@ -98,6 +106,7 @@ typedef struct
     int32_t turn_wheel_rearm_raw; // ch[4]>-50 时重新允许下一次触发。
     int32_t spin_wheel_trigger_raw; // 拨轮正向越过此值切换小陀螺。
     int32_t spin_wheel_rearm_raw; // 拨轮回中位后才能再次切换。
+    uint32_t spin_fault_rearm_ms; // 自旋许可连续丢失超过此时间才锁存重新拨档。
     float front_switch_deg; // |机械 Yaw 角|≥90° 时车尾更接近云台指向。
     float turn_tolerance_deg; // Yaw 距反向车头目标的到位角差。
     int32_t turn_speed_raw_max; // 到位还要求 |Yaw 电机速度原始码|≤20。

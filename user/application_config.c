@@ -29,14 +29,22 @@ void LiftConfig_Init(void)
     lift_config.up_stall_time_ms = 500U; // 上升堵转确认时间，ms。
     lift_config.calibrate_up_speed_rad_s = 300.0f; // 自动找顶部的转子速度，rad/s。
     lift_config.calibrate_timeout_ms = 90000U; // 向上找顶部的最长时间，ms。
-    lift_config.top_clearance_turns = 5.0f; // 高位目标距碰顶点向下 5 圈。
-    lift_config.travel_turns = 316.0f; // 低位目标距碰顶点向下 316 圈。
+    lift_config.travel_turns = 295.0f; // 低位目标距碰顶点向下 316 圈。
+    lift_config.bottom_mode_enter_turns = 30.0f; // 距低位目标 5 转子圈内强制机械模式。
+    lift_config.bottom_mode_exit_turns = 40.0f; // 上升离开低位 8 转子圈后解除，避免边界抖动。
     lift_config.position_kp_rad_s_per_turn = 5.5f; // 每圈位置误差对应的目标速度，rad/s。
     lift_config.position_min_speed_rad_s = 10.0f; // 未到位时的最小目标速度，rad/s。
     lift_config.hold_speed_rad_s = 25.0f; // 外力偏离目标后回位的速度上限，rad/s。
     lift_config.position_tolerance_counts = 200; // 位控允许的到位误差，编码器计数。
-    lift_config.low_mode_block_turns = 5.0f; // 距低位目标 5 转子圈内进入禁止区。
-    lift_config.low_mode_release_turns = 8.0f; // 上升离开低位 8 转子圈后解除禁止。
+    lift_config.top_arrival_tolerance_counts = 8192; // 顶部允许差 1 转子圈。
+    lift_config.top_contact_window_turns = 5.0f; // 距校准顶部 5 圈内碰顶才算到位。
+    lift_config.special_enter_from_top_turns = 40.0f; // 机械顶点向下 40 转子圈内可布防。
+    lift_config.special_exit_from_top_turns = 45.0f; // 离顶点超过 45 圈撤销，形成迟滞。
+    lift_config.special_down_speed_enter_rpm = 30; // 明显下行才按实测转速撤销。
+    lift_config.special_down_motion_confirm_ms = 100U; // 过滤高位保持时的短暂下行纠偏。
+    lift_config.special_down_speed_release_rpm = 10; // 停止下行后解除锁定的转速门槛。
+    lift_config.special_down_stop_stable_ms = 100U; // 连续稳定 100 ms 后可重新布防。
+    lift_config.special_state_timeout_ms = 50U; // 控制任务失去更新时先进入安全态。
     lift_config.lock_tx_period_ms = 10U; // 向下板发送锁车请求的间隔，ms。
     lift_config.chassis_lock_settle_ms = 20U; // 发出锁车请求后的等待时间，ms。
     lift_config.chassis_release_rpm = 10; // 低于该转速时可释放底盘锁定，rpm。
@@ -96,11 +104,12 @@ void CloudConfig_Init(void)
     cloud_config.turn_wheel_rearm_raw = 50; // 拨轮调头重新布防阈值，原始码。
     cloud_config.spin_wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
     cloud_config.spin_wheel_rearm_raw = 50; // 拨轮切换小陀螺的复位阈值。
+    cloud_config.spin_fault_rearm_ms = 100U; // 短暂许可波动立即停转，但不锁存；持续失效需重新拨档。
     cloud_config.front_switch_deg = 90.0f; // 选择正反车头的角度分界，度。
     cloud_config.turn_tolerance_deg = 3.0f; // 调头目标角的到位误差，度。
     cloud_config.turn_speed_raw_max = 20; // 调头到位时的速度原始码上限。
     cloud_config.turn_stable_cycles = 5U; // 4 ms×5 次，调头连续到位约 20 ms。
-    cloud_config.pitch_gravity_k = 1.1f; // 归中点处约等于重力前馈，N·m。
+    cloud_config.pitch_gravity_k = 1.25f; // 归中点处约等于重力前馈，N·m。
 }
 
 volatile KeyboardSensitivityConfig keyboard_sensitivity_config;

@@ -26,7 +26,7 @@ void Motor4310Config_Init(void)
     motor4310_config.pitch_pid.speed_kd = 0.003f; // Pitch 速度环微分增益。
     motor4310_config.pitch_pid.speed_integral_limit = 200.0f; // Pitch 速度环积分限幅。
     motor4310_config.pitch_pid.speed_output_limit = 2047.0f; // Pitch 转矩码限幅。
-    motor4310_config.yaw_near_pid.position_kp = 0.04f; // 近点位置环比例增益。
+    motor4310_config.yaw_near_pid.position_kp = 0.03f; // 近点位置环比例增益。
     motor4310_config.yaw_near_pid.position_ki = 0.0f; // 近点位置环积分增益。
     motor4310_config.yaw_near_pid.position_kd = 0.003f; // 近点位置环微分增益。
     motor4310_config.yaw_near_pid.position_integral_limit = 0.0f; // 近点位置环积分限幅。
@@ -114,6 +114,7 @@ void GimbalImuConfig_Init(void)
     gimbal_imu_config.attitude_kp = 2.0f; // 加速度修正姿态的比例增益。
     gimbal_imu_config.attitude_ki = 0.02f; // 姿态误差积分修正增益。
     gimbal_imu_config.yaw_rate_filter_alpha = 1.0f; // Yaw 角速度滤波新样本权重。
+    gimbal_imu_config.read_timeout_ms = 12U; // 容忍单次 SPI 丢帧，连续失败再停惯性控制。
 }
 
 void UpperPeripheralConfig_InitAll(void)
