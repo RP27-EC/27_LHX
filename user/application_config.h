@@ -76,11 +76,19 @@ void ShootConfig_Init(void);
 
 typedef struct
 {
+    // 公共：周期、输入与上电归中
     uint32_t control_period_ticks; // 云台与升降任务控制周期，当前 4 ms。
     int32_t rc_speed_enter; // 摇杆输入死区，原始通道值。
-    float pitch_command_rate_deg_s; // Pitch 满杆位置目标变化率，度/s。
+    float home_tolerance_deg; // 两轴位置需落在归中目标 ±1°。
+    int32_t home_speed_raw_max; // 两轴速度原始码绝对值须不超过此值。
+    uint32_t home_stable_cycles; // 连续合格周期数；4 ms×5=20 ms。
+
+    // Yaw：输入与机械零点
     float yaw_command_rate_deg_s; // 满杆目标角变化率；每周期增量=ch/660×设定角速度×控制周期。
     float yaw_rc_direction; // 摇杆方向系数；调用处已将 ch[0] 取反。
+    float yaw_home_rad; // Yaw 指向车头的电机单圈角，rad。
+
+    // Yaw：IMU 角度外环与角速度内环
     float yaw_angle_kp; // Yaw 角度误差 deg 到目标 deg/s 的比例增益。
     float yaw_angle_ki; // 角度外环积分增益。
     float yaw_angle_kd; // 角度外环微分增益。
@@ -91,27 +99,56 @@ typedef struct
     float yaw_rate_kd; // IMU 角速度内环微分增益。
     float yaw_rate_integral_limit; // 角速度内环积分项限幅；0 不保留积分贡献。
     float yaw_torque_limit_raw; // 角速度内环输出转矩码上限。
-    float mechanical_yaw_near_deg; // 机械模式目标误差小于此角度时使用近点 PID。
-    float mechanical_yaw_deadzone_deg; // 机械模式距前/后目标不超过此角度时停止位置纠偏。
-    float yaw_home_rad; // Yaw 指向车头的电机单圈角，rad。
-    float pitch_home_rad; // Pitch 归中时电机单圈角，rad。
-    float home_tolerance_deg; // 两轴位置需落在归中目标 ±1°。
-    int32_t home_speed_raw_max; // 两轴速度原始码绝对值须不超过此值。
-    uint32_t home_stable_cycles; // 连续合格周期数；4 ms×5=20 ms。
-    float pitch_min_deg; // 相对归中点的 Pitch 下限，度。
-    float lift_pitch_clearance_deg; // 升降下降/低位时 Pitch 的正角度控制余量。
-    float pitch_max_deg; // 相对归中点的 Pitch 上限，度。
-    float pitch_target_lead_deg; // 位置目标最多领先实际角度的幅度，防止积累过大误差。
+
+    // Yaw：单套 PID 机械保持
+    float mechanical_yaw_deadzone_deg; // 机械 Yaw 连续位置死区，内部保留速度环阻尼。
+    float mechanical_yaw_brake_speed_at_1deg_raw; // 剩余 1°时的速度码上限；越小越早刹车，0 关闭。
+
+    float mechanical_yaw_command_deg_s_per_raw; // 位置环每个速度码对应的目标 °/s；这是指令比例，不是电机量程。
+    float mechanical_yaw_gyro_direction; // IMU Yaw 与编码器正方向同向 +1，反向 -1。
+    float mechanical_yaw_rate_kp; // 陀螺仪速度环，角速度误差 °/s -> 转矩码。
+    float mechanical_yaw_rate_ki;
+    float mechanical_yaw_rate_kd;
+    float mechanical_yaw_rate_integral_limit; // 速度误差积分限幅。
+    float mechanical_yaw_torque_limit_raw; // 陀螺仪速度环转矩限幅。
+
+    // Yaw：调头与小陀螺；turn_speed_raw_max 仅为到位速度判据
     int32_t turn_wheel_trigger_raw; // ch[4]≤-200 视为向上拨到触发位。
     int32_t turn_wheel_rearm_raw; // ch[4]>-50 时重新允许下一次触发。
-    int32_t spin_wheel_trigger_raw; // 拨轮正向越过此值切换小陀螺。
-    int32_t spin_wheel_rearm_raw; // 拨轮回中位后才能再次切换。
-    uint32_t spin_fault_rearm_ms; // 自旋许可连续丢失超过此时间才锁存重新拨档。
     float front_switch_deg; // |机械 Yaw 角|≥90° 时车尾更接近云台指向。
+    float turn_max_speed_deg_s; // S 曲线轨迹最大角速度，deg/s。
+    float turn_max_accel_deg_s2; // S 曲线轨迹最大角加速度，deg/s²。
+    float turn_max_jerk_deg_s3; // S 曲线轨迹最大加加速度，deg/s³。
     float turn_tolerance_deg; // Yaw 距反向车头目标的到位角差。
     int32_t turn_speed_raw_max; // 到位还要求 |Yaw 电机速度原始码|≤20。
     uint32_t turn_stable_cycles; // 连续到位周期数；4 ms×5=20 ms。
+    int32_t spin_wheel_trigger_raw; // 拨轮正向越过此值切换小陀螺。
+    int32_t spin_wheel_rearm_raw; // 拨轮回中位后才能再次切换。
+    uint32_t spin_fault_rearm_ms; // 自旋许可连续丢失超过此时间才锁存重新拨档。
+
+    // Pitch：IMU 惯性保持；角度/角速度统一转换到电机正方向
+    float pitch_imu_direction; // IMU Pitch 增大与编码器增大同向为 +1，否则 -1。
+    float pitch_rate_filter_alpha; // 角速度一阶滤波系数，0~1。
+    float pitch_angle_kp;
+    float pitch_angle_ki;
+    float pitch_angle_kd;
+    float pitch_angle_integral_limit;
+    float pitch_rate_target_limit_deg_s; // 外环输出上限，deg/s。
+    float pitch_rate_kp;
+    float pitch_rate_ki;
+    float pitch_rate_kd;
+    float pitch_rate_integral_limit;
+    float pitch_torque_limit_raw; // 含重力补偿的总转矩限幅。
+
+    // Pitch：输入、机械零点、限位与重力补偿
+    float pitch_command_rate_deg_s; // Pitch 满杆位置目标变化率，度/s。
+    float pitch_home_rad; // Pitch 归中时电机单圈角，rad。
+    float pitch_min_deg; // 相对归中点的 Pitch 下限，度。
+    float pitch_max_deg; // 相对归中点的 Pitch 上限，度。
+    float lift_pitch_clearance_deg; // 升降下降/低位时 Pitch 的正角度控制余量。
+    float pitch_target_lead_deg; // 位置目标最多领先实际角度的幅度，防止积累过大误差。
     float pitch_gravity_k; // Pitch 重力前馈系数，N·m；前馈=k*cos(相对机械零点角)。
+
 } CloudConfig;
 extern volatile CloudConfig cloud_config;
 void CloudConfig_Init(void);

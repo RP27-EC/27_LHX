@@ -269,10 +269,16 @@ HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
 
 bool Communication_CAN_GetChassisYawRate(float *rate_deg_s)
 {
+    uint32_t sample_ms;
+    return Communication_CAN_GetChassisYawRateState(rate_deg_s, &sample_ms);
+}
+
+bool Communication_CAN_GetChassisYawRateState(float *rate_deg_s, uint32_t *sample_ms)
+{
     Communication_CanRxFrame_t frame;
     int16_t encoded;
 
-    if (rate_deg_s == NULL ||
+    if (rate_deg_s == NULL || sample_ms == NULL ||
         !Communication_CAN_GetLatest(COMM_CAN_RX_ID_D4, &frame) ||
         (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >=
             communication_config.yaw_rate_timeout_ms ||
@@ -283,6 +289,7 @@ bool Communication_CAN_GetChassisYawRate(float *rate_deg_s)
     encoded = (int16_t)((uint16_t)frame.data[0] |
                         ((uint16_t)frame.data[1] << 8));
     *rate_deg_s = (float)encoded * 0.01f;
+    *sample_ms = frame.last_rx_ms;
     return true;
 }
 

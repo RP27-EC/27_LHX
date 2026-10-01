@@ -107,6 +107,7 @@ HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
                                                   bool angle_valid,
                                                   bool bottom_mode_blocked);
 bool Communication_CAN_GetChassisYawRate(float *rate_deg_s);
+bool Communication_CAN_GetChassisYawRateState(float *rate_deg_s, uint32_t *sample_ms);
 
 // 获取指定 D1~D5 的最新完整快照；尚未收到或参数错误时返回 false。
 bool Communication_CAN_GetLatest(uint16_t std_id,

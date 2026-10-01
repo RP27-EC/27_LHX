@@ -20,8 +20,12 @@ typedef struct
 
 typedef struct
 {
+    // 公共：在线、失能与控制周期
     uint32_t offline_timeout_ms; // 两轴任一反馈超过此时长未更新，即判离线。
     uint32_t disable_retry_ms; // 保险状态下周期重发失能命令的间隔。
+    float control_period_s; // PID 单次调用周期，1 ms = 0.001 s。
+
+    // Yaw：机械保持位置速度环与驱动固定前馈
     float speed_kp; // 速度误差到转矩码的比例增益。
     float speed_ki; // 速度环积分增益，积分按控制周期累积。
     float speed_kd; // 速度环微分增益；0 为关闭。
@@ -32,11 +36,13 @@ typedef struct
     float position_kd; // 位置环微分增益；0 为关闭。
     float position_integral_limit; // 位置环积分项绝对值上限。
     float position_output_limit; // 位置环速度原始码目标上限。
-    Motor4310_PidProfile_t pitch_pid; // Pitch 独立位置-速度串级 PID 参数。
-    Motor4310_PidProfile_t yaw_near_pid; // 机械模式近点 Yaw 串级 PID 参数。
+    Motor4310_PidProfile_t yaw_turn_pid; // 调头独立串级 PID；位置输出是速度原始码。
     float yaw_speed_feedforward_raw; // Yaw 速度目标非零时叠加的固定转矩码幅值。
     float yaw_speed_feedforward_deadband_raw; // 驱动速度环目标的前馈启用死区，原始码。
-    float control_period_s; // PID 单次调用周期，1 ms = 0.001 s。
+
+    // Pitch：独立位置与速度环
+    Motor4310_PidProfile_t pitch_pid; // Pitch 独立位置-速度串级 PID 参数。
+
 } Motor4310Config;
 extern volatile Motor4310Config motor4310_config;
 void Motor4310Config_Init(void);

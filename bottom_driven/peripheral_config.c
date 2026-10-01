@@ -4,18 +4,38 @@ volatile Motor4310Config motor4310_config;
 
 void Motor4310Config_Init(void)
 {
+    // 公共：在线、失能与控制周期
     motor4310_config.offline_timeout_ms = 100U; // 电机反馈离线超时，ms。
     motor4310_config.disable_retry_ms = 50U; // 失能命令重发间隔，ms。
-    motor4310_config.speed_kp = 1.2f; // 4310 速度环比例增益。
-    motor4310_config.speed_ki = 0.0f; // 4310 速度环积分增益。
-    motor4310_config.speed_kd = 0.003f; // 4310 速度环微分增益。
-    motor4310_config.speed_integral_limit = 200.0f; // 速度环积分项限幅。
+    motor4310_config.control_period_s = 0.004f; // PID 控制周期，s。
+
+    // Yaw：机械保持位置速度环与驱动固定前馈
+    motor4310_config.speed_kp = 2.0f; // Yaw 机械保持速度环比例增益。
+    motor4310_config.speed_ki = 1.2f; // 4310 速度环积分增益。
+    motor4310_config.speed_kd = 0.001f; // 4310 速度环微分增益。
+    motor4310_config.speed_integral_limit = 350.0f; // 速度环积分项限幅。
     motor4310_config.speed_output_limit = 2047.0f; // 速度环转矩码输出限幅。
-    motor4310_config.position_kp = 0.3f; // 4310 位置环比例增益。
-    motor4310_config.position_ki = 0.0f; // 4310 位置环积分增益。
+    motor4310_config.position_kp = 0.3f; // Yaw 机械保持位置环比例增益。
+    motor4310_config.position_ki = 1.0f; // 4310 位置环积分增益。
     motor4310_config.position_kd = 0.005f; // 4310 位置环微分增益。
-    motor4310_config.position_integral_limit = 100.0f; // 位置环积分项限幅。
-    motor4310_config.position_output_limit = 500.0f; // 位置环目标速度限幅。
+    motor4310_config.position_integral_limit = 150.0f; // 位置环积分项限幅。
+    motor4310_config.position_output_limit = 300.0f; // 位置环目标速度限幅。
+    motor4310_config.yaw_speed_feedforward_raw = 0.0f; // Yaw 转动时按目标方向叠加的固定转矩码。
+    motor4310_config.yaw_speed_feedforward_deadband_raw = 0.0f; // 4310 原始目标速度超过此值才加前馈。
+
+    // Yaw：独立调头，轨迹跟踪不叠加固定方向转矩。
+    motor4310_config.yaw_turn_pid.position_kp = 0.7f;
+    motor4310_config.yaw_turn_pid.position_ki = 0.0f;
+    motor4310_config.yaw_turn_pid.position_kd = 0.0f;
+    motor4310_config.yaw_turn_pid.position_integral_limit = 0.0f;
+    motor4310_config.yaw_turn_pid.position_output_limit = 1500.0f;
+    motor4310_config.yaw_turn_pid.speed_kp = 1.4f;
+    motor4310_config.yaw_turn_pid.speed_ki = 0.0f;
+    motor4310_config.yaw_turn_pid.speed_kd = 0.0f;
+    motor4310_config.yaw_turn_pid.speed_integral_limit = 0.0f;
+    motor4310_config.yaw_turn_pid.speed_output_limit = 2047.0f;
+
+    // Pitch：独立位置与速度环
     motor4310_config.pitch_pid.position_kp = 0.3f; // Pitch 位置环比例增益。
     motor4310_config.pitch_pid.position_ki = 0.0f; // Pitch 位置环积分增益。
     motor4310_config.pitch_pid.position_kd = 0.004f; // Pitch 位置环微分增益。
@@ -26,19 +46,7 @@ void Motor4310Config_Init(void)
     motor4310_config.pitch_pid.speed_kd = 0.003f; // Pitch 速度环微分增益。
     motor4310_config.pitch_pid.speed_integral_limit = 200.0f; // Pitch 速度环积分限幅。
     motor4310_config.pitch_pid.speed_output_limit = 2047.0f; // Pitch 转矩码限幅。
-    motor4310_config.yaw_near_pid.position_kp = 0.03f; // 近点位置环比例增益。
-    motor4310_config.yaw_near_pid.position_ki = 0.0f; // 近点位置环积分增益。
-    motor4310_config.yaw_near_pid.position_kd = 0.003f; // 近点位置环微分增益。
-    motor4310_config.yaw_near_pid.position_integral_limit = 0.0f; // 近点位置环积分限幅。
-    motor4310_config.yaw_near_pid.position_output_limit = 12.0f; // 近点目标速度限幅。
-    motor4310_config.yaw_near_pid.speed_kp = 1.0f; // 近点速度环比例增益。
-    motor4310_config.yaw_near_pid.speed_ki = 0.0f; // 近点速度环积分增益。
-    motor4310_config.yaw_near_pid.speed_kd = 0.005f; // 近点速度环微分增益。
-    motor4310_config.yaw_near_pid.speed_integral_limit = 0.0f; // 近点速度环积分限幅。
-    motor4310_config.yaw_near_pid.speed_output_limit = 300.0f; // 近点转矩码限幅。
-    motor4310_config.yaw_speed_feedforward_raw = 200.0f; // Yaw 转动时按目标方向叠加的固定转矩码。
-    motor4310_config.yaw_speed_feedforward_deadband_raw = 500.0f; // 4310 原始目标速度超过此值才加前馈。
-    motor4310_config.control_period_s = 0.004f; // PID 控制周期，s。
+
 }
 
 volatile CommunicationConfig communication_config;
@@ -74,8 +82,8 @@ void Motor2006Config_Init(void)
     motor2006_config.offline_timeout_ms = 100U; // 升降电机反馈离线超时，ms。
     motor2006_config.command_timeout_ms = 100U; // 控制命令超时清零间隔，ms。
     motor2006_config.torque_constant = 0.18f; // 速度环转矩到电流的换算系数。
-    motor2006_config.speed_kp = 20.0f; // 升降电机速度环比例增益。
-    motor2006_config.speed_ki =  10.0f; // 升降电机速度环积分增益。
+    motor2006_config.speed_kp = 12.0f; // 升降电机速度环比例增益。
+    motor2006_config.speed_ki =  5.0f; // 升降电机速度环积分增益。
     motor2006_config.speed_kd = 0.0f; // 升降电机速度环微分增益。
     motor2006_config.speed_integral_limit = 0.0f; // 速度环积分项限幅。
     motor2006_config.speed_torque_output_limit = 800.0f; // 速度环转矩输出限幅。

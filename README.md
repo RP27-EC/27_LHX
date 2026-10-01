@@ -48,11 +48,11 @@
 
 | 场景 | Yaw 目标与控制 | Pitch 目标与控制 |
 | --- | --- | --- |
-| 未完成升降校准、机械模式 | Yaw 靠近选定的物理车头/车尾方向；收到升降指令后强制回物理车头 0°。编码器位置外环 + 速度内环。机械近点切另一组 PID，目标误差落入 `mechanical_yaw_deadzone_deg` 后不再追逐小误差。 | 摇杆积分改变编码器位置目标，全程位置—速度串级 PID；松杆保持当前目标，不切速控。 |
-| 底盘跟随云台、小陀螺 | 摇杆积分生成惯性系 Yaw 角目标；上板 IMU 角度 PID 生成角速度目标，再用 IMU 角速度 PID 输出转矩。松杆保持原角目标。 | 与机械模式相同，保持独立位控及机械限位。 |
+| 未完成升降校准、机械模式 | Yaw 靠近选定的物理车头/车尾方向；收到升降指令后强制回物理车头 0°。编码器位置外环 + 上板陀螺仪速度内环。保持固定目标；机械保持使用单套 PID 和 ±1° 连续位置死区，内部保留速度环制动。 | 摇杆积分改变编码器位置目标，全程位置—速度串级 PID；松杆保持当前目标，不切速控。 |
+| 底盘跟随云台、小陀螺 | 摇杆积分生成惯性系 Yaw 角目标；上板 IMU 角度 PID 生成角速度目标，再用 IMU 角速度 PID 输出转矩。松杆保持原角目标。 | IMU 俯仰角外环 + 陀螺仪俯仰角速度内环；松杆保持惯性角目标，保留编码器机械限位。 |
 | 调头 | Yaw 使用编码器位控到距当前最近的反向车头方向，连续到位后交回当前模式；调头时底盘由 C1 标志停车。 | 仍可按常规输入控制。 |
 
-Pitch 有相对归中点的上下限，位置目标最多领先反馈 `pitch_target_lead_deg`；升降处于下降/低位时会提高允许下限。重力前馈为 `pitch_gravity_k × cos(相对归中点角度)`，默认 `k=1.1 N·m`，不再使用额外偏置或倍率。Pitch 独立串级 PID 在 `motor4310_config.pitch_pid`，位置指令速率与重力系数在 `cloud_config`。上板 BMI088 的安装方向在 `IMU/imu.c` 处理，陀螺零偏上电标定；加速度用于姿态的重力方向修正，没有磁力计参与。机械模式的 Yaw 近点参数及固定速度前馈仍在 `motor4310_config`。
+Pitch 有相对归中点的上下限，位置目标最多领先反馈 `pitch_target_lead_deg`；升降处于下降/低位时会提高允许下限。重力前馈为 `pitch_gravity_k × cos(相对归中点角度)`，默认 `k=1.1 N·m`，不再使用额外偏置或倍率。Pitch 机械模式与归中 PID 在 `motor4310_config.pitch_pid`；跟随/小陀螺使用 `cloud_config.pitch_angle_*`、`pitch_rate_*` 独立 IMU PID，内环反馈为 `cos(roll)×gyro_y−sin(roll)×gyro_z` 换算 deg/s，不含姿态融合修正量。`pitch_imu_direction` 默认 +1，若 IMU 俯仰角与编码器增大方向相反则设为 -1。模式切换与 IMU 恢复从当前姿态接管，IMU 离线停止 Pitch 转矩控制。机械限位由实时编码器余量换算到 IMU 目标角，升降联锁强制机械模式。位置指令速率与重力系数在 `cloud_config`。上板 BMI088 的安装方向在 `IMU/imu.c` 处理，陀螺零偏上电标定；加速度用于姿态的重力方向修正，没有磁力计参与。机械模式的 Yaw 近点参数及固定速度前馈仍在 `motor4310_config`。
 
 ## 升降机
 
@@ -72,7 +72,7 @@ Pitch 有相对归中点的上下限，位置目标最多领先反馈 `pitch_tar
 
 许可恢复不会自动重启自旋或摩擦轮：物理遥控小陀螺可留在该模式，但须先将右拨杆回到非上档，再主动拨到上档；键鼠小陀螺须退出再进入。遥控发射须先离开左下升降档，许可恢复后再从右下保险档主动拨到中档或上档；键鼠须让 `F` 的摩擦轮锁存先关、再按一次打开（若原本已关，只需按一次）。板间相关改动需成对烧录。
 
-机械模式的调头和发射根据 4310 编码器姿态判断，不再被无关的单次 IMU 读取失败卡住；跟随/小陀螺仍要求 IMU 在线。键鼠机械模式用 B 控制升降、F 控制摩擦轮，两者不共用拨杆，顶部许可恢复后可发射；物理左下档仍为升降专用。上板 IMU 允许最多约 12 ms 的短暂 SPI 丢帧，连续失败后判离线并停止惯性控制。
+机械模式的调头和发射许可根据 4310 编码器姿态判断；机械 Yaw 保持的陀螺仪速度环及跟随/小陀螺惯性控制要求 IMU 在线。键鼠机械模式用 B 控制升降、F 控制摩擦轮，两者不共用拨杆，顶部许可恢复后可发射；物理左下档仍为升降专用。上板 IMU 允许最多约 12 ms 的短暂 SPI 丢帧，连续失败后判离线并停止惯性控制。
 
 ## 发射机构
 
@@ -97,7 +97,7 @@ Pitch 有相对归中点的上下限，位置目标最多领先反馈 `pitch_tar
 ## 基础算法与维护入口
 
 - PID：通用 `PID_Calc`，控制任务中以配置结构体调用 `PID_UpdateParameters`，可在线改增益、积分和输出限幅；配置初始化函数只在启动时调用一次。
-- 角度：4310 和 2006 都处理跨圈累计；Pitch/机械 Yaw 用电机编码器位置，惯性稳向 Yaw 用 IMU 累计角度及角速度。
+- 角度：4310 和 2006 都处理跨圈累计；机械 Pitch/Yaw 用编码器；跟随/小陀螺 Pitch 用 IMU 俯仰姿态及角速度，Yaw 用 IMU 累计航向及角速度。
 - 姿态：BMI088 陀螺积分 + 加速度重力修正的四元数解算；Yaw 无磁航向绝对参考，长期漂移需在调试时关注。
 - 调参顺序：先核对 `RemoteState_t` 和 CAN 在线计数，再核对机械归中/IMU，最后调整 `application_config.c` 的外环与 `peripheral_config.c` 的驱动内环；不要用应用参数替代电机电流限幅。
 - 关键观察量：`upper_task_timing`、`communication_rc_online`、`motor4310_data`、`gimbal_imu`、`lift_control_state`、`shoot_control_state`、`dial_motor_feedback`。`HAL_OK` 只说明 CAN 帧成功入队，并非电机执行确认。
@@ -145,3 +145,40 @@ Pitch 有相对归中点的上下限，位置目标最多领先反馈 `pitch_tar
 | 修改坐标或调头 | 4310 反馈角、机械归中角、IMU 累计 Yaw、逻辑车头方向不能混同；明确零点与符号。无磁力计的 Yaw 不能当长期绝对航向。 |
 | 增加 CAN1 设备 | 摩擦轮与 2006 共用 `0x200` 群组帧，禁止新驱动独发一帧覆盖别的槽位；4005 也在 CAN1，新增周期帧需核总线负载和任务超期。 |
 | CubeMX 重新生成 | 复核 `main.c` 初始化顺序、CAN 滤波/通知、任务周期与 Keil 路径；手写驱动放 `bottom_driven`，应用状态机放 `user`，不要把业务代码放入生成区。 |
+
+### 机械 Yaw 单套 PID 与 1° 位置死区
+
+机械 Yaw 保持固定 0°/180°目标，升降请求仍强制物理 0°。全角度使用 `motor4310_config.position_*` 与 `speed_*` 同一套参数，取消近远点 PID 分段与插值；独立调头仍用 `yaw_turn_pid` 和 S 曲线。
+
+`cloud_config.mechanical_yaw_deadzone_deg=1.0`。误差为 e 时送入位置环的有效误差为：e>1° 使用 e−1°，e<−1° 使用 e+1°，±1° 内为零。这是连续软死区，原机械目标不被改写，跨界不重置 PID。死区内仍执行速度环，根据实际速度计算制动转矩，不直接清零电机输出；当前 Ki、Kd 为零时，只有实际转速也为零才自然输出零。未校准时的机械归中不使用这个死区。
+
+已撤销上板机械 Yaw 的底盘角速度前馈及其配置入口。D4 连续上报仍可用于通信观测，但不参与本次 Yaw 控制。机械保持也不叠加固定方向转矩前馈。调试查看 `cloud_yaw_mechanical_error_deg`、`motor4310_position_pids[1].Output`、`motor4310_speed_pids[1].Output`。
+
+### 机械 Yaw 回正减速
+
+机械保持在位置环与速度环之间增加平方根速度限制：`速度码上限 = mechanical_yaw_brake_speed_at_1deg_raw × sqrt(死区外剩余角度/1°)`，同时不超过原位置环速度上限。使用有效误差，保留原机械目标与死区，不改变 PID 增益。进入死区时位置环输出速度限幅为零，速度环仍按上板陀螺仪角速度输出制动转矩。
+
+`cloud_config.mechanical_yaw_brake_speed_at_1deg_raw` 默认 40：剩余 1°允许 40、4°允许 80 个速度码。调小会更早减速，调大会更快；设为 0 关闭。这里直接使用 MIT 速度原始码，没有假设电机的速度量程。调试可看 `cloud_yaw_mechanical_speed_limit_raw` 和 `motor4310_position_pids[MOTOR4310_YAW].Output`。仅用于机械保持/机械回零；独立调头 S 曲线和惯性 Yaw 不使用此限制。实际超调仍受惯量、速度环和积分参数影响，需实车调试。
+
+### 独立调头 S 曲线
+
+调头采用五次多项式 `s=10u³−15u⁴+6u⁵`，从当前编码器角到最近的反向车头方向。两端轨迹速度、加速度为零，时长依据整段速度、加速度和 jerk 峰值计算。轨迹限制描述目标运动，不保证实际电机速度严格等于轨迹；实际跟踪和超调需上板验证。
+
+| 参数 | 默认值 | 作用 |
+|---|---|---|
+| `cloud_config.turn_max_speed_deg_s` | 240 | 轨迹最大速度，deg/s |
+| `cloud_config.turn_max_accel_deg_s2` | 600 | 轨迹最大加速度，deg/s² |
+| `cloud_config.turn_max_jerk_deg_s3` | 3000 | 轨迹最大加加速度，deg/s³ |
+| `motor4310_config.yaw_turn_pid` | 独立串级配置 | 仅调头使用，与机械保持分开 |
+
+180° 默认轨迹约 1.53 s，实际调头时间还包含跟踪收敛与稳定确认。调头不叠加固定方向转矩前馈。轨迹结束后保持最终目标，满足 `turn_tolerance_deg`、`turn_speed_raw_max`、`turn_stable_cycles` 才报告完成并释放下板停车。升降归零请求、安全许可撤销、离线仍可取消调头；取消后不继续旧轨迹。速度等轨迹参数在每次启动时读取，PID 可在线调节。调试变量为 `cloud_turn_progress`、`cloud_turn_duration_s`、`cloud_turn_target_deg`。
+
+调头速度跟踪上限现在位于 `yaw_turn_pid.position_output_limit`，单位仍为原始速度码。
+
+### 机械 Yaw 陀螺仪速度环
+
+机械保持/升降回零的外环仍使用编码器位置和 `motor4310_config.position_*`，内环改用上板 `imu.yaw_rate_deg_s`（已滤波的 Z 轴角速度），不使用电机反馈速度。内环 PID 单独放在 `cloud_config.mechanical_yaw_rate_*`，默认 Kp=10、Ki=Kd=0，转矩上限 `mechanical_yaw_torque_limit_raw=1800`。上电机械归中和独立调头继续使用原驱动编码器速度环。
+
+位置环与刹车包络的速度码乘 `mechanical_yaw_command_deg_s_per_raw` 得到目标 °/s，默认 1，即 40 个目标速度码对应 40°/s。这是可调的目标指令比例，并非 MIT 速度反馈量程换算。`mechanical_yaw_gyro_direction` 默认 +1，IMU 正方向与电机编码器相反时改为 -1。机械目标保持底盘相对角，而上板陀螺仪测量云台绝对角速度，底盘转动时外环需要产生角差来提供跟随速度，仍可能有动态跟随误差。
+
+IMU 离线时停止机械 Yaw 转矩控制，保留机械目标；恢复时清除 PID 历史后继续回正。调试可看 `cloud_yaw_mechanical_gyro_online`、`cloud_yaw_rate_target_deg_s`、`cloud_yaw_rate_deg_s` 和 `cloud_yaw_torque_raw`。速度环单位及反馈来源已改变，需重新实车确认方向和增益。

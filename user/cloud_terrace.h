@@ -27,6 +27,20 @@ extern volatile float cloud_yaw_angle_deg; // Yaw 累计实际角，单位度。
 extern volatile float cloud_yaw_rate_deg_s; // Yaw 实际角速度，单位度每秒。
 extern volatile float cloud_yaw_rate_target_deg_s; // Yaw 角速度环目标值。
 extern volatile int16_t cloud_yaw_torque_raw; // Yaw 原始转矩输出。
+extern volatile float cloud_yaw_mechanical_error_deg; // 机械目标减反馈，deg。
+extern volatile float cloud_yaw_mechanical_speed_limit_raw; // 当前回正目标速度限幅，原始码。
+extern volatile bool cloud_yaw_mechanical_gyro_online; // 机械速度环 IMU 有效状态。
+extern volatile float cloud_turn_progress; // S 曲线进度 0~1。
+extern volatile float cloud_turn_duration_s; // 本次轨迹时长。
+extern volatile float cloud_turn_target_deg; // 相对机械零点的轨迹目标角。
+
+// Pitch IMU 惯性控制状态，角度和角速度均已换算到电机正方向。
+extern volatile bool cloud_pitch_imu_online;
+extern volatile float cloud_pitch_target_deg;
+extern volatile float cloud_pitch_angle_deg;
+extern volatile float cloud_pitch_rate_deg_s;
+extern volatile float cloud_pitch_rate_target_deg_s;
+extern volatile int16_t cloud_pitch_torque_raw;
 
 void CloudTerrace_Init(void);
 void CloudTerrace_Update(const RemoteState_t *remote_snapshot);

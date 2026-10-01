@@ -15,9 +15,9 @@ void LiftConfig_Init(void)
     lift_config.down_speed_rad_s = 1000.0f; // 正常下降的转子速度上限，rad/s。
     lift_config.up_speed_rad_s = 1000.0f; // 正常上升的转子速度上限，rad/s。
     lift_config.max_rotor_turns = 320.0f; // 上电后正、反向累计转数限制，圈。
-    lift_config.limit_stop_margin_counts = 40; // 行程边界前的停机余量，编码器计数。
+    lift_config.limit_stop_margin_counts = 80; // 行程边界前的停机余量，编码器计数。
     lift_config.yaw_deadzone_deg = 2.0f; // 允许升降的 Yaw 归中角度误差，度。
-    lift_config.yaw_stable_ms = 100U; // Yaw 连续处于死区内的时间，ms。
+    lift_config.yaw_stable_ms = 50U; // Yaw 连续处于死区内的时间，ms。
     lift_config.stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
     lift_config.fault_stop_retry_ms = 5U; // 故障停机命令重发间隔，ms。
     lift_config.stall_progress_counts = 40; // 堵转时间窗内要求的最小位移，计数。
@@ -26,9 +26,9 @@ void LiftConfig_Init(void)
     lift_config.down_stall_time_ms = 200U; // 下降堵转确认时间，ms。
     lift_config.up_stall_current_raw = 520; // 上升堵转电流阈值，反馈原始码。
     lift_config.up_stall_speed_rpm = 1; // 上升堵转低速阈值，rpm。
-    lift_config.up_stall_time_ms = 500U; // 上升堵转确认时间，ms。
-    lift_config.calibrate_up_speed_rad_s = 300.0f; // 自动找顶部的转子速度，rad/s。
-    lift_config.calibrate_timeout_ms = 90000U; // 向上找顶部的最长时间，ms。
+    lift_config.up_stall_time_ms = 300U; // 上升堵转确认时间，ms。
+    lift_config.calibrate_up_speed_rad_s = 500.0f; // 自动找顶部的转子速度，rad/s。
+    lift_config.calibrate_timeout_ms = 900000U; // 向上找顶部的最长时间，ms。
     lift_config.travel_turns = 295.0f; // 低位目标距碰顶点向下 316 圈。
     lift_config.bottom_mode_enter_turns = 30.0f; // 距低位目标 5 转子圈内强制机械模式。
     lift_config.bottom_mode_exit_turns = 40.0f; // 上升离开低位 8 转子圈后解除，避免边界抖动。
@@ -36,14 +36,14 @@ void LiftConfig_Init(void)
     lift_config.position_min_speed_rad_s = 10.0f; // 未到位时的最小目标速度，rad/s。
     lift_config.hold_speed_rad_s = 25.0f; // 外力偏离目标后回位的速度上限，rad/s。
     lift_config.position_tolerance_counts = 200; // 位控允许的到位误差，编码器计数。
-    lift_config.top_arrival_tolerance_counts = 8192; // 顶部允许差 1 转子圈。
+    lift_config.top_arrival_tolerance_counts = 10000; // 顶部允许差 1 转子圈。
     lift_config.top_contact_window_turns = 5.0f; // 距校准顶部 5 圈内碰顶才算到位。
-    lift_config.special_enter_from_top_turns = 40.0f; // 机械顶点向下 40 转子圈内可布防。
-    lift_config.special_exit_from_top_turns = 45.0f; // 离顶点超过 45 圈撤销，形成迟滞。
+    lift_config.special_enter_from_top_turns = 50.0f; // 机械顶点向下 40 转子圈内可布防。
+    lift_config.special_exit_from_top_turns = 55.0f; // 离顶点超过 45 圈撤销，形成迟滞。
     lift_config.special_down_speed_enter_rpm = 30; // 明显下行才按实测转速撤销。
     lift_config.special_down_motion_confirm_ms = 100U; // 过滤高位保持时的短暂下行纠偏。
     lift_config.special_down_speed_release_rpm = 10; // 停止下行后解除锁定的转速门槛。
-    lift_config.special_down_stop_stable_ms = 100U; // 连续稳定 100 ms 后可重新布防。
+    lift_config.special_down_stop_stable_ms = 50U; // 连续稳定 100 ms 后可重新布防。
     lift_config.special_state_timeout_ms = 50U; // 控制任务失去更新时先进入安全态。
     lift_config.lock_tx_period_ms = 10U; // 向下板发送锁车请求的间隔，ms。
     lift_config.chassis_lock_settle_ms = 20U; // 发出锁车请求后的等待时间，ms。
@@ -74,11 +74,19 @@ volatile CloudConfig cloud_config;
 
 void CloudConfig_Init(void)
 {
+    // 公共：周期、输入与上电归中
     cloud_config.control_period_ticks = 4U; // 云台与升降任务控制周期，tick。
     cloud_config.rc_speed_enter = 15; // 摇杆输入死区，原始通道值。
-    cloud_config.pitch_command_rate_deg_s = 150.0f; // Pitch 满杆位置目标变化率，度/s。
+    cloud_config.home_tolerance_deg = 1.5f; // 云台归中的位置误差，度。
+    cloud_config.home_speed_raw_max = 20; // 归中到位时的速度原始码上限。
+    cloud_config.home_stable_cycles = 5U; // 4 ms×5 次，归中连续到位约 20 ms。
+
+    // Yaw：输入与机械零点
     cloud_config.yaw_command_rate_deg_s = 200.0f; // Yaw 满杆目标角变化率，度/s。
     cloud_config.yaw_rc_direction = 1.0f; // Yaw 摇杆输入方向系数。
+    cloud_config.yaw_home_rad = (-0.387884378f); // Yaw 指向车头时的电机单圈角，rad。
+
+    // Yaw：IMU 角度外环与角速度内环
     cloud_config.yaw_angle_kp = 10.0f; // Yaw 角度外环比例增益。
     cloud_config.yaw_angle_ki = 0.0f; // Yaw 角度外环积分增益。
     cloud_config.yaw_angle_kd = 0.0f; // Yaw 角度外环微分增益。
@@ -89,27 +97,56 @@ void CloudConfig_Init(void)
     cloud_config.yaw_rate_kd = 0.0f; // Yaw 角速度内环微分增益。
     cloud_config.yaw_rate_integral_limit = 0.0f; // 角速度内环积分项限幅。
     cloud_config.yaw_torque_limit_raw = 2047.0f; // Yaw 输出转矩码上限。
-    cloud_config.mechanical_yaw_near_deg = 3.0f; // 机械模式距当前前/后目标小于 3° 时切换近点 PID。
-    cloud_config.mechanical_yaw_deadzone_deg = 1.0f; // 机械模式 Yaw 目标角的 ±1° 死区。
-    cloud_config.yaw_home_rad = (-0.387884378f); // Yaw 指向车头时的电机单圈角，rad。
-    cloud_config.pitch_home_rad = 2.59309077f; // Pitch 机械归中时的电机单圈角，rad。
-    cloud_config.home_tolerance_deg = 1.5f; // 云台归中的位置误差，度。
-    cloud_config.home_speed_raw_max = 20; // 归中到位时的速度原始码上限。
-    cloud_config.home_stable_cycles = 5U; // 4 ms×5 次，归中连续到位约 20 ms。
-    cloud_config.pitch_min_deg = (-7.0f); // Pitch 相对机械零点的下限，度。
-    cloud_config.lift_pitch_clearance_deg = 1.0f; // 升降低位时 Pitch 的抬起余量，度。
-    cloud_config.pitch_max_deg = 30.0f; // Pitch 相对机械零点的上限，度。
-    cloud_config.pitch_target_lead_deg = 5.0f; // 目标最多领先实际位置 5°。
+
+    // Yaw：单套 PID 机械保持
+    cloud_config.mechanical_yaw_deadzone_deg = 0.4f; // 连续位置死区，内部保留速度环制动。
+    cloud_config.mechanical_yaw_brake_speed_at_1deg_raw = 80.0f; // 回正限速=此值×sqrt(死区外剩余角度)，0 关闭。
+
+    cloud_config.mechanical_yaw_command_deg_s_per_raw = 1.0f; // 40 个速度码对应 40°/s，可调整回正整体速度。
+    cloud_config.mechanical_yaw_gyro_direction = 1.0f; // 与现有惯性 Yaw 使用同一 IMU 正方向。
+    cloud_config.mechanical_yaw_rate_kp = 10.0f; // 机械 Yaw 独立陀螺仪速度环。
+    cloud_config.mechanical_yaw_rate_ki = 0.0f;
+    cloud_config.mechanical_yaw_rate_kd = 0.0f;
+    cloud_config.mechanical_yaw_rate_integral_limit = 0.0f;
+    cloud_config.mechanical_yaw_torque_limit_raw = 1800.0f;
+
+    // Yaw：调头与小陀螺；turn_speed_raw_max 仅为到位速度判据
     cloud_config.turn_wheel_trigger_raw = 200; // 拨轮调头触发阈值，原始码。
     cloud_config.turn_wheel_rearm_raw = 50; // 拨轮调头重新布防阈值，原始码。
-    cloud_config.spin_wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
-    cloud_config.spin_wheel_rearm_raw = 50; // 拨轮切换小陀螺的复位阈值。
-    cloud_config.spin_fault_rearm_ms = 100U; // 短暂许可波动立即停转，但不锁存；持续失效需重新拨档。
     cloud_config.front_switch_deg = 90.0f; // 选择正反车头的角度分界，度。
+    cloud_config.turn_max_speed_deg_s = 1600.0f;
+    cloud_config.turn_max_accel_deg_s2 = 4000.0f;
+    cloud_config.turn_max_jerk_deg_s3 = 7500.0f;
     cloud_config.turn_tolerance_deg = 3.0f; // 调头目标角的到位误差，度。
     cloud_config.turn_speed_raw_max = 20; // 调头到位时的速度原始码上限。
     cloud_config.turn_stable_cycles = 5U; // 4 ms×5 次，调头连续到位约 20 ms。
-    cloud_config.pitch_gravity_k = 1.25f; // 归中点处约等于重力前馈，N·m。
+    cloud_config.spin_wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
+    cloud_config.spin_wheel_rearm_raw = 50; // 拨轮切换小陀螺的复位阈值。
+    cloud_config.spin_fault_rearm_ms = 100U; // 短暂许可波动立即停转，但不锁存；持续失效需重新拨档。
+
+    // Pitch：IMU 惯性保持，PID 单位为 deg、deg/s、转矩原始码。
+    cloud_config.pitch_imu_direction = 1.0f;
+    cloud_config.pitch_rate_filter_alpha = 0.2f;
+    cloud_config.pitch_angle_kp = 7.0f;
+    cloud_config.pitch_angle_ki = 0.0f;
+    cloud_config.pitch_angle_kd = 0.001f;
+    cloud_config.pitch_angle_integral_limit = 0.0f;
+    cloud_config.pitch_rate_target_limit_deg_s = 150.0f;
+    cloud_config.pitch_rate_kp = 7.0f;
+    cloud_config.pitch_rate_ki = 0.0f;
+    cloud_config.pitch_rate_kd = 0.001f;
+    cloud_config.pitch_rate_integral_limit = 0.0f;
+    cloud_config.pitch_torque_limit_raw = 2047.0f;
+
+    // Pitch：输入、机械零点、限位与重力补偿
+    cloud_config.pitch_command_rate_deg_s = 150.0f; // Pitch 满杆位置目标变化率，度/s。
+    cloud_config.pitch_home_rad = 2.59309077f; // Pitch 机械归中时的电机单圈角，rad。
+    cloud_config.pitch_min_deg = (-8.5f); // Pitch 相对机械零点的下限，度。
+    cloud_config.pitch_max_deg = 30.0f; // Pitch 相对机械零点的上限，度。
+    cloud_config.lift_pitch_clearance_deg = 1.0f; // 升降低位时 Pitch 的抬起余量，度。
+    cloud_config.pitch_target_lead_deg = 15.0f; // 目标最多领先实际位置 8°。
+    cloud_config.pitch_gravity_k = 1.32f; // 归中点处约等于重力前馈，N·m。
+
 }
 
 volatile KeyboardSensitivityConfig keyboard_sensitivity_config;
