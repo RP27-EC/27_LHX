@@ -210,6 +210,9 @@ void motor3508_speed_control(void *argument)
   uint32_t spin_fault_start_ms = 0U;
   uint8_t lift_sequence = 0U;
   uint32_t last_wheel_speed_tx_ms = 0U;
+  uint32_t last_yaw_rate_tx_ms = 0U;
+  float chassis_yaw_rate_deg_s;
+  bool chassis_yaw_rate_valid;
   bool wheel_feedback_valid;
   uint8_t wheel_id;
   int16_t wheel_speed_rpm[MOTOR3508_COUNT];
@@ -221,6 +224,14 @@ void motor3508_speed_control(void *argument)
   {
     // 更新底盘 IMU。
     (void)ChassisImu_Update();
+    // 所有模式持续上报 D4；IMU 不可用时明确发送无效位，撤销上板前馈。
+    chassis_yaw_rate_deg_s = 0.0f;
+    chassis_yaw_rate_valid = ChassisImu_GetYawRate(&chassis_yaw_rate_deg_s);
+    if ((uint32_t)(HAL_GetTick() - last_yaw_rate_tx_ms) >=
+            chassis_config.yaw_rate_tx_period_ms &&
+        Communication_SendChassisYawRateState(chassis_yaw_rate_deg_s,
+                                               chassis_yaw_rate_valid) == HAL_OK)
+    { last_yaw_rate_tx_ms = HAL_GetTick(); }
     RemoteState_Get(&remote);
     turn_hold = false;
     lift_hold = Communication_GetLiftLock(&lift_sequence);

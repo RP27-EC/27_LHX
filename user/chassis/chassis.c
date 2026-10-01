@@ -8,7 +8,6 @@
 #define CHASSIS_DEG_TO_RAD 0.01745329251994329577f
 
 static float chassis_follow_cycle_rpm; // 跟随模式当前旋转分量，带斜坡变化。
-static uint32_t chassis_follow_last_rate_tx_ms; // 最近发送底盘实测角速度的时间。
 static float chassis_spin_cycle_rpm; // 小陀螺模式当前自旋分量，带斜坡变化。
 volatile bool chassis_front_reversed; // 当前更接近云台指向的车头：false=物理前，true=物理后。
 volatile bool chassis_turnaround_pending; // 本地拨轮已触发，等待上板完成 Yaw 调头。
@@ -165,7 +164,6 @@ void Chassis_MecanumInverse(float front,float left,float cycle)
 void Chassis_FollowReset(void)
 {
     chassis_follow_cycle_rpm = 0.0f;
-    chassis_follow_last_rate_tx_ms = 0U;
 }
 
 void Chassis_SpinReset(void)
@@ -215,7 +213,6 @@ void Chassis_FollowUpdate(float front, float left, float yaw_input)
 {
     float angle_deg, error_deg, feedforward_rpm;
     float target_rpm, step, rate_deg_s;
-    uint32_t now_ms;
 
     if (!Communication_GetYawAngle(&angle_deg) ||
         !ChassisImu_GetYawRate(&rate_deg_s))
@@ -271,12 +268,5 @@ void Chassis_FollowUpdate(float front, float left, float yaw_input)
     chassis_follow_cycle_rpm += step;
 
     Chassis_MecanumInverse(front, left, chassis_follow_cycle_rpm);
-    now_ms = HAL_GetTick();
-    if ((uint32_t)(now_ms - chassis_follow_last_rate_tx_ms) >=
-            chassis_config.follow_rate_tx_period_ms &&
-        Communication_SendChassisYawRate(rate_deg_s) == HAL_OK)
-    {
-        chassis_follow_last_rate_tx_ms = now_ms;
-    }
 }
 

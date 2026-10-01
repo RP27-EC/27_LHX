@@ -46,7 +46,7 @@ typedef struct
     float follow_ff_rpm_per_rc; // 死区外每 1 通道值增加 1.5 rpm 前馈。
     float follow_max_rotate_rpm; // 跟随旋转分量绝对值上限，轮速 rpm。
     float follow_slew_rpm_per_tick; // 跟随旋转分量每控制周期的最大变化量，rpm。
-    uint32_t follow_rate_tx_period_ms; // 向上板发送 D4 实测底盘角速度的最短间隔。
+    uint32_t yaw_rate_tx_period_ms; // 所有模式向上板发送 D4 实测底盘角速度的最短间隔。
     float follow_rotate_sign; // 跟随旋转最终方向系数，改符号可反转。
     float front_switch_deg; // 正反车头的就近选择分界角。
     int32_t turn_wheel_trigger_raw; // ch[4]≤-200 视为向上拨到触发位。

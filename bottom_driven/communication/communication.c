@@ -236,9 +236,15 @@ bool Communication_GetLiftLock(uint8_t *sequence)
 
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s)
 {
+    return Communication_SendChassisYawRateState(rate_deg_s, true);
+}
+
+HAL_StatusTypeDef Communication_SendChassisYawRateState(float rate_deg_s, bool valid)
+{
     uint8_t data[COMMUNICATION_FRAME_SIZE] = {0};
     int16_t encoded;
 
+    if (!valid) { rate_deg_s = 0.0f; }
     if (!(rate_deg_s >= -FLT_MAX && rate_deg_s <= FLT_MAX))
     { return HAL_ERROR; }
     if (rate_deg_s > 327.67f) { rate_deg_s = 327.67f; }
@@ -246,7 +252,7 @@ HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s)
     encoded = (int16_t)(rate_deg_s * 100.0f);
     data[0] = (uint8_t)(uint16_t)encoded;
     data[1] = (uint8_t)((uint16_t)encoded >> 8);
-    data[2] = 0x01U;
+    data[2] = valid ? 0x01U : 0U;
     return Communication_Send(COMMUNICATION_TX_ID_D4, data);
 }
 

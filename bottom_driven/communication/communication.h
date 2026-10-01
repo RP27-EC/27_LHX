@@ -58,6 +58,7 @@ bool Communication_GetSpinState(bool *upper_selected, bool *spin_allowed);
 bool Communication_GetBottomModeBlocked(void);
 bool Communication_GetLiftLock(uint8_t *sequence);
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
+HAL_StatusTypeDef Communication_SendChassisYawRateState(float rate_deg_s, bool valid);
 // D5 每个电机占两个字节，int16 小端，单位 rpm。
 HAL_StatusTypeDef Communication_SendChassisWheelSpeeds(const int16_t speed_rpm[4]);
 

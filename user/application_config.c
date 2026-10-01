@@ -44,7 +44,7 @@ void ChassisConfig_Init(void)
     chassis_config.follow_ff_rpm_per_rc = 1.5f; // 前馈轮速与 Yaw 通道值的比例。
     chassis_config.follow_max_rotate_rpm = 5000.0f; // 跟随旋转分量上限，rpm。
     chassis_config.follow_slew_rpm_per_tick = 500.0f; // 跟随轮速每 4 ms 最大变化 800 rpm，保持原加速率。
-    chassis_config.follow_rate_tx_period_ms = 10U; // 底盘角速度发送间隔，ms。
+    chassis_config.yaw_rate_tx_period_ms = 4U; // 所有模式持续上报底盘角速度，ms。
     chassis_config.follow_rotate_sign = 1.0f; // 跟随旋转方向系数。
     chassis_config.front_switch_deg = 90.0f; // 正反车头选择的角度分界，度。
     chassis_config.turn_wheel_trigger_raw = 200; // 拨轮调头触发阈值，原始码。
