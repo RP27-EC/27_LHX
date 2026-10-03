@@ -186,3 +186,11 @@ Pitch 有相对归中点的上下限，位置目标最多领先反馈 `pitch_tar
 位置环与刹车包络的速度码乘 `mechanical_yaw_command_deg_s_per_raw` 得到目标 °/s，默认 1，即 40 个目标速度码对应 40°/s。这是可调的目标指令比例，并非 MIT 速度反馈量程换算。`mechanical_yaw_gyro_direction` 默认 +1，IMU 正方向与电机编码器相反时改为 -1。机械目标保持底盘相对角，而上板陀螺仪测量云台绝对角速度，底盘转动时外环需要产生角差来提供跟随速度，仍可能有动态跟随误差。
 
 IMU 离线时停止机械 Yaw 转矩控制，保留机械目标；恢复时清除 PID 历史后继续回正。调试可看 `cloud_yaw_mechanical_gyro_online`、`cloud_yaw_rate_target_deg_s`、`cloud_yaw_rate_deg_s` 和 `cloud_yaw_torque_raw`。速度环单位及反馈来源已改变，需重新实车确认方向和增益。
+
+### BMI088 姿态 EKF
+
+姿态融合改为参照模板的六状态四元数 EKF：启动静止标定、传感器坐标方向、角度单位及 Yaw 跨圈接口沿用现有设置；运行时由陀螺预测、加速度校正，并估计 X/Y 剩余零偏。旧 `attitude_kp`、`attitude_ki` 及对应积分反馈逻辑已经删除。
+
+参数位于 `bottom_driven/peripheral_config.c` 的 `gimbal_imu_config.attitude_ekf`，默认噪声取自模板实际初始化调用。`quaternion_noise`、`bias_noise`、`accel_noise`、`fading`、`chi_square_threshold` 可在 Keil 中调节，含义及移植说明见 `algorithms_library/README.md`。算法文件已加入 Keil 的 `algorithms_library` 分组，不需要额外的矩阵库。
+
+`gimbal_imu.gyro_rad_s` 给云台速度环提供启动标定与在线零偏修正后的角速度；Pitch 的速度投影仍用这组数据。`yaw_rate_filter_alpha` 继续用于控制用 Z 轴角速度的低通，EKF 不代替角速度低通。Yaw 长期漂移仍无法仅靠加速度计消除。Keil 可观察 `gimbal_imu.ekf_bias_rad_s`、`ekf_chi_square`、`ekf_accel_used`；拒绝异常加速度时继续预测姿态，非法参数或数值更新失败则标记 IMU 离线。

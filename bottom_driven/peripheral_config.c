@@ -119,8 +119,11 @@ void GimbalImuConfig_Init(void)
 {
     gimbal_imu_config.update_period_s = 0.004f; // IMU 姿态积分使用的更新周期，s。
     gimbal_imu_config.calibration_samples = 1000U; // 静止时估计陀螺零偏的采样次数。
-    gimbal_imu_config.attitude_kp = 2.0f; // 加速度修正姿态的比例增益。
-    gimbal_imu_config.attitude_ki = 0.02f; // 姿态误差积分修正增益。
+    gimbal_imu_config.attitude_ekf.quaternion_noise = 15.0f; // 四元数过程噪声，控制加速度修正权重。
+    gimbal_imu_config.attitude_ekf.bias_noise = 0.001f; // 在线零偏估计的过程噪声。
+    gimbal_imu_config.attitude_ekf.accel_noise = 100000.0f; // 归一化加速度的量测噪声。
+    gimbal_imu_config.attitude_ekf.fading = 1.0f; // 零偏协方差遗忘系数，减小可避免过度收敛。
+    gimbal_imu_config.attitude_ekf.chi_square_threshold = 1e-8f; // 收敛后的加速度残差拒绝门槛。
     gimbal_imu_config.yaw_rate_filter_alpha = 1.0f; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     gimbal_imu_config.read_timeout_ms = 12U; // 容忍单次 SPI 丢帧，连续失败再停惯性控制。
 }

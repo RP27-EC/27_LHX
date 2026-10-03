@@ -2,6 +2,7 @@
 #define UP_PERIPHERAL_CONFIG_H
 
 #include <stdint.h>
+#include "quaternion_ekf.h"
 
 // 启动时加载默认值；运行时可修改配置变量。
 typedef struct
@@ -115,8 +116,7 @@ typedef struct
 {
     float update_period_s; // IMU 姿态积分使用的更新周期，s。
     uint32_t calibration_samples; // 静止时估计陀螺零偏的采样次数。
-    float attitude_kp; // 加速度重力方向修正姿态的比例增益。
-    float attitude_ki; // 姿态误差积分修正增益。
+    QuaternionEkfConfig attitude_ekf; // 姿态 EKF 的过程噪声、量测噪声与残差门槛。
     float yaw_rate_filter_alpha; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     uint32_t read_timeout_ms; // 连续未读到 IMU 超过此时间才判离线。
 } GimbalImuConfig;

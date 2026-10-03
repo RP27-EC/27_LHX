@@ -34,7 +34,7 @@
 #define IMU_BURST_MAX_BYTES            6U
 
 static float gyro_bias[3]; // 标定得到的三轴陀螺仪零偏。
-static float integral_feedback[3]; // 姿态融合中用于消除漂移的积分反馈。
+static QuaternionEkf attitude_filter; // 四元数、在线零偏及固定矩阵工作区。
 static uint32_t last_update_ms; // 上一次姿态更新的毫秒时间戳。
 static uint32_t last_success_ms; // 上一次完整读取 BMI088 的时间。
 static float yaw_last_deg; // 上一周期单圈 Yaw 角，用于跨圈判断。
@@ -219,52 +219,21 @@ static bool imu_read_sensor(float gyro[3], float accel[3], float *temperature)
     return true;
 }
 
-static void imu_update_attitude(float gx, float gy, float gz,
-                                float ax, float ay, float az, float dt)
+static bool imu_update_attitude(const float gyro[3], const float accel[3], float dt)
 {
-    float q0 = gimbal_imu.quaternion[0];
-    float q1 = gimbal_imu.quaternion[1];
-    float q2 = gimbal_imu.quaternion[2];
-    float q3 = gimbal_imu.quaternion[3];
-    float norm;
-    float vx, vy, vz, ex, ey, ez;
-    float nq0, nq1, nq2, nq3;
+    QuaternionEkfConfig config = gimbal_imu_config.attitude_ekf;
+    float q0, q1, q2, q3;
     float yaw_delta;
 
-    norm = sqrtf(ax * ax + ay * ay + az * az);
-    if (norm > 0.1f)
-    {
-        ax /= norm;
-        ay /= norm;
-        az /= norm;
-        vx = 2.0f * (q1 * q3 - q0 * q2);
-        vy = 2.0f * (q0 * q1 + q2 * q3);
-        vz = q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3;
-        ex = ay * vz - az * vy;
-        ey = az * vx - ax * vz;
-        ez = ax * vy - ay * vx;
-        integral_feedback[0] += gimbal_imu_config.attitude_ki * ex * dt;
-        integral_feedback[1] += gimbal_imu_config.attitude_ki * ey * dt;
-        integral_feedback[2] += gimbal_imu_config.attitude_ki * ez * dt;
-        gx += gimbal_imu_config.attitude_kp * ex + integral_feedback[0];
-        gy += gimbal_imu_config.attitude_kp * ey + integral_feedback[1];
-        gz += gimbal_imu_config.attitude_kp * ez + integral_feedback[2];
-    }
-
-    nq0 = q0 + 0.5f * (-q1 * gx - q2 * gy - q3 * gz) * dt;
-    nq1 = q1 + 0.5f * (q0 * gx + q2 * gz - q3 * gy) * dt;
-    nq2 = q2 + 0.5f * (q0 * gy - q1 * gz + q3 * gx) * dt;
-    nq3 = q3 + 0.5f * (q0 * gz + q1 * gy - q2 * gx) * dt;
-    norm = sqrtf(nq0*nq0 + nq1*nq1 + nq2*nq2 + nq3*nq3);
-    if (norm <= 0.0f) { return; }
-    q0 = nq0 / norm;
-    q1 = nq1 / norm;
-    q2 = nq2 / norm;
-    q3 = nq3 / norm;
-    gimbal_imu.quaternion[0] = q0;
-    gimbal_imu.quaternion[1] = q1;
-    gimbal_imu.quaternion[2] = q2;
-    gimbal_imu.quaternion[3] = q3;
+    if (!QuaternionEkf_Update(&attitude_filter, &config, gyro, accel, dt))
+    { return false; }
+    memcpy((void *)gimbal_imu.quaternion, attitude_filter.q, sizeof(attitude_filter.q));
+    memcpy((void *)gimbal_imu.gyro_rad_s, attitude_filter.gyro, sizeof(attitude_filter.gyro));
+    memcpy((void *)gimbal_imu.ekf_bias_rad_s, attitude_filter.bias, sizeof(attitude_filter.bias));
+    gimbal_imu.ekf_chi_square = attitude_filter.chi_square;
+    gimbal_imu.ekf_accel_used = attitude_filter.accel_used;
+    q0=attitude_filter.q[0]; q1=attitude_filter.q[1];
+    q2=attitude_filter.q[2]; q3=attitude_filter.q[3];
     gimbal_imu.roll_deg = atan2f(2.0f * (q0*q1 + q2*q3),
         1.0f - 2.0f * (q1*q1 + q2*q2)) * IMU_RAD_TO_DEG;
     gimbal_imu.pitch_deg = asinf(fmaxf(-1.0f, fminf(1.0f,
@@ -277,6 +246,7 @@ static void imu_update_attitude(float gx, float gy, float gz,
     gimbal_imu.yaw_total_deg = gimbal_imu.yaw_deg +
                                360.0f * (float)yaw_rounds;
     yaw_last_deg = gimbal_imu.yaw_deg;
+    return true;
 }
 
 HAL_StatusTypeDef GimbalImu_Init(void)
@@ -290,7 +260,7 @@ HAL_StatusTypeDef GimbalImu_Init(void)
 
     memset((void *)&gimbal_imu, 0, sizeof(gimbal_imu));
     memset(gyro_bias, 0, sizeof(gyro_bias));
-    memset(integral_feedback, 0, sizeof(integral_feedback));
+    QuaternionEkf_Init(&attitude_filter, NULL);
     gimbal_imu.quaternion[0] = 1.0f;
     yaw_last_deg = 0.0f;
     yaw_rounds = 0;
@@ -361,13 +331,15 @@ bool GimbalImu_Update(void)
     last_update_ms = now_ms;
     if (dt <= 0.0f || dt > 0.02f) { dt = gimbal_imu_config.update_period_s; }
 
-    memcpy((void *)gimbal_imu.gyro_rad_s, gyro, sizeof(gyro));
     memcpy((void *)gimbal_imu.accel_m_s2, accel, sizeof(accel));
     gimbal_imu.temperature_c = temperature;
+    if (!imu_update_attitude(gyro, accel, dt))
+    {
+        gimbal_imu.online = false;
+        return false;
+    }
     gimbal_imu.yaw_rate_deg_s += gimbal_imu_config.yaw_rate_filter_alpha *
-        (gyro[2] * IMU_RAD_TO_DEG - gimbal_imu.yaw_rate_deg_s);
-    imu_update_attitude(gyro[0], gyro[1], gyro[2],
-                        accel[0], accel[1], accel[2], dt);
+        (gimbal_imu.gyro_rad_s[2] * IMU_RAD_TO_DEG - gimbal_imu.yaw_rate_deg_s);
     gimbal_imu.update_count++;
     gimbal_imu.online = true;
     return true;

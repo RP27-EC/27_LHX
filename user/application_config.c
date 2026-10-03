@@ -142,8 +142,8 @@ void CloudConfig_Init(void)
     cloud_config.pitch_min_deg = (-8.5f); // Pitch 相对机械零点的下限，度。
     cloud_config.pitch_max_deg = 30.0f; // Pitch 相对机械零点的上限，度。
     cloud_config.lift_pitch_clearance_deg = 1.0f; // 升降低位时 Pitch 的抬起余量，度。
-    cloud_config.pitch_target_lead_deg = 15.0f; // 目标允许领先实际位置的最大角度，度。
-    cloud_config.pitch_gravity_k = 1.32f; // 归中点处约等于重力前馈，N·m。
+    cloud_config.pitch_target_lead_deg = 12.0f; // 目标允许领先实际位置的最大角度，度。
+    cloud_config.pitch_gravity_k = 1.34f; // 归中点处约等于重力前馈，N·m。
 
 }
 
