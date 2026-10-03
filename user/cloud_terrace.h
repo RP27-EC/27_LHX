@@ -30,6 +30,9 @@ extern volatile int16_t cloud_yaw_torque_raw; // Yaw 原始转矩输出。
 extern volatile float cloud_yaw_mechanical_error_deg; // 机械目标减反馈，deg。
 extern volatile float cloud_yaw_mechanical_speed_limit_raw; // 当前回正目标速度限幅，原始码。
 extern volatile bool cloud_yaw_mechanical_gyro_online; // 机械速度环 IMU 有效状态。
+extern volatile bool cloud_yaw_chassis_rate_online; // 当前机械 Yaw 使用的底盘角速度是否有效。
+extern volatile float cloud_yaw_chassis_rate_deg_s; // 下板传来的底盘角速度，度/s。
+extern volatile float cloud_yaw_chassis_rate_ff_deg_s; // 乘增益并限幅后的角速度前馈，度/s。
 extern volatile float cloud_turn_progress; // S 曲线进度 0~1。
 extern volatile float cloud_turn_duration_s; // 本次轨迹时长。
 extern volatile float cloud_turn_target_deg; // 相对机械零点的轨迹目标角。

@@ -69,6 +69,31 @@ volatile int16_t cloud_yaw_torque_raw; // 角速度内环给出的 4310 原始�
 volatile float cloud_yaw_mechanical_error_deg;
 volatile float cloud_yaw_mechanical_speed_limit_raw;
 volatile bool cloud_yaw_mechanical_gyro_online;
+volatile bool cloud_yaw_chassis_rate_online; // 本周期底盘角速度有效状态。
+volatile float cloud_yaw_chassis_rate_deg_s; // 底盘角速度，度/s。
+volatile float cloud_yaw_chassis_rate_ff_deg_s; // 实际叠加的角速度前馈，度/s。
+
+static void cloud_clear_chassis_rate_ff(void)
+{
+    cloud_yaw_chassis_rate_online = false;
+    cloud_yaw_chassis_rate_deg_s = 0.0f;
+    cloud_yaw_chassis_rate_ff_deg_s = 0.0f;
+}
+
+static float cloud_mechanical_chassis_rate_ff(void)
+{
+    float rate, gain = cloud_config.mechanical_yaw_chassis_rate_ff_gain;
+    float limit = cloud_config.mechanical_yaw_chassis_rate_ff_limit_deg_s;
+    cloud_clear_chassis_rate_ff();
+    if (!(gain >= -10.0f && gain <= 10.0f) ||
+        !(limit > 0.0f && limit <= 1000.0f) ||
+        !Communication_CAN_GetChassisYawRate(&rate) || !isfinite(rate))
+    { return 0.0f; }
+    cloud_yaw_chassis_rate_online = true;
+    cloud_yaw_chassis_rate_deg_s = rate;
+    cloud_yaw_chassis_rate_ff_deg_s = fmaxf(-limit, fminf(limit, gain * rate));
+    return cloud_yaw_chassis_rate_ff_deg_s;
+}
 static PID_Controller_t yaw_mechanical_rate_pid; // 机械 Yaw 陀螺仪速度内环。
 
 volatile bool cloud_turnaround_active; // Yaw 正在转向另一个车头方向。
@@ -119,6 +144,7 @@ static void cloud_reset_home(void)
     cloud_yaw_target_deg = 0.0f;
     cloud_yaw_angle_deg = 0.0f;
     cloud_yaw_rate_deg_s = 0.0f;
+    cloud_clear_chassis_rate_ff();
     cloud_yaw_rate_target_deg_s = 0.0f;
     cloud_yaw_torque_raw = 0;
     home_target[MOTOR4310_PITCH] = 0;
@@ -127,6 +153,7 @@ static void cloud_reset_home(void)
 
 void CloudTerrace_Init(void)
 {
+    cloud_clear_chassis_rate_ff();
     PID_Init(&yaw_angle_pid, cloud_config.yaw_angle_kp, cloud_config.yaw_angle_ki,
              cloud_config.yaw_angle_kd, cloud_config.yaw_angle_integral_limit,
              cloud_config.yaw_rate_target_limit_deg_s,
@@ -524,7 +551,9 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
     command_scale = cloud_config.mechanical_yaw_command_deg_s_per_raw;
     if (!(command_scale > 0.0f && command_scale <= 100.0f)) { command_scale = 1.0f; }
     direction = cloud_config.mechanical_yaw_gyro_direction < 0.0f ? -1.0f : 1.0f;
-    cloud_yaw_rate_target_deg_s = speed_command * command_scale;
+    // 相对位置保持时，惯性系目标速度需要包含底盘自身转速。
+    cloud_yaw_rate_target_deg_s = speed_command * command_scale +
+        cloud_mechanical_chassis_rate_ff();
     cloud_yaw_rate_deg_s = direction * imu.yaw_rate_deg_s;
     PID_UpdateParameters(&yaw_mechanical_rate_pid,
         cloud_config.mechanical_yaw_rate_kp, cloud_config.mechanical_yaw_rate_ki,
@@ -536,7 +565,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
         yaw_mechanical_rate_pid.LastError =
             cloud_yaw_rate_target_deg_s - cloud_yaw_rate_deg_s;
     }
-    // 内环只使用上板陀螺仪；死区内目标速度为零，仍输出制动转矩。
+    // 内环使用上板陀螺仪；死区内取消回正速度，底盘随动前馈仍保留。
     torque = PID_Calc(&yaw_mechanical_rate_pid, cloud_yaw_rate_target_deg_s,
                      cloud_yaw_rate_deg_s);
     cloud_yaw_torque_raw = (int16_t)torque;
@@ -710,6 +739,7 @@ static void cloud_spin_rearm_update(const RemoteState_t *remote, bool permitted)
 
 void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
 {
+    cloud_clear_chassis_rate_ff();
     RemoteState_t remote;
     LiftSafetyState_t safety;
     HAL_StatusTypeDef pitch_enable, yaw_enable;

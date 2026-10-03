@@ -104,6 +104,8 @@ void CloudConfig_Init(void)
 
     cloud_config.mechanical_yaw_command_deg_s_per_raw = 1.0f; // 位置环速度原始码到目标角速度的换算系数，度/s/码。
     cloud_config.mechanical_yaw_gyro_direction = 1.0f; // 与现有惯性 Yaw 使用同一 IMU 正方向。
+    cloud_config.mechanical_yaw_chassis_rate_ff_gain = 1.0f; // 跟随底盘转速的前馈增益，符号按两板 IMU 方向设置。
+    cloud_config.mechanical_yaw_chassis_rate_ff_limit_deg_s = 40.0f; // 叠加到速度目标的前馈限幅，度/s。
     cloud_config.mechanical_yaw_rate_kp = 8.0f; // 机械 Yaw 独立陀螺仪速度环。
     cloud_config.mechanical_yaw_rate_ki = 0.0f; // 机械 Yaw 陀螺仪速度环积分增益。
     cloud_config.mechanical_yaw_rate_kd = 0.0f; // 机械 Yaw 陀螺仪速度环微分增益。

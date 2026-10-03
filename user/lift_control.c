@@ -246,10 +246,10 @@ static void LiftControl_RecordStall(const Motor2006_Feedback_t *feedback,
     __set_PRIMASK(primask);
 }
 
-// 高电流低速或持续无位移均为堵转；只有持续高电流才可认作顶部接触。
+// 主动升降检查无进度；保持纠偏只检查持续高电流低速，避免低速保持误报。
 static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
                                    LiftControl_State_t direction,
-                                   uint32_t now, bool *top_contact)
+                                   uint32_t now, bool check_progress, bool *top_contact)
 {
     int32_t current_threshold = direction == LIFT_ASCENDING ?
         lift_config.up_stall_current_raw : lift_config.down_stall_current_raw;
@@ -281,7 +281,8 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
     }
     current_stall = stall_timing &&
         (uint32_t)(now - stall_start_ms) >= duration;
-    no_progress = (uint32_t)(now - progress_start_ms) >= duration &&
+    no_progress = check_progress &&
+        (uint32_t)(now - progress_start_ms) >= duration &&
         LiftControl_Abs(feedback->encoder_total - progress_start_counts) <
             lift_config.stall_progress_counts;
     if (current_stall || no_progress)
@@ -378,7 +379,7 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
         calibration_start_ms = now;
     }
     if (LiftControl_StallCheck(feedback, LIFT_ASCENDING, now,
-                               &top_contact))
+                               true, &top_contact))
     {
         if (!top_contact)
         {
@@ -886,6 +887,7 @@ void LiftControl_Update(const RemoteState_t *remote)
          lift_control_state == LIFT_AT_LIMIT) &&
         requested_direction == LIFT_STOPPED)
     {
+        lift_wait_reason = LIFT_WAIT_FAULT;
         LiftControl_StopAndRelease(now);
         return;
     }
@@ -907,19 +909,27 @@ void LiftControl_Update(const RemoteState_t *remote)
         LiftControl_StopAndRelease(now);
         return;
     }
-    if (LiftControl_StallCheck(&feedback, direction, now, &top_contact))
+    if (LiftControl_StallCheck(&feedback, direction, now,
+                               requested_direction != LIFT_STOPPED, &top_contact))
     {
         if (direction == LIFT_ASCENDING &&
-            target == lift_top_encoder_total && top_contact &&
+            target == lift_top_encoder_total &&
+            (top_contact ||
+             (requested_direction == LIFT_ASCENDING &&
+              LiftControl_Abs((int32_t)feedback.speed_rpm) <=
+                  lift_config.up_stall_speed_rpm)) &&
             lift_config.top_contact_window_turns > 0.0f &&
             LiftControl_Abs(feedback.encoder_total -
                             lift_top_contact_encoder_total) <=
                 (int32_t)(lift_config.top_contact_window_turns *
                           LIFT_ENCODER_COUNTS_PER_TURN))
         {
-            // 靠近顶部的碰顶是正常到位；底部绝对目标保持不变。
-            lift_top_encoder_total = feedback.encoder_total;
-            lift_top_contact_encoder_total = feedback.encoder_total;
+            // 已知顶部附近停住按到位处理；只有高电流接触才修正机械顶点。
+            if (top_contact)
+            {
+                lift_top_encoder_total = feedback.encoder_total;
+                lift_top_contact_encoder_total = feedback.encoder_total;
+            }
             lift_hold_target_encoder_total = feedback.encoder_total;
             requested_direction = LIFT_STOPPED;
             lift_control_state = LIFT_READY;
@@ -929,6 +939,7 @@ void LiftControl_Update(const RemoteState_t *remote)
         }
         requested_direction = LIFT_STOPPED;
         lift_control_state = LIFT_STALLED;
+        lift_wait_reason = LIFT_WAIT_FAULT;
         LiftControl_StopAndRelease(now);
         return;
     }

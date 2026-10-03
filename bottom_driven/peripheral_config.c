@@ -10,23 +10,23 @@ void Motor4310Config_Init(void)
     motor4310_config.control_period_s = 0.004f; // 电机 PID 每次调用使用的控制周期，s。
 
     // Yaw：机械保持位置速度环与驱动固定前馈
-    motor4310_config.speed_kp = 1.7f; // Yaw 机械保持速度环比例增益。
+    motor4310_config.speed_kp = 1.4f; // Yaw 机械保持速度环比例增益。
     motor4310_config.speed_ki = 0.2f; // 4310 速度环积分增益。
-    motor4310_config.speed_kd = 0.001f; // 4310 速度环微分增益。
+    motor4310_config.speed_kd = 0.0f; // 4310 速度环微分增益。
     motor4310_config.speed_integral_limit = 350.0f; // 速度环积分项限幅。
     motor4310_config.speed_output_limit = 2047.0f; // 速度环转矩码输出限幅。
-    motor4310_config.position_kp = 0.5f; // Yaw 机械保持位置环比例增益。
+    motor4310_config.position_kp = 0.3f; // Yaw 机械保持位置环比例增益。
     motor4310_config.position_ki = 0.1f; // 4310 位置环积分增益。
-    motor4310_config.position_kd = 0.002f; // 4310 位置环微分增益。
+    motor4310_config.position_kd = 0.001f; // 4310 位置环微分增益。
     motor4310_config.position_integral_limit = 150.0f; // 位置环积分项限幅。
     motor4310_config.position_output_limit = 300.0f; // 位置环目标速度限幅。
     motor4310_config.yaw_speed_feedforward_raw = 0.0f; // Yaw 转动时按目标方向叠加的固定转矩码。
     motor4310_config.yaw_speed_feedforward_deadband_raw = 0.0f; // 4310 原始目标速度超过此值才加前馈。
 
     // Yaw：独立调头，轨迹跟踪不叠加固定方向转矩。
-    motor4310_config.yaw_turn_pid.position_kp = 0.8f; // 调头独立位置环比例增益。
+    motor4310_config.yaw_turn_pid.position_kp = 0.75f; // 调头独立位置环比例增益。
     motor4310_config.yaw_turn_pid.position_ki = 0.0f; // 调头独立位置环积分增益。
-    motor4310_config.yaw_turn_pid.position_kd = 0.0f; // 调头独立位置环微分增益。
+    motor4310_config.yaw_turn_pid.position_kd = 0.0001f; // 调头独立位置环微分增益。
     motor4310_config.yaw_turn_pid.position_integral_limit = 0.0f; // 调头独立位置环积分项限幅。
     motor4310_config.yaw_turn_pid.position_output_limit = 1500.0f; // 调头独立位置环目标速度限幅，原始码。
     motor4310_config.yaw_turn_pid.speed_kp = 1.7f; // 调头独立速度环比例增益。

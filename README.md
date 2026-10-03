@@ -194,3 +194,23 @@ IMU 离线时停止机械 Yaw 转矩控制，保留机械目标；恢复时清�
 参数位于 `bottom_driven/peripheral_config.c` 的 `gimbal_imu_config.attitude_ekf`，默认噪声取自模板实际初始化调用。`quaternion_noise`、`bias_noise`、`accel_noise`、`fading`、`chi_square_threshold` 可在 Keil 中调节，含义及移植说明见 `algorithms_library/README.md`。算法文件已加入 Keil 的 `algorithms_library` 分组，不需要额外的矩阵库。
 
 `gimbal_imu.gyro_rad_s` 给云台速度环提供启动标定与在线零偏修正后的角速度；Pitch 的速度投影仍用这组数据。`yaw_rate_filter_alpha` 继续用于控制用 Z 轴角速度的低通，EKF 不代替角速度低通。Yaw 长期漂移仍无法仅靠加速度计消除。Keil 可观察 `gimbal_imu.ekf_bias_rad_s`、`ekf_chi_square`、`ekf_accel_used`；拒绝异常加速度时继续预测姿态，非法参数或数值更新失败则标记 IMU 离线。
+
+
+## 升降到位与保持的堵转判定
+
+主动升降和上电找顶同时检查持续高电流低速、运动无进度。进入位置保持后，无进度不作为堵转依据：保持指令可能很小，编码器短时间位移不足并不表示卡住；持续高电流低速的保护仍保留。
+
+已校准后重复上升，在 `lift_config.top_contact_window_turns` 指定的机械顶部邻域内，低速且持续无进度时结束本次升降，保持当前实测位置。只有确认高电流接触才更新机械顶部记录；低电流停止不重标定顶部。离开该邻域的中途堵转仍停机并禁止特殊动作。顶部邻域不能扩大到覆盖中间行程。
+
+退出物理升降档后仍需重新拨动右拨杆布防发射；小陀螺失去许可后需重新手动使能。调头须先松回拨轮，再发出新的请求，不补执行联锁期间的旧请求。
+
+排查时观察 `lift_control_state`、`lift_wait_reason`、`lift_safety_state.position_valid/upper_zone/descending/yaw_home_required/special_allowed/shoot_allowed` 和 `upper_shoot_block_reason`。堵转停机等待原因显示为 `LIFT_WAIT_FAULT`；若升降许可已恢复而发射原因为 `UPPER_SHOOT_BLOCK_REARM`，需重新拨杆布防。位置保持目标、机械顶部、底部目标分别为 `lift_hold_target_encoder_total`（文件内静态变量）、`lift_top_contact_encoder_total`、`lift_bottom_encoder_total`。
+
+
+## 机械 Yaw 底盘角速度前馈
+
+下板通过 D4 上报底盘角速度，上板机械 Yaw 的内环目标为：位置环回正速度 + `mechanical_yaw_chassis_rate_ff_gain` × 底盘角速度。编码器外环控制云台与底盘的相对角度，上板陀螺仪测量惯性角速度，因此底盘旋转时应把底盘速度加到目标上，由原速度环生成转矩。独立调头、惯性 Yaw 控制不使用该前馈。
+
+参数位于 `cloud_config`：`mechanical_yaw_chassis_rate_ff_gain` 为有符号增益，零关闭；`mechanical_yaw_chassis_rate_ff_limit_deg_s` 限制前馈角速度。两板 IMU 的安装方向可能不同，应先观察底盘与云台随动时的角速度符号，再设置增益正负。通信超时或下板 IMU 无效时前馈立即归零；最终转矩仍遵守原机械速度环限幅。
+
+Keil 观察 `cloud_yaw_chassis_rate_online`、`cloud_yaw_chassis_rate_deg_s`、`cloud_yaw_chassis_rate_ff_deg_s`、`cloud_yaw_rate_target_deg_s`、`cloud_yaw_rate_deg_s` 和 `cloud_yaw_torque_raw`。底盘转动且相对位置无误差时，内环目标应跟随底盘转速，避免零速度目标持续抵抗底盘旋转。

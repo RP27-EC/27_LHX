@@ -106,6 +106,8 @@ typedef struct
 
     float mechanical_yaw_command_deg_s_per_raw; // 位置环速度原始码到目标角速度的换算系数，度/s/码。
     float mechanical_yaw_gyro_direction; // IMU Yaw 与编码器正方向同向 +1，反向 -1。
+    float mechanical_yaw_chassis_rate_ff_gain; // 底盘角速度到机械 Yaw 目标的前馈增益，负值用于反向，零关闭。
+    float mechanical_yaw_chassis_rate_ff_limit_deg_s; // 前馈角速度限幅，避免异常反馈造成目标突变。
     float mechanical_yaw_rate_kp; // 陀螺仪速度环，角速度误差 °/s -> 转矩码。
     float mechanical_yaw_rate_ki; // 机械 Yaw 陀螺仪速度环积分增益。
     float mechanical_yaw_rate_kd; // 机械 Yaw 陀螺仪速度环微分增益。
