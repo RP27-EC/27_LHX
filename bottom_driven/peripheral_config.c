@@ -13,8 +13,11 @@ void ImuConfig_Init(void)
 {
     imu_config.update_period_s = 0.004f; // IMU 姿态积分使用的更新周期，s。
     imu_config.gyro_calibration_samples = 500U; // 陀螺零偏采样次数。
-    imu_config.attitude_kp = 2.0f; // 加速度修正姿态的比例增益。
-    imu_config.attitude_ki = 0.02f; // 姿态误差积分修正增益。
+    imu_config.attitude_ekf.quaternion_noise = 15.0f; // 四元数过程噪声，控制加速度修正权重。
+    imu_config.attitude_ekf.bias_noise = 0.001f; // 在线零偏估计的过程噪声。
+    imu_config.attitude_ekf.accel_noise = 100000.0f; // 归一化加速度的量测噪声。
+    imu_config.attitude_ekf.fading = 1.0f; // 零偏协方差遗忘系数，减小可避免过度收敛。
+    imu_config.attitude_ekf.chi_square_threshold = 1e-8f; // 收敛后的加速度残差拒绝门槛。
     imu_config.yaw_rate_filter_alpha = 0.20f; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     imu_config.gyro_x_sign = (-1.0f); // 陀螺 X 轴安装方向系数。
     imu_config.gyro_y_sign = (-1.0f); // 陀螺 Y 轴安装方向系数。

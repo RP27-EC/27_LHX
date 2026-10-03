@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "quaternion_ekf.h"
 
 // 启动时加载默认值；运行时可修改配置变量。
 typedef struct
@@ -16,8 +17,7 @@ typedef struct
 {
     float update_period_s; // IMU 姿态积分使用的更新周期，s。
     uint32_t gyro_calibration_samples; // 启动时的静止陀螺零偏采样次数；重调需重新初始化 IMU。
-    float attitude_kp; // 加速度重力方向对姿态的比例校正增益。
-    float attitude_ki; // 姿态误差积分校正增益。
+    QuaternionEkfConfig attitude_ekf; // 姿态 EKF 的过程噪声、量测噪声与残差门槛。
     float yaw_rate_filter_alpha; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     float gyro_x_sign; // 陀螺 X 轴方向系数。
     float gyro_y_sign; // 陀螺 Y 轴方向系数。

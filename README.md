@@ -138,4 +138,12 @@ FDCAN1 的统一 `ChassisCan_Send()` 和 FIFO0 回调同时服务四轮电机、
 
 ### D4 底盘角速度连续上报
 
-D4 发送由底盘任务统一执行，机械、跟随、小陀螺及停车状态均持续上报，周期由 `chassis_config.yaw_rate_tx_period_ms` 设置，默认 4 ms。数据 0~1 为 int16 小端角速度，单位 0.01°/s；byte2 bit0 表示 IMU 已标定且数据有效，无效时明确发零角速度及无效位。上板据此生成机械 Yaw 的高通转矩前馈；跟随解算不再重复发送 D4。
+D4 发送由底盘任务统一执行，机械、跟随、小陀螺及停车状态均持续上报，周期由 `chassis_config.yaw_rate_tx_period_ms` 设置，默认 4 ms。数据 0~1 为 int16 小端角速度，单位 0.01°/s；byte2 bit0 表示 IMU 已标定且数据有效，无效时明确发零角速度及无效位。上板可用于通信观测，当前不参与机械 Yaw 转矩前馈；跟随解算不再重复发送 D4。
+
+### BMI088 姿态 EKF
+
+姿态融合改为参照模板的六状态四元数 EKF：启动静止标定、安装方向、角度单位、Yaw 跨圈和世界系去重力输出接口沿用现有设置。算法由陀螺预测、加速度校正，并估计 X/Y 剩余零偏；旧 `attitude_kp`、`attitude_ki` 及对应积分反馈逻辑已经删除。
+
+参数在 `bottom_driven/peripheral_config.c` 的 `imu_config.attitude_ekf`，噪声默认值取自模板实际初始化调用。参数解释及移植步骤见 `algorithms_library/README.md`。两板算法源码相同，各自保存在对应工程中，已加入 Keil 的 `algorithms_library` 分组；算法矩阵为固定数组，不依赖外部矩阵库或动态内存。
+
+`chassis_imu.gyro_rad_s` 为启动标定与在线零偏修正后的角速度；D4 使用的 `yaw_rate_deg_s` 仍经过 `yaw_rate_filter_alpha` 低通。Yaw 长期漂移无法只靠重力量测消除。Keil 可观察 `chassis_imu.ekf_bias_rad_s`、`ekf_chi_square`、`ekf_accel_used`，拒绝异常加速度时仍进行陀螺预测；非法参数或数值更新失败则标记 IMU 离线。

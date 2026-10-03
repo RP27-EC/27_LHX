@@ -8,7 +8,7 @@
 // BMI088 原始数据、四元数姿态和底盘角速度的统一快照。
 typedef struct
 {
-    float gyro_rad_s[3]; // 机体系三轴角速度，单位 rad/s。
+    float gyro_rad_s[3]; // 机体系三轴角速度，已去除启动零偏及 EKF 在线零偏，rad/s。
     float accel_m_s2[3]; // 机体系三轴加速度，单位 m/s²。
     float linear_accel_world_m_s2[3]; // 去重力后的世界系三轴线加速度。
     float quaternion[4]; // 姿态四元数，顺序为 w、x、y、z。
@@ -18,6 +18,9 @@ typedef struct
     float yaw_total_deg; // 跨圈累计航向角，单位度。
     float yaw_rate_deg_s; // 底盘 Yaw 轴角速度，单位度每秒。
     float temperature_c; // BMI088 温度，单位摄氏度。
+    float ekf_bias_rad_s[3]; // EKF 估计的剩余零偏，不含启动标定值。
+    float ekf_chi_square; // 加速度残差检验值，供调试观察。
+    bool ekf_accel_used; // 本次姿态更新是否接受加速度修正。
     uint32_t update_count; // 成功更新姿态的累计次数。
     uint8_t init_error; // 初始化阶段累计检测到的错误数。
     bool calibrated; // 陀螺仪零偏标定是否完成。

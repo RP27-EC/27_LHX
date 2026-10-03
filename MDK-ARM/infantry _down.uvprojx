@@ -1031,6 +1031,16 @@
           <GroupName>algorithms_library</GroupName>
           <Files>
             <File>
+              <FileName>quaternion_ekf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../algorithms_library/quaternion_ekf.c</FilePath>
+            </File>
+            <File>
+              <FileName>quaternion_ekf.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../algorithms_library/quaternion_ekf.h</FilePath>
+            </File>
+            <File>
               <FileName>PID.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\algorithms_library\PID.c</FilePath>
