@@ -131,7 +131,7 @@ void Chassis_MechanicalUpdate(float front, float left, float cycle)
 
 void Chassis_MecanumInverse(float front,float left,float cycle)
 {
-    static float motor[4];
+    float motor[4]; // 本次解算结果，不保留跨周期状态。
     uint32_t i;
 
     motor[0] =  front - left - cycle;

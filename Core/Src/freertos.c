@@ -217,7 +217,6 @@ void motor3508_speed_control(void *argument)
   bool spin_session_started = false;
   bool spin_fault_timing = false;
   uint32_t spin_fault_start_ms = 0U;
-  uint8_t lift_sequence = 0U;
   uint32_t last_wheel_speed_tx_ms = 0U;
   uint32_t last_yaw_rate_tx_ms = 0U;
   float chassis_yaw_rate_deg_s;
@@ -243,7 +242,7 @@ void motor3508_speed_control(void *argument)
     { last_yaw_rate_tx_ms = HAL_GetTick(); }
     RemoteState_Get(&remote);
     turn_hold = false;
-    lift_hold = Communication_GetLiftLock(&lift_sequence);
+    lift_hold = Communication_GetLiftLock(NULL);
     spin_frame_valid = Communication_GetSpinState(&upper_spin_selected,
                                                   &spin_allowed);
     bottom_mode_blocked = Communication_GetBottomModeBlocked();
@@ -316,11 +315,12 @@ void motor3508_speed_control(void *argument)
     spin_was_driving = spin_drive_enabled;
     if (remote.safety.online && Motor3508_OnlineCheck() && !turn_hold && !lift_hold)
     {
-      if (bottom_mode_blocked &&
-          (remote.mode.chassis == REMOTE_MODE_FOLLOW ||
-           remote.mode.chassis == REMOTE_MODE_SPIN))
+      if (remote.mode.chassis == REMOTE_MODE_MECHANICAL ||
+          (bottom_mode_blocked &&
+           (remote.mode.chassis == REMOTE_MODE_FOLLOW ||
+            remote.mode.chassis == REMOTE_MODE_SPIN)))
       {
-        // 上板低位锁定 Yaw 时，本板同步改用机械底盘，避免继续追随云台角。
+        // 机械模式与升降低位强制机械模式使用同一控制分支。
         Chassis_FollowReset();
         Chassis_SpinReset();
         Chassis_MechanicalUpdate(remote.input.channel[3] * chassis_config.forward_scale,
@@ -342,15 +342,6 @@ void motor3508_speed_control(void *argument)
         Chassis_FollowUpdate(remote.input.channel[3] * chassis_config.forward_scale,
                              remote.input.channel[2] * chassis_config.left_scale,
                              (float)remote.input.channel[0]);
-      }
-      else if (remote.mode.chassis == REMOTE_MODE_MECHANICAL)
-      {
-        // 机械模式手动控制底盘。
-        Chassis_FollowReset();
-        Chassis_SpinReset();
-        Chassis_MechanicalUpdate(remote.input.channel[3] * chassis_config.forward_scale,
-                                 remote.input.channel[2] * chassis_config.left_scale,
-                                 remote.input.channel[0] * chassis_config.rotate_scale);
       }
       else
       {
