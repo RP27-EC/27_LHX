@@ -9,16 +9,16 @@ typedef struct
 {
     uint32_t timeout_ms; // 最后有效 DBUS 帧的离线超时，ms。
 } TelecontrolConfig;
-extern volatile TelecontrolConfig telecontrol_config;
+extern volatile TelecontrolConfig telecontrol_config; // 遥控接收超时参数。
 void TelecontrolConfig_Init(void);
 
 typedef struct
 {
-    float update_period_s; // 姿态积分使用的周期，1 ms。
+    float update_period_s; // IMU 姿态积分使用的更新周期，s。
     uint32_t gyro_calibration_samples; // 启动时的静止陀螺零偏采样次数；重调需重新初始化 IMU。
     float attitude_kp; // 加速度重力方向对姿态的比例校正增益。
     float attitude_ki; // 姿态误差积分校正增益。
-    float yaw_rate_filter_alpha; // 新角速度样本权重；滤波值+=权重×(新值-旧值)。
+    float yaw_rate_filter_alpha; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     float gyro_x_sign; // 陀螺 X 轴方向系数。
     float gyro_y_sign; // 陀螺 Y 轴方向系数。
     float gyro_z_sign; // 陀螺 Z 轴方向系数。
@@ -26,7 +26,7 @@ typedef struct
     float accel_y_sign; // 加速度 Y 轴方向系数。
     float accel_z_sign; // 加速度 Z 轴方向系数。
 } ImuConfig;
-extern volatile ImuConfig imu_config;
+extern volatile ImuConfig imu_config; // 下板 IMU 姿态与安装方向参数。
 void ImuConfig_Init(void);
 
 typedef struct
@@ -43,9 +43,9 @@ typedef struct
     float speed_kd; // rpm 误差微分增益；0 为关闭。
     float speed_integral_limit; // 速度环积分项绝对值上限。
     float speed_output_limit; // PID 电流码输出上限，另受 CURRENT_LIMIT 约束。
-    float pid_control_time_s; // PID 每次调用间隔，1 ms。
+    float pid_control_time_s; // 电机 PID 每次调用使用的控制周期，s。
 } Motor3508Config;
-extern volatile Motor3508Config motor3508_config;
+extern volatile Motor3508Config motor3508_config; // 电机速度、位置闭环参数。
 void Motor3508Config_Init(void);
 
 typedef struct
@@ -55,7 +55,7 @@ typedef struct
     uint32_t spin_state_timeout_ms; // C1 自旋模式位的独立有效期；明确禁止仍立即生效。
     uint32_t lift_lock_timeout_ms; // C2 升降锁车请求的有效期。
 } CommunicationConfig;
-extern volatile CommunicationConfig communication_config;
+extern volatile CommunicationConfig communication_config; // 板间通信重试和超时参数。
 void CommunicationConfig_Init(void);
 
 typedef struct
@@ -67,10 +67,10 @@ typedef struct
     int16_t cap_power_out_limit; // 0x222 字节 3~4；模板使用负值。
     uint16_t cap_power_in_limit; // 0x222 字节 5~6；固定协议值。
     bool cap_enabled; // 0x222 字节 7 bit0，超电基础开关。
-    bool turbo_enabled; // 0x222 字节 7 bit1，Turbo 模式。
-    bool precharge_enabled; // 0x222 字节 7 bit2，预充模式。
+    bool turbo_enabled; // 超电 Turbo 模式开关。
+    bool precharge_enabled; // 超电预充开关，开启时清零充电功率字段。
 } PowerCommunicationConfig;
-extern volatile PowerCommunicationConfig power_communication_config;
+extern volatile PowerCommunicationConfig power_communication_config; // 超电控制和状态超时参数。
 void PowerCommunicationConfig_Init(void);
 
 void LowerPeripheralConfig_InitAll(void);

@@ -13,7 +13,7 @@ volatile bool chassis_front_reversed; // 当前更接近云台指向的车头：
 volatile bool chassis_turnaround_pending; // 本地拨轮已触发，等待上板完成 Yaw 调头。
 static bool chassis_turnaround_seen_active; // 已收到上板正在调头的 C1 标志。
 static uint32_t chassis_turnaround_request_ms; // 本次调头请求发起时间。
-static uint32_t chassis_turnaround_last_request_count;
+static uint32_t chassis_turnaround_last_request_count; // 已处理的调头事件序号。
 
 
 static float Chassis_Abs(float value)
