@@ -210,11 +210,10 @@ static void LiftControl_SafetyResume(uint32_t now)
     safety_pause_active = false;
 }
 
-static bool LiftControl_PitchRequired(const Motor2006_Feedback_t *feedback)
+static bool LiftControl_PitchRequired(void)
 {
     if (!lift_calibrated) { return false; }
     if (!lift_hold_target_valid) { return false; }
-    (void)feedback;
     // 下降开始前先抬 Pitch；离开顶部安全区后保持抬起直到归位。
     return requested_direction == LIFT_DESCENDING || !upper_mode_zone;
 }
@@ -600,7 +599,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     // 安全快照先于云台控制更新，使新下降指令当周期就能抬起 Pitch。
     lift_pitch_nonnegative_required = remote != NULL &&
         remote->safety.online && feedback_online &&
-        (pending_descent || LiftControl_PitchRequired(&feedback));
+        (pending_descent || LiftControl_PitchRequired());
     // 遥控下降请求立即撤销许可；高位位控的短暂下行纠偏不算下降。
     if (feedback_online && !holding_position && down_speed_rpm >
         lift_config.special_down_speed_enter_rpm)
@@ -784,7 +783,7 @@ void LiftControl_Update(const RemoteState_t *remote)
             LiftControl_ResetStallCheck();
         }
         lift_pitch_nonnegative_required =
-            LiftControl_PitchRequired(&feedback);
+            LiftControl_PitchRequired();
         if (lift_pitch_nonnegative_required &&
             !CloudTerrace_LiftPitchNonnegative())
         {
@@ -875,7 +874,7 @@ void LiftControl_Update(const RemoteState_t *remote)
 
     target = lift_hold_target_encoder_total;
     error = target - feedback.encoder_total;
-    lift_pitch_nonnegative_required = LiftControl_PitchRequired(&feedback);
+    lift_pitch_nonnegative_required = LiftControl_PitchRequired();
     if (lift_pitch_nonnegative_required &&
         !CloudTerrace_LiftPitchNonnegative())
     {
