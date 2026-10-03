@@ -12,6 +12,7 @@
 #include "shoot_control.h"
 
 volatile UpperTaskTimingState upper_task_timing;
+volatile UpperShootBlockReason upper_shoot_block_reason;
 
 static void UpperTasks_WaitPeriod(uint32_t *next_tick, uint32_t period_ticks,
                                   volatile uint32_t *overruns)
@@ -38,11 +39,11 @@ static void UpperTasks_CommunicationStep(void)
 
 static void UpperTasks_ShootStep(void)
 {
-    static bool shoot_rearm_required = true;
-    static bool last_input_valid;
-    static bool last_keyboard_active;
-    static bool last_shoot_armed;
-    static uint8_t last_right_switch;
+    static bool shoot_rearm_required = true; // 许可丢失后等待新的手动操作。
+    static bool last_input_valid; // 上周期遥控输入有效。
+    static bool last_keyboard_active; // 上周期输入来源。
+    static bool last_shoot_armed; // 上周期键鼠摩擦轮布防状态。
+    static uint8_t last_right_switch; // 上周期物理右拨杆位置。
     bool friction_motors_online;
     bool dial_motor_online;
     bool manual_rearm = false;
@@ -68,9 +69,10 @@ static void UpperTasks_ShootStep(void)
         { manual_rearm = !last_shoot_armed && remote.safety.shoot_armed; }
         else
         {
-            // 许可恢复后必须从保险下档主动拨出；快速越过中档也有效。
-            manual_rearm = last_right_switch == COMM_RC_SW_DOWN &&
-                           remote.input.right_switch != COMM_RC_SW_DOWN &&
+            // 与遥控解析一致：许可恢复后重新拨动右杆，保险档不启动。
+            manual_rearm = remote.input.right_switch != last_right_switch &&
+                           (remote.input.right_switch == COMM_RC_SW_MID ||
+                            remote.input.right_switch == COMM_RC_SW_UP) &&
                            remote.safety.shoot_armed;
         }
     }
@@ -84,6 +86,17 @@ static void UpperTasks_ShootStep(void)
     last_keyboard_active = remote.input.keyboard_active;
     last_shoot_armed = remote.safety.shoot_armed;
     last_right_switch = remote.input.right_switch;
+
+    if (!remote.safety.online) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_REMOTE; }
+    else if (remote.mode.chassis == REMOTE_MODE_SPIN)
+    { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_SPIN; }
+    else if (!shoot_allowed) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_LIFT; }
+    else if (!remote.safety.shoot_armed || shoot_rearm_required)
+    { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_REARM; }
+    else if (!friction_motors_online)
+    { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_FRICTION; }
+    else if (!dial_motor_online) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_DIAL; }
+    else { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_NONE; }
 
     shoot_mode = remote.safety.online && remote.safety.shoot_armed &&
         shoot_allowed && !shoot_rearm_required && friction_motors_online ?

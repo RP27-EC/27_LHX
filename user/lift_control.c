@@ -7,55 +7,55 @@
 #include "application_config.h"
 #include "stm32f4xx_hal.h"
 
-#define LIFT_ENCODER_COUNTS_PER_TURN 8192.0f
+#define LIFT_ENCODER_COUNTS_PER_TURN 8192.0f // 升降电机转子每圈编码器计数。
 
-volatile LiftControl_State_t lift_control_state;
-volatile LiftControl_WaitReason_t lift_wait_reason;
-volatile bool lift_calibrated;
-volatile int32_t lift_top_encoder_total;
-volatile int32_t lift_top_contact_encoder_total;
-volatile int32_t lift_bottom_encoder_total;
-volatile bool lift_pitch_nonnegative_required;
-volatile LiftSafetyState_t lift_safety_state;
+volatile LiftControl_State_t lift_control_state; // 升降当前动作状态。
+volatile LiftControl_WaitReason_t lift_wait_reason; // 当前等待或停机原因。
+volatile bool lift_calibrated; // 顶部基准和行程目标是否已建立。
+volatile int32_t lift_top_encoder_total; // 当前高位目标，累计编码器计数。
+volatile int32_t lift_top_contact_encoder_total; // 最近确认的机械顶部基准。
+volatile int32_t lift_bottom_encoder_total; // 校准后的低位目标，累计编码器计数。
+volatile bool lift_pitch_nonnegative_required; // 是否要求 Pitch 抬至机械安全下限。
+volatile LiftSafetyState_t lift_safety_state; // 云台、发射和底盘共用的安全快照。
 
-static LiftControl_StallSnapshot_t stall_snapshot;
-static bool right_switch_seen;
-static uint8_t previous_right_switch;
-static uint32_t keyboard_lift_seen;
-static bool keyboard_lift_pending;
-static LiftControl_State_t requested_direction;
-static bool calibration_active;
-static bool calibration_armed;
-static bool calibration_fault_latched;
-static bool calibration_drive_started;
-static bool lift_hold_target_valid;
-static int32_t lift_hold_target_encoder_total;
-static uint32_t calibration_start_ms;
-static bool yaw_stable_timing;
-static uint32_t yaw_stable_start_ms;
-static bool safety_pause_active;
-static uint32_t safety_pause_start_ms;
-static bool stall_timing;
-static uint32_t stall_start_ms;
-static bool progress_timing;
-static uint32_t progress_start_ms;
-static int32_t progress_start_counts;
-static bool progress_high_current_all;
-static bool motor_stopped;
-static uint32_t last_stop_ms;
-static bool chassis_hold_request;
-static uint8_t chassis_hold_sequence;
-static bool chassis_hold_tx_seen;
-static uint32_t chassis_hold_tx_ms;
-static uint32_t chassis_hold_start_ms;
-static bool offline_release_timing;
-static uint32_t offline_release_start_ms;
-static bool upper_mode_zone;
-static bool descent_mode_blocked;
-static bool down_motion_timing;
-static uint32_t down_motion_start_ms;
-static bool descent_release_timing;
-static uint32_t descent_release_start_ms;
+static LiftControl_StallSnapshot_t stall_snapshot; // 最近一次堵转反馈。
+static bool right_switch_seen; // 已记录升降档内的首次拨杆位置。
+static uint8_t previous_right_switch; // 上次处理的升降拨杆档位。
+static uint32_t keyboard_lift_seen; // 已消费的键鼠升降事件序号。
+static bool keyboard_lift_pending; // 等待归零后执行的键鼠升降请求。
+static LiftControl_State_t requested_direction; // 主动升降方向；保持纠偏不改变此项。
+static bool calibration_active; // 正在自动寻找顶部。
+static bool calibration_armed; // 允许开始一次顶部校准。
+static bool calibration_fault_latched; // 校准失败后禁止自动重试。
+static bool calibration_drive_started; // 校准已开始驱动电机，开始计算超时。
+static bool lift_hold_target_valid; // 累计位置保持目标是否有效。
+static int32_t lift_hold_target_encoder_total; // 本次升降或保持的位置目标。
+static uint32_t calibration_start_ms; // 校准驱动起始时间。
+static bool yaw_stable_timing; // Yaw 正在累计连续归零时间。
+static uint32_t yaw_stable_start_ms; // 本次 Yaw 连续归零的起点。
+static bool safety_pause_active; // 因联锁暂时停止升降。
+static uint32_t safety_pause_start_ms; // 安全暂停起点，用于扣除校准等待时间。
+static bool stall_timing; // 高电流低速判据正在计时。
+static uint32_t stall_start_ms; // 本次高电流低速判据的起点。
+static bool progress_timing; // 位移进度检查窗口有效。
+static uint32_t progress_start_ms; // 当前位移检查窗口起点。
+static int32_t progress_start_counts; // 位移检查窗口起始位置。
+static bool progress_high_current_all; // 检查窗口内是否持续为高电流。
+static bool motor_stopped; // 停机命令是否已成功入队。
+static uint32_t last_stop_ms; // 最近一次停机命令入队时间。
+static bool chassis_hold_request; // 当前是否请求下板锁车。
+static uint8_t chassis_hold_sequence; // 锁车请求变化的事件序号。
+static bool chassis_hold_tx_seen; // 当前锁车状态已成功入队。
+static uint32_t chassis_hold_tx_ms; // 最近一次锁车状态发送时间。
+static uint32_t chassis_hold_start_ms; // 本次锁车等待的起点。
+static bool offline_release_timing; // 电机离线后的延时释放正在计时。
+static uint32_t offline_release_start_ms; // 本次离线释放计时起点。
+static bool upper_mode_zone; // 顶部安全区的迟滞状态。
+static bool descent_mode_blocked; // 下降联锁，停止稳定后解除。
+static bool down_motion_timing; // 实测持续下行正在计时。
+static uint32_t down_motion_start_ms; // 本次实测下行计时起点。
+static bool descent_release_timing; // 下降结束后的稳定计时有效。
+static uint32_t descent_release_start_ms; // 本次下降联锁释放计时起点。
 
 static int32_t LiftControl_Abs(int32_t value)
 {
@@ -320,7 +320,8 @@ static LiftControl_State_t LiftControl_DirectionTo(int32_t error)
 }
 
 static void LiftControl_PositionDrive(const Motor2006_Feedback_t *feedback,
-                                       int32_t target, float speed_limit)
+                                       int32_t target, float speed_limit,
+                                       bool active_move)
 {
     float speed = (float)(target - feedback->encoder_total) /
                   LIFT_ENCODER_COUNTS_PER_TURN *
@@ -328,10 +329,13 @@ static void LiftControl_PositionDrive(const Motor2006_Feedback_t *feedback,
 
     if (speed > speed_limit) { speed = speed_limit; }
     else if (speed < -speed_limit) { speed = -speed_limit; }
-    if (speed > 0.0f && speed < lift_config.position_min_speed_rad_s)
+    // 最小速度只用于主动升降，保持时让纠偏速度随误差减小。
+    if (active_move && speed > 0.0f && speed < lift_config.position_min_speed_rad_s)
     { speed = lift_config.position_min_speed_rad_s; }
-    else if (speed < 0.0f && speed > -lift_config.position_min_speed_rad_s)
+    else if (active_move && speed < 0.0f && speed > -lift_config.position_min_speed_rad_s)
     { speed = -lift_config.position_min_speed_rad_s; }
+    if (speed > speed_limit) { speed = speed_limit; }
+    else if (speed < -speed_limit) { speed = -speed_limit; }
     LiftControl_RunSpeed(speed);
 }
 
@@ -489,6 +493,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     bool pending_lift_command = false;
     bool confirmed_down_motion = false;
     bool pending_descent = false;
+    bool holding_position = false; // 顶部区内无主动升降请求，电机可继续保持纠偏。
     bool imu_ready;
     int32_t down_speed_rpm = 0;
     uint32_t now = HAL_GetTick();
@@ -525,6 +530,27 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     else if (next.from_top_turns > exit_turns)
     { upper_mode_zone = false; }
     next.upper_zone = upper_mode_zone;
+    if (lift_calibrated && feedback_online && lift_hold_target_valid)
+    {
+        // 到位先撤销运动请求，云台当周期即可接管。
+        if (requested_direction != LIFT_STOPPED &&
+            LiftControl_PositionArrived(&feedback, lift_hold_target_encoder_total))
+        { requested_direction = LIFT_STOPPED; }
+        if (remote != NULL &&
+            (!remote->safety.online || !remote->safety.lift_enabled ||
+             (!remote->input.keyboard_active &&
+              remote->input.lift_right_switch == COMM_RC_SW_UP)))
+        {
+            if (requested_direction != LIFT_STOPPED &&
+                !(requested_direction == LIFT_ASCENDING && next.upper_zone))
+            { lift_hold_target_encoder_total = feedback.encoder_total; }
+            // 离开升降档或回停机档不保留回零联锁；顶部目标仍可低速保持。
+            requested_direction = LIFT_STOPPED;
+            keyboard_lift_pending = false;
+            right_switch_seen = false;
+        }
+        holding_position = next.upper_zone && requested_direction == LIFT_STOPPED;
+    }
     // 低位锁定只由已校准的位置解除；反馈暂失效时保留上次锁定状态。
     next.bottom_mode_blocked = lift_safety_state.bottom_mode_blocked;
     if (lift_calibrated && feedback_online)
@@ -575,7 +601,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
         remote->safety.online && feedback_online &&
         (pending_descent || LiftControl_PitchRequired(&feedback));
     // 遥控下降请求立即撤销许可；高位位控的短暂下行纠偏不算下降。
-    if (feedback_online && down_speed_rpm >
+    if (feedback_online && !holding_position && down_speed_rpm >
         lift_config.special_down_speed_enter_rpm)
     {
         if (!down_motion_timing)
@@ -593,7 +619,8 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
         descent_release_timing = false;
     }
     else if (descent_mode_blocked && feedback_online &&
-             down_speed_rpm <= lift_config.special_down_speed_release_rpm)
+             (holding_position ||
+              down_speed_rpm <= lift_config.special_down_speed_release_rpm))
     {
         if (!descent_release_timing)
         {
@@ -610,7 +637,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     next.descending = descent_mode_blocked;
     imu_ready = GimbalImu_Get(&imu);
     next.special_allowed = remote != NULL && remote->safety.online &&
-        next.upper_zone && !next.descending &&
+        next.upper_zone && !next.descending && !next.yaw_home_required &&
         cloud_terrace_home_state == CLOUD_TERRACE_HOME_DONE &&
         Motor4310_AllOnline() &&
         (remote->mode.chassis == REMOTE_MODE_MECHANICAL || imu_ready);
@@ -738,7 +765,7 @@ void LiftControl_Update(const RemoteState_t *remote)
     }
 
     // 新升降边沿在 Yaw 未归零时保持待执行；归零稳定后才读取目标并驱动 2006。
-    if ((safety.yaw_home_required || !safety.upper_zone || safety.descending) &&
+    if ((!lift_calibrated || safety.yaw_home_required) &&
         !LiftControl_YawStable(now))
     {
         LiftControl_SafetyPause(now, LIFT_WAIT_YAW, calibration_active);
@@ -788,12 +815,10 @@ void LiftControl_Update(const RemoteState_t *remote)
     if (!remote->safety.lift_enabled)
     {
         right_switch_seen = false;
-        if (!(requested_direction == LIFT_ASCENDING && safety.upper_zone))
-        {
-            if (requested_direction != LIFT_STOPPED)
-            { lift_hold_target_encoder_total = feedback.encoder_total; }
-            requested_direction = LIFT_STOPPED;
-        }
+        if (requested_direction != LIFT_STOPPED &&
+            !(requested_direction == LIFT_ASCENDING && safety.upper_zone))
+        { lift_hold_target_encoder_total = feedback.encoder_total; }
+        requested_direction = LIFT_STOPPED;
     }
     else if (remote->input.keyboard_active)
     {
@@ -828,14 +853,22 @@ void LiftControl_Update(const RemoteState_t *remote)
     {
         previous_right_switch = remote->input.lift_right_switch;
         if (remote->input.lift_right_switch == COMM_RC_SW_DOWN)
-        { requested_direction = LIFT_DESCENDING; }
+        {
+            requested_direction = LIFT_DESCENDING;
+            lift_hold_target_encoder_total = lift_bottom_encoder_total;
+        }
         else if (remote->input.lift_right_switch == COMM_RC_SW_MID)
-        { requested_direction = LIFT_ASCENDING; }
+        {
+            requested_direction = LIFT_ASCENDING;
+            lift_hold_target_encoder_total = lift_top_encoder_total;
+        }
         else if (!(requested_direction == LIFT_ASCENDING && safety.upper_zone))
-        { requested_direction = LIFT_STOPPED; }
-        lift_hold_target_encoder_total = requested_direction == LIFT_DESCENDING ?
-            lift_bottom_encoder_total : requested_direction == LIFT_ASCENDING ?
-            lift_top_encoder_total : feedback.encoder_total;
+        {
+            // 中途停机保持当前位置；已经到位则保留原来的保持目标。
+            if (requested_direction != LIFT_STOPPED)
+            { lift_hold_target_encoder_total = feedback.encoder_total; }
+            requested_direction = LIFT_STOPPED;
+        }
         LiftControl_ResetStallCheck();
     }
 
@@ -861,7 +894,9 @@ void LiftControl_Update(const RemoteState_t *remote)
         LiftControl_ResetStallCheck();
         lift_control_state = LIFT_READY;
         requested_direction = LIFT_STOPPED;
-        LiftControl_RunSpeed(0.0f); // 到位后维持零速，偏离容差会转入位置回位。
+        // 到位容差只结束主动动作，容差内仍持续做位置保持。
+        LiftControl_PositionDrive(&feedback, target,
+                                  lift_config.hold_speed_rad_s, false);
         return;
     }
     direction = LiftControl_DirectionTo(error);
@@ -901,5 +936,6 @@ void LiftControl_Update(const RemoteState_t *remote)
         lift_config.hold_speed_rad_s : direction == LIFT_ASCENDING ?
         lift_config.up_speed_rad_s : lift_config.down_speed_rad_s;
     lift_control_state = direction;
-    LiftControl_PositionDrive(&feedback, target, speed_limit);
+    LiftControl_PositionDrive(&feedback, target, speed_limit,
+                              requested_direction != LIFT_STOPPED);
 }

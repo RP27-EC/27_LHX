@@ -74,7 +74,7 @@ typedef struct
     ShootCounterState_t count; // 调试器可查看的累计计数。
 } ShootControlState_t;
 
-extern volatile ShootControlState_t shoot_control_state;
+extern volatile ShootControlState_t shoot_control_state; // 发射动作、堵转恢复和事件状态。
 
 void ShootControl_Init(void);
 

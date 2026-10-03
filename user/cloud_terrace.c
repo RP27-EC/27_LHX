@@ -24,30 +24,24 @@ static bool targets_initialized; // 常规控制目标是否已从反馈值初�
 static bool yaw_mechanical_mode; // 是否处于 Yaw 始终朝底盘正前方模式。
 static int32_t yaw_mechanical_target; // 机械模式选定的物理前/后归中目标。
 static int32_t yaw_turn_target; // 本次调头的 Yaw 累计编码器目标。
-static int32_t yaw_turn_start_counts;
-static float yaw_turn_duration_s;
-static float yaw_turn_elapsed_s;
-static uint32_t yaw_turn_last_ms;
-volatile float cloud_turn_progress;
-volatile float cloud_turn_duration_s;
-volatile float cloud_turn_target_deg;
+static int32_t yaw_turn_start_counts; // 本次调头起点，累计编码器计数。
+static float yaw_turn_duration_s; // 动作开始时锁定的轨迹时长，s。
+static float yaw_turn_elapsed_s; // 已成功发送的轨迹累计时间，s。
+static uint32_t yaw_turn_last_ms; // 上次轨迹更新的时间。
+volatile float cloud_turn_progress; // 本次轨迹已执行的比例。
+volatile float cloud_turn_duration_s; // 本次实际采用的轨迹时长，s。
+volatile float cloud_turn_target_deg; // 当前轨迹目标相对机械零点的角度，度。
 
-// 五次多项式：两端速度、加速度为零，限制整段速度/加速度/jerk 峰值。
-static float cloud_turn_duration(float distance_deg, float speed, float accel, float jerk)
+// 时长只在动作开始时读取，运行中修改留到下次调头。
+static float cloud_turn_duration(float duration_s)
 {
-    float duration, bound;
-    if (!(speed > 0.0f && speed <= 2000.0f) ||
-        !(accel > 0.0f && accel <= 100000.0f) ||
-        !(jerk > 0.0f && jerk <= 10000000.0f)) { return 0.0f; }
-    distance_deg = fabsf(distance_deg);
-    duration = 1.875f * distance_deg / speed;
-    bound = sqrtf(5.773503f * distance_deg / accel);
-    if (duration < bound) { duration = bound; }
-    bound = powf(60.0f * distance_deg / jerk, 1.0f / 3.0f);
-    if (duration < bound) { duration = bound; }
-    return duration < 0.004f ? 0.004f : duration;
+    float period_s = motor4310_config.control_period_s;
+    if (!(duration_s >= 0.004f && duration_s <= 30.0f) ||
+        !(period_s > 0.0f && period_s <= duration_s)) { return 0.0f; }
+    return duration_s;
 }
 
+// 五次曲线将时间进度换成位置进度，两端目标速度和加速度为零。
 static float cloud_turn_scurve(float progress)
 {
     if (progress <= 0.0f) { return 0.0f; }
@@ -58,7 +52,8 @@ static float cloud_turn_scurve(float progress)
 static uint16_t yaw_turn_stable_cycles; // 调头到位的连续控制周期数。
 static bool turn_wheel_armed; // 拨轮回到中位后重新允许下降沿。
 static bool turn_requested; // 拨轮事件已触发，等待归中完成后执行。
-static bool spin_rearm_required; // 许可持续失效后须退出再进入小陀螺。
+static bool spin_rearm_required; // 运行后持续失去许可，须新的手动使能。
+static bool spin_session_started; // 本次手动启动是否已得到过自旋许可。
 static bool spin_fault_timing; // 自旋许可丢失计时中。
 static uint32_t spin_fault_start_ms; // 本次许可丢失的起始时刻。
 static PitchControl_t pitch_control; // Pitch 位控目标状态。
@@ -74,21 +69,21 @@ volatile int16_t cloud_yaw_torque_raw; // 角速度内环给出的 4310 原始�
 volatile float cloud_yaw_mechanical_error_deg;
 volatile float cloud_yaw_mechanical_speed_limit_raw;
 volatile bool cloud_yaw_mechanical_gyro_online;
-static PID_Controller_t yaw_mechanical_rate_pid;
+static PID_Controller_t yaw_mechanical_rate_pid; // 机械 Yaw 陀螺仪速度内环。
 
 volatile bool cloud_turnaround_active; // Yaw 正在转向另一个车头方向。
 volatile bool cloud_front_reversed; // 逻辑正方向是否为物理车尾。
 
-volatile bool cloud_pitch_imu_online;
-volatile float cloud_pitch_target_deg;
-volatile float cloud_pitch_angle_deg;
-volatile float cloud_pitch_rate_deg_s;
-volatile float cloud_pitch_rate_target_deg_s;
-volatile int16_t cloud_pitch_torque_raw;
-static PID_Controller_t pitch_angle_pid;
-static PID_Controller_t pitch_rate_pid;
-static float pitch_imu_direction;
-static bool pitch_inertial_mode;
+volatile bool cloud_pitch_imu_online; // Pitch 惯性控制所用的 IMU 是否有效。
+volatile float cloud_pitch_target_deg; // Pitch 惯性位置目标，度。
+volatile float cloud_pitch_angle_deg; // 当前 IMU Pitch 角，度。
+volatile float cloud_pitch_rate_deg_s; // 滤波后的 Pitch 角速度，度/s。
+volatile float cloud_pitch_rate_target_deg_s; // Pitch 位置环给出的目标角速度，度/s。
+volatile int16_t cloud_pitch_torque_raw; // 叠加重力补偿并限幅后的转矩码。
+static PID_Controller_t pitch_angle_pid; // Pitch 惯性位置外环。
+static PID_Controller_t pitch_rate_pid; // Pitch 陀螺仪速度内环。
+static float pitch_imu_direction; // 当前采用的 IMU 与电机方向关系。
+static bool pitch_inertial_mode; // 上周期是否使用 Pitch 惯性控制。
 
 static void cloud_reset_pitch_imu(void)
 {
@@ -105,6 +100,7 @@ static void cloud_reset_home(void)
     cloud_turnaround_active = false;
     yaw_turn_stable_cycles = 0U;
     spin_rearm_required = true;
+    spin_session_started = false;
     spin_fault_timing = false;
     cloud_terrace_home_state = CLOUD_TERRACE_HOME_WAIT;
     home_stable_cycles = 0U;
@@ -307,11 +303,7 @@ static bool cloud_turn_start(void)
     yaw_turn_target = cloud_nearest_front_target(reversed,
                                                  yaw.total_angle);
     yaw_turn_start_counts = yaw.total_angle;
-    yaw_turn_duration_s = cloud_turn_duration(
-        (float)(yaw_turn_target - yaw_turn_start_counts) *
-            360.0f / MOTOR4310_ECD_PER_ROUND,
-        cloud_config.turn_max_speed_deg_s, cloud_config.turn_max_accel_deg_s2,
-        cloud_config.turn_max_jerk_deg_s3);
+    yaw_turn_duration_s = cloud_turn_duration(cloud_config.turn_duration_s);
     if (yaw_turn_duration_s <= 0.0f) { turn_requested = false; return false; }
     cloud_front_reversed = reversed;
     yaw_turn_elapsed_s = 0.0f;
@@ -626,6 +618,7 @@ static void cloud_control_pitch_imu(int16_t input,
     if ((feedback->total_angle <= lower && cloud_pitch_rate_target_deg_s < 0.0f) ||
         (feedback->total_angle >= upper && cloud_pitch_rate_target_deg_s > 0.0f))
     { cloud_pitch_rate_target_deg_s = 0.0f; }
+    // 速度环纠偏与机械角重力补偿相加，再统一限制转矩。
     torque = PID_Calc(&pitch_rate_pid, cloud_pitch_rate_target_deg_s,
                      cloud_pitch_rate_deg_s) + (float)gravity;
     limit = fminf(2047.0f, fabsf(cloud_config.pitch_torque_limit_raw));
@@ -692,6 +685,29 @@ static void cloud_control_pitch(int16_t input, bool use_imu)
         MOTOR4310_PITCH, (int32_t)pitch_control.target_counts, gravity);
 }
 
+// 首次启动可等待许可；已运行后持续失去许可才锁存重新布防。
+static void cloud_spin_rearm_update(const RemoteState_t *remote, bool permitted)
+{
+    if (remote->mode.chassis != REMOTE_MODE_SPIN || !remote->safety.spin_enabled)
+    {
+        spin_rearm_required = false;
+        spin_session_started = false;
+        spin_fault_timing = false;
+    }
+    else if (permitted) { spin_fault_timing = false; }
+    else if (spin_session_started)
+    {
+        if (!spin_fault_timing)
+        {
+            spin_fault_timing = true;
+            spin_fault_start_ms = HAL_GetTick();
+        }
+        else if ((uint32_t)(HAL_GetTick() - spin_fault_start_ms) >=
+                     cloud_config.spin_fault_rearm_ms)
+        { spin_rearm_required = true; }
+    }
+}
+
 void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
 {
     RemoteState_t remote;
@@ -727,29 +743,11 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
         return;
     }
 
-    if (remote.mode.chassis != REMOTE_MODE_SPIN ||
-        !remote.safety.spin_enabled)
-    {
-        // 退出自旋或主动回保险后允许下一次启动。
-        spin_rearm_required = false;
-        spin_fault_timing = false;
-    }
-    else if (!safety.spin_allowed)
-    {
-        // 失去许可当周期停转；只有持续失效才锁存，避免单帧抖动永久停转。
-        if (!spin_fault_timing)
-        {
-            spin_fault_timing = true;
-            spin_fault_start_ms = HAL_GetTick();
-        }
-        else if ((uint32_t)(HAL_GetTick() - spin_fault_start_ms) >=
-                     cloud_config.spin_fault_rearm_ms)
-        { spin_rearm_required = true; }
-    }
-    else { spin_fault_timing = false; }
+    cloud_spin_rearm_update(&remote, safety.spin_allowed);
     spin_permitted = remote.mode.chassis == REMOTE_MODE_SPIN &&
                      safety.spin_allowed && !spin_rearm_required &&
                      !cloud_turnaround_active && !yaw_home_required;
+    if (spin_permitted) { spin_session_started = true; }
     turn_blocked = (remote.mode.chassis == REMOTE_MODE_SPIN &&
                     remote.safety.spin_enabled) ||
                    !mode_permitted || yaw_home_required;

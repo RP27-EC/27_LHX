@@ -35,12 +35,12 @@ extern volatile float cloud_turn_duration_s; // 本次轨迹时长。
 extern volatile float cloud_turn_target_deg; // 相对机械零点的轨迹目标角。
 
 // Pitch IMU 惯性控制状态，角度和角速度均已换算到电机正方向。
-extern volatile bool cloud_pitch_imu_online;
-extern volatile float cloud_pitch_target_deg;
-extern volatile float cloud_pitch_angle_deg;
-extern volatile float cloud_pitch_rate_deg_s;
-extern volatile float cloud_pitch_rate_target_deg_s;
-extern volatile int16_t cloud_pitch_torque_raw;
+extern volatile bool cloud_pitch_imu_online; // Pitch 惯性控制所用的 IMU 是否有效。
+extern volatile float cloud_pitch_target_deg; // Pitch 惯性位置目标，度。
+extern volatile float cloud_pitch_angle_deg; // 当前 IMU Pitch 角，度。
+extern volatile float cloud_pitch_rate_deg_s; // 滤波后的 Pitch 角速度，度/s。
+extern volatile float cloud_pitch_rate_target_deg_s; // Pitch 位置环目标角速度，度/s。
+extern volatile int16_t cloud_pitch_torque_raw; // 叠加重力补偿并限幅后的转矩码。
 
 void CloudTerrace_Init(void);
 void CloudTerrace_Update(const RemoteState_t *remote_snapshot);
