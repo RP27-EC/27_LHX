@@ -63,7 +63,6 @@ void PowerCommunicationConfig_Init(void)
     power_communication_config.offline_timeout_ms = 100U; // 两路状态帧独立判断在线。
     power_communication_config.tx_period_ms = 20U; // 超电基础控制帧发送周期，ms。
     power_communication_config.chassis_power_buffer = 0U; // 暂不接裁判系统缓冲量。
-    power_communication_config.chassis_power_limit = 300U; // 通过协议下发的底盘功率上限，当前不接动态限功率。
     power_communication_config.cap_power_out_limit = -300; // 模板默认放电字段。
     power_communication_config.cap_power_in_limit = 300U; // 模板默认充电字段。
     power_communication_config.cap_enabled = true; // 默认开启超电。

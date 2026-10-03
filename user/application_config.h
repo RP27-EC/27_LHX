@@ -2,6 +2,8 @@
 #define DOWN_APPLICATION_CONFIG_H
 
 #include <stdint.h>
+#include "chassis_power_estimate.h"
+#include "chassis_power_control.h"
 
 // 启动时加载默认值；运行时可修改配置变量。
 typedef struct
@@ -55,6 +57,10 @@ typedef struct
 } ChassisConfig;
 extern volatile ChassisConfig chassis_config; // 底盘解算、跟随与自旋参数。
 void ChassisConfig_Init(void);
+
+extern volatile ChassisPowerConfig chassis_power_config; // 底盘功率观测的电流换算参数。
+void ChassisPowerConfig_Init(void);
+extern volatile ChassisPowerControlConfig chassis_power_control_config; // 超电实测功率闭环参数。
 
 void LowerApplicationConfig_InitAll(void);
 

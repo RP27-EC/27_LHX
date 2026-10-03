@@ -1,6 +1,7 @@
 #include "motor3508.h"
 #include "peripheral_config.h"
 #include "chassis_can.h"
+#include "chassis_power.h"
 #include <string.h>
 #include "PID.h"
 #include <float.h>
@@ -8,6 +9,8 @@
 static Motor3508_Feedback motor_feedback[MOTOR3508_COUNT]; // 四个底盘电机反馈。
 static PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT]; // 四路速度环 PID。
 static PID_Controller_t motor3508_position_pid[MOTOR3508_COUNT]; // 四路位置外环 PID。
+static float integral_before[MOTOR3508_COUNT]; // 速度环本周期积分起点。
+static bool pid_pending; // 仅闭环计算后处理额外限流的积分饱和。
 static uint8_t control_mode = 0U; // 0 停止，1 速度，2 位置。
 
 //模式切换清零积分
@@ -53,6 +56,7 @@ HAL_StatusTypeDef Motor3508_Init(void)
 
     memset(motor_feedback, 0, sizeof(motor_feedback));
     control_mode = 0U;
+    pid_pending = false;
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
         PID_Init(&motor3508_position_pid[i], motor3508_config.position_kp,
@@ -85,10 +89,26 @@ HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,int16_t id3, in
     uint8_t data[8];
     uint32_t i;
 
-    // C620：标准 ID 0x200，经典 CAN，四个大端有符号 16 位指令。
+    for (i = 0U; i < MOTOR3508_COUNT; i++)
+    { values[i] = limit_current(values[i]); }
+    (void)ChassisPower_Apply(values);
+    if (pid_pending)
+    {
+        for (i = 0U; i < MOTOR3508_COUNT; i++)
+        {
+            PID_Controller_t *pid = &motor3508_speed_pid[i];
+            bool saturated = chassis_power_state.current_scale < 1.0f ||
+                pid->Output > (float)motor3508_config.current_limit ||
+                pid->Output < -(float)motor3508_config.current_limit;
+            if (saturated && (pid->Output - (float)values[i]) * pid->Ki * pid->Error > 0.0f)
+            { pid->Integral = integral_before[i]; }
+        }
+        pid_pending = false;
+    }
+    // C620：标准 ID 电流控制，四个大端有符号指令。
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        uint16_t raw = (uint16_t)limit_current(values[i]);
+        uint16_t raw = (uint16_t)values[i];
         data[2U * i] = (uint8_t)(raw >> 8);
         data[2U * i + 1U] = (uint8_t)raw;
     }
@@ -108,6 +128,9 @@ HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16
             motor3508_config.speed_output_limit,
             motor3508_config.pid_control_time_s);
     }
+    for (i = 0U; i < MOTOR3508_COUNT; i++)
+    { integral_before[i] = motor3508_speed_pid[i].Integral; }
+    pid_pending = true;
     int16_t id1 = PID_Calc(&motor3508_speed_pid[0],speed_1,motor_feedback[0].speed_rpm);
     int16_t id2 = PID_Calc(&motor3508_speed_pid[1],speed_2,motor_feedback[1].speed_rpm);
     int16_t id3 = PID_Calc(&motor3508_speed_pid[2],speed_3,motor_feedback[2].speed_rpm);
@@ -120,6 +143,7 @@ HAL_StatusTypeDef Motor3508_Stop(void)
 {
     uint32_t i;
     control_mode = 0U;
+    pid_pending = false;
     for (i = 0U; i < MOTOR3508_COUNT; i++) { PID_Reset(&motor3508_position_pid[i]); }
     for (i = 0U; i < MOTOR3508_COUNT; i++) { PID_Reset(&motor3508_speed_pid[i]); }
     return Motor3508_SendCurrent(0, 0, 0, 0);
@@ -163,6 +187,7 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
             motor3508_config.pid_control_time_s);
         target_speed = PID_Calc(&motor3508_position_pid[index], target_angles[index],
                                 feedback[index].position_deg);
+        integral_before[index] = motor3508_speed_pid[index].Integral;
         current = PID_Calc(&motor3508_speed_pid[index], target_speed,
                            (float)feedback[index].speed_rpm);
 
@@ -171,6 +196,7 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
         currents[index] = (int16_t)current;
     }
 
+    pid_pending = true;
     return Motor3508_SendCurrent(currents[0], currents[1],currents[2], currents[3]);
 }
 

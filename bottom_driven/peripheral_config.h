@@ -62,8 +62,7 @@ typedef struct
 {
     uint32_t offline_timeout_ms; // 电容与无线充状态帧的离线超时，ms。
     uint32_t tx_period_ms; // 0x222 基础控制帧发送周期，ms。
-    uint8_t chassis_power_buffer; // 0x222 字节 0；未接裁判系统时使用固定值。
-    uint16_t chassis_power_limit; // 0x222 字节 1~2；固定协议值，不参与动态限功率。
+    uint8_t chassis_power_buffer; // 0x222 字节 0；当前保留固定缓冲字段，不参与限流。
     int16_t cap_power_out_limit; // 0x222 字节 3~4；模板使用负值。
     uint16_t cap_power_in_limit; // 0x222 字节 5~6；固定协议值。
     bool cap_enabled; // 0x222 字节 7 bit0，超电基础开关。

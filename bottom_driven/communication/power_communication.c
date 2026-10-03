@@ -1,6 +1,7 @@
 #include "power_communication.h"
 #include "chassis_can.h"
 #include "peripheral_config.h"
+#include "chassis_power.h"
 
 volatile PowerCommunicationState power_communication_state;
 
@@ -31,15 +32,17 @@ static void PowerCommunication_SendControl(uint32_t now)
 {
     uint8_t data[8] = {0};
     uint32_t i;
+    bool output_allowed;
+    uint16_t limit = ChassisPower_GetLimit(now, &output_allowed);
 
     // 与模板 0x222 的 packed 结构一致，不依赖编译器结构体对齐。
     data[0] = power_communication_config.chassis_power_buffer;
-    write_u16_le(&data[1], power_communication_config.chassis_power_limit);
+    write_u16_le(&data[1], limit);
     write_u16_le(&data[3], (uint16_t)power_communication_config.cap_power_out_limit);
     // 模板在预充模式下把充电功率字段清零。
     write_u16_le(&data[5], power_communication_config.precharge_enabled ?
                  0U : power_communication_config.cap_power_in_limit);
-    if (power_communication_config.cap_enabled) { data[7] |= 0x01U; }
+    if (power_communication_config.cap_enabled && output_allowed) { data[7] |= 0x01U; }
     if (power_communication_config.turbo_enabled) { data[7] |= 0x02U; }
     if (power_communication_config.precharge_enabled) { data[7] |= 0x04U; }
 

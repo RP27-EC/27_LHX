@@ -311,7 +311,7 @@
           </ArmAdsMisc>
           <Cads>
             <interw>1</interw>
-            <Optim>3</Optim>
+            <Optim>1</Optim>
             <oTime>0</oTime>
             <SplitLS>0</SplitLS>
             <OneElfS>1</OneElfS>
@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_PWR_LDO_SUPPLY,USE_HAL_DRIVER,STM32H723xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library;../bottom_driven;../bottom_driven/telecontrol;../bottom_driven/motor;../bottom_driven/communication;../bottom_driven/IMU;../user;../user/chassis</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library;../bottom_driven;../bottom_driven/telecontrol;../bottom_driven/motor;../bottom_driven/communication;../bottom_driven/IMU;../user;../user/chassis;../bottom_driven/referee</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1080,6 +1080,36 @@
               <FileType>5</FileType>
               <FilePath>..\user\chassis\chassis.h</FilePath>
             </File>
+            <File>
+              <FileName>chassis_power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\chassis_power.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\chassis_power.h</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_estimate.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\chassis_power_estimate.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_estimate.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\chassis_power_estimate.h</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\chassis_power_control.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_control.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\chassis_power_control.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1094,6 +1124,36 @@
               <FileName>remote_state.h</FileName>
               <FileType>5</FileType>
               <FilePath>../user/remote_state.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>bottom_driven/referee</GroupName>
+          <Files>
+            <File>
+              <FileName>referee.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\referee\referee.c</FilePath>
+            </File>
+            <File>
+              <FileName>referee.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\referee\referee.h</FilePath>
+            </File>
+            <File>
+              <FileName>referee_wire.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\referee\referee_wire.h</FilePath>
+            </File>
+            <File>
+              <FileName>referee_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\referee\referee_uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>referee_uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\referee\referee_uart.h</FilePath>
             </File>
           </Files>
         </Group>

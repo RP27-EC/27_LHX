@@ -35,6 +35,9 @@
 #include "application_config.h"
 #include "power_communication.h"
 #include "chassis_can.h"
+#include "referee.h"
+#include "referee_uart.h"
+#include "chassis_power.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -107,10 +110,17 @@ int main(void)
   MX_FDCAN1_Init();
   MX_UART5_Init();
   MX_FDCAN2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   LowerPeripheralConfig_InitAll();
   LowerApplicationConfig_InitAll();
+  Referee_Init();
+  ChassisPower_Init();
   PowerCommunication_Init();
+  if (RefereeUart_Start(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (Motor3508_Init() != HAL_OK)
   {
     Error_Handler();

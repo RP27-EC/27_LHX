@@ -36,6 +36,7 @@
 #include "imu.h"
 #include "remote_state.h"
 #include "power_communication.h"
+#include "referee_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +57,12 @@ volatile uint32_t rc_task_frame_count = 0; // 有效帧计数。
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+static osThreadId_t refereeTaskHandle; // 裁判解析任务。
+static const osThreadAttr_t refereeTask_attributes = {
+  .name = "referee",
+  .stack_size = 1024,
+  .priority = osPriorityNormal,
+};
 // Keil Watch: 0=可自旋/未选中，1=本地未布防，2=C1超时，3=上板未选中，
 // 4=上板明确禁止，5=需重新布防，6=底盘锁车或电机/遥控离线，7=升降低位。
 volatile uint8_t chassis_spin_block_reason = 0U;
@@ -73,7 +80,7 @@ const osThreadAttr_t Control_Parsing_attributes = {
 osThreadId_t motor3508Handle; // 底盘任务。
 const osThreadAttr_t motor3508_attributes = {
   .name = "motor3508",
-  .stack_size = 256 * 4,
+  .stack_size = 384 * 4,
   .priority = (osPriority_t) osPriorityHigh7,
 };
 /* Definitions for communication */
@@ -86,6 +93,7 @@ const osThreadAttr_t communication_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+static void RefereeTask(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -132,7 +140,8 @@ void MX_FREERTOS_Init(void) {
   communicationHandle = osThreadNew(up_down_communication, NULL, &communication_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  refereeTaskHandle = osThreadNew(RefereeTask, NULL, &refereeTask_attributes);
+  if (refereeTaskHandle == NULL) { Error_Handler(); }
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -438,6 +447,16 @@ void up_down_communication(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+static void RefereeTask(void *argument)
+{
+  (void)argument;
+  for (;;)
+  {
+    RefereeUart_Process(HAL_GetTick());
+    osDelay(2U);
+  }
+}
+
 
 /* USER CODE END Application */
 

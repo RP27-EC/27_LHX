@@ -1,6 +1,6 @@
 # 下板工程说明
 
-本文以当前 `infantry _down` 代码为准。下板接收 DBUS 遥控，驱动四轮麦克纳姆底盘，通过 FDCAN2 与上板交换遥控、云台角度和锁车状态；FDCAN1 同时连接底盘电机、超级电容和无线充。
+本文以当前 `infantry _down` 代码为准。下板接收 DBUS 遥控，驱动四轮麦克纳姆底盘，通过 FDCAN2 与上板交换遥控、云台角度和锁车状态；FDCAN1 同时连接底盘电机、超级电容和无线充，USART1 接收裁判信息并提供功率观测的上限对照。
 
 ## 工程结构
 
@@ -11,7 +11,9 @@
 | `user/remote_state.[ch]` | 左/右拨杆、拨轮、键鼠边沿和底盘模式状态机，向底盘任务发布快照。 |
 | `user/chassis/chassis.[ch]` | 麦轮逆解、机械模式、跟随、小陀螺、调头协同。 |
 | `bottom_driven/communication/power_communication.[ch]` | 超级电容与无线充状态解析、基础电容控制帧；与电机共用 FDCAN1 收发接口。 |
-| `user/application_config.[ch]` | 底盘、遥控任务和键鼠的应用参数；`user/chassis/` 仅保留底盘控制文件。 |
+| `user/application_config.[ch]` | 底盘、遥控、键鼠以及功率观测参数。 |
+| `user/chassis/chassis_power_estimate.[ch]`、`chassis_power.[ch]` | 功率乘积估算、裁判/超电/电机输入适配与观察状态。 |
+| `bottom_driven/referee/` | USART1 循环 DMA 接收、裁判 CRC 校验、字段解析和一致快照。 |
 | `bottom_driven/communication/communication.[ch]` | FDCAN2 板间帧、C1/C2 接收、D1～D5 发送和 Bus-Off 恢复。 |
 | `bottom_driven/communication/chassis_can.[ch]` | FDCAN1 电机/电容/无线充统一滤波、发送和接收分发。 |
 | `bottom_driven/motor/motor3508.[ch]` | 四轮反馈、`0x200` 电流命令、速度 PID；保留位置串级接口。 |
@@ -20,7 +22,7 @@
 | `algorithms_library/PID.[ch]` | 通用 PID 算法。 |
 | `MDK-ARM/` | Keil 工程；`Drivers/`、`Middlewares/` 为 HAL/CMSIS/FreeRTOS 依赖。 |
 
-`main.c` 在 CubeMX 外设初始化后，先初始化应用/外设参数和电容状态，再启动底盘 3508、FDCAN1、FDCAN2、BMI088 与 DBUS 接收，最后启动 FreeRTOS。配置对象是 `volatile` 结构体，默认值仅在启动时写入一次，可在调试器中在线调整。
+`main.c` 在 CubeMX 外设初始化后，先初始化应用/外设参数、裁判解析、功率观测及电容状态，启动 USART1 裁判循环 DMA，再启动底盘 3508、FDCAN1、FDCAN2、BMI088 与 DBUS 接收，最后启动 FreeRTOS。配置对象是 `volatile` 结构体，默认值仅在启动时写入一次，可在调试器中在线调整。
 
 ## 周期任务与控制链路
 
@@ -29,8 +31,9 @@
 | `Control_Parsing` | 15 tick | 从 DBUS 接收缓冲取帧、解析并更新 `RemoteState_t`；检查遥控掉线。 |
 | `motor3508` | 4 tick | BMI088 更新 → 读取遥控和 C1/C2 → 调头/锁车判定 → 底盘解算及四轮速度 PID；定期发送 D5。 |
 | `communication` | 4 tick | FDCAN2 恢复服务、电容状态服务、转发 D1～D3；D4 由底盘任务在所有模式按配置周期发送。 |
+| `referee` | 2 tick | 从串口字节队列取数据，检查帧 CRC/负载长度，更新裁判结构体与超时状态。 |
 
-任务周期在 `application_config.c`，优先级在 `Core/Src/freertos.c`。遥控帧先由 UART/DMA 接收和校验，状态机再把拨杆/键鼠映射为通道及模式。上板云台机械角通过 C1 返回，下板根据模式将平移和旋转命令转换为四轮目标 rpm，电机驱动计算四轮 PID 电流并发送 FDCAN1 `0x200`。任何底盘轮反馈失效或遥控断联时，底盘发送零电流停车。
+任务周期在 `application_config.c`，优先级在 `Core/Src/freertos.c`。遥控帧先由 UART/DMA 接收和校验，状态机再把拨杆/键鼠映射为通道及模式。上板云台机械角通过 C1 返回，下板根据模式将平移和旋转命令转换为四轮目标 rpm，电机驱动计算四轮 PID 电流，经原单电机限幅后发送 FDCAN1 `0x200`。任何底盘轮反馈失效或遥控断联时，底盘发送零电流停车。
 
 ## 遥控、键鼠与安全状态
 
@@ -78,9 +81,18 @@ BMI088 在上电静止采样陀螺零偏，运行中按配置的安装轴符号�
 
 上板发送：`0xC1` 字节 0～1 为机械归中后的相对 Yaw 角（`int16 × 0.01°`），字节 2 bit0/bit1/bit2/bit3/bit4/bit5 为角度有效、正在调头、允许调头、允许小陀螺自旋、上板已选中小陀螺、升降低位禁止云台模式。下板仅在 C1 未超时且收到上板许可时自旋；许可丢失后需重新操作右拨杆，键鼠需退出再进入模式。`0xC2` 字节 0 为 `0xA6`，字节 1 bit0 为升降校准锁车，字节 2 为请求序号。C1/C2 均有独立超时；FDCAN2 进入 Bus-Off 时，`Communication_Service()` 限频 Stop/Start 恢复，相关计数可在调试器查看。
 
+
+## 裁判接收与底盘功率观测
+
+USART1 使用 PA9 TX / PA10 RX，115200、8N1，DMA1 Stream4 循环接收；配置已写入下板 `.ioc` 与外设代码。裁判 TX 接 PA10，两端共地，只接收时 PA9 可不接。裁判数据可展开 `referee_state`、`referee_uart_diagnostics` 查看。
+
+当前使用超电直接上报的实际功率闭环限流，按原值单位 W 使用。四轮电流统一缩放，限制时抑制速度环新增积分，恢复比例有上升限幅。裁判提供目标上限，超电反馈失效时使用备用电流限幅，遥控/电机掉线仍停车。
+
+优先观察 `chassis_power_state.power_w / target_w / current_scale / power_feedback_valid`，参数在 `chassis_power_control_config`。旧电压×力矩电流乘积仅作诊断，不参与限制。**乘积是估算值，不能代替裁判侧真实功率。** 参数、变量与移植步骤见 [功率观测说明](user/chassis/功率观测说明.md)；串口接线见 [裁判接收说明](bottom_driven/referee/README.md)。
+
 ## 超级电容与无线充
 
-FDCAN1 的统一 `ChassisCan_Send()` 和 FIFO0 回调同时服务四轮电机、电容和无线充。`0x211` 为电容状态（兼容 7/8 字节），`0x212` 为无线充状态；分别存入 `power_communication_state.capacitor` / `.wireless`，并分别按反馈时间判在线。`0x222` 是电容基础控制帧，默认每 20 ms 发送一次，包含固定功率字段与使能/预充/Turbo 标志。当前未接入裁判系统的动态功率限制，`online` 只是对应设备近期有回报，不代表无线充必须正在充电。
+FDCAN1 的统一 `ChassisCan_Send()` 和 FIFO0 回调服务四轮电机、电容和无线充。`0x211` 为电容状态，`0x212` 为无线充状态，存入 `power_communication_state` 并独立判在线。`0x222` 的底盘上限同步裁判/备用策略，发送周期及充放电字段由 `power_communication_config` 指定。无线充在线只表示近期有反馈，不代表正在充电。
 
 ## 参数与调试入口
 
