@@ -33,7 +33,7 @@ void ChassisPower_Init(void);
 float ChassisPower_Apply(int16_t currents[CHASSIS_POWER_WHEEL_COUNT]);
 // 裁判动态上限供超电控制帧使用，输出关闭时返回零。
 uint16_t ChassisPower_GetLimit(uint32_t now_ms, bool *output_allowed);
-// 只读取最终电流指令并更新观察值，不改指令或闭环状态。
+// 读取传入电流指令并更新观察值，闭环缩放由 Apply 完成。
 void ChassisPower_Update(const int16_t currents[CHASSIS_POWER_WHEEL_COUNT]);
 
 #endif

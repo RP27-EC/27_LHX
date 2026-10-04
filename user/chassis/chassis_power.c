@@ -67,8 +67,7 @@ void ChassisPower_Update(const int16_t currents[CHASSIS_POWER_WHEEL_COUNT])
     chassis_power_state.power_sample_count = capacitor.capacitor.rx_count;
     chassis_power_state.power_rx_ms = capacitor.capacitor.last_rx_ms;
     input.voltage_v = capacitor.capacitor.voltage_v;
-    input.voltage_valid = capacitor.capacitor.received &&
-        (uint32_t)(now_ms - capacitor.capacitor.last_rx_ms) < power_communication_config.offline_timeout_ms &&
+    input.voltage_valid = chassis_power_state.power_feedback_valid &&
         capacitor.capacitor.voltage_raw >= -32000 && capacitor.capacitor.voltage_raw <= 32000 &&
         input.voltage_v >= 0.0f && input.voltage_v <= 25.0f;
     // 电压失效时不填备用电压；用有效标志区分没数据与真实零功率。
@@ -107,7 +106,7 @@ float ChassisPower_Apply(int16_t currents[CHASSIS_POWER_WHEEL_COUNT])
     ChassisPowerConfig estimate_config = chassis_power_config;
     uint32_t i, now_ms = HAL_GetTick();
     float target, scale, max_current = 0.0f, dt, output_sum = 0.0f;
-    bool allowed, fresh, new_sample, active = false;
+    bool allowed, fresh, new_sample, active;
     if (currents == NULL) { return 0.0f; }
     ChassisPower_Update(currents);
     target = (float)ChassisPower_GetLimit(now_ms, &allowed) - config.reserve_w;

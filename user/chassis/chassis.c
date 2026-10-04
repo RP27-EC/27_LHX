@@ -108,7 +108,7 @@ bool Chassis_TurnaroundUpdate(uint32_t request_count, bool request_allowed)
     }
     if (!chassis_turnaround_pending && angle_valid)
     { Chassis_SelectNearestFront(angle_deg); }
-    // 即使下板漏掉本地边沿，只要上板报告正在调头也立即停轮。
+    // 上板报告正在调头时立即停轮，覆盖本地边沿漏检。
     return chassis_turnaround_pending || (angle_valid && turning);
 }
 
