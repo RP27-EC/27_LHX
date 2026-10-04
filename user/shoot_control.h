@@ -40,6 +40,7 @@ typedef struct
 
 typedef struct
 {
+    bool holding; // 待机保持目标已锁定，不随反馈抖动更新。
     bool stopped; // 安全态零电流命令已成功入队。
     uint32_t last_stop_ms; // 最近一次零电流命令入队时间，ms。
 } ShootDialStopState_t;
@@ -64,8 +65,28 @@ typedef struct
     uint32_t stuck; // 累计触发堵转恢复的次数。
 } ShootCounterState_t;
 
+typedef enum
+{
+    SHOOT_FRIC_NORMAL = 0, // 正常速度控制。
+    SHOOT_FRIC_BOOST, // 沿出弹方向短时电流恢复。
+    SHOOT_FRIC_RECOVERY, // 恢复速度环，暂缓堵转检测。
+    SHOOT_FRIC_FAULT // 重试失败停机，关闭后复位。
+} ShootFricState_t;
+
 typedef struct
 {
+    ShootFricState_t state; // 摩擦轮恢复状态。
+    bool enabled; // 当前开启周期已开始。
+    bool block_timing[2]; // 各轮的连续堵转计时状态。
+    uint32_t block_start_ms[2]; // 各轮本次堵转计时起点。
+    uint32_t state_start_ms; // 开轮或恢复状态的起始时间。
+    uint32_t attempts; // 本次开启已使用的恢复次数。
+    uint32_t stuck_count; // 累计触发恢复次数。
+} ShootFricRecoveryState_t;
+
+typedef struct
+{
+    ShootFricRecoveryState_t friction; // 摩擦轮堵转检测和电流脉冲。
     ShootDialMotionState_t dial; // 拨盘位置目标与状态机。
     ShootDialRecoveryState_t recovery; // 堵转检测与恢复过程。
     ShootDialStopState_t stop; // 安全态零电流命令重发状态。
@@ -77,6 +98,8 @@ typedef struct
 extern volatile ShootControlState_t shoot_control_state; // 发射动作、堵转恢复和事件状态。
 
 void ShootControl_Init(void);
+// 在线时待机锁定位置；断联时撤销保持并输出零电流。
+void ShootControl_SetIdleHoldEnabled(bool enabled);
 
 // 随发射任务调用；单发仅在右拨杆进入上档的边沿触发。
 void ShootControl_Update(RemoteShoot_t mode, bool right_up);

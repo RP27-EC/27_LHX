@@ -15,7 +15,7 @@ void LiftConfig_Init(void)
     lift_config.down_speed_rad_s = 1000.0f; // 正常下降的转子速度上限，rad/s。
     lift_config.up_speed_rad_s = 1000.0f; // 正常上升的转子速度上限，rad/s。
     lift_config.max_rotor_turns = 320.0f; // 上电后正、反向累计转数限制，圈。
-    lift_config.limit_stop_margin_counts = 80; // 行程边界前的停机余量，编码器计数。
+    lift_config.limit_stop_margin_counts = 200; // 行程边界前的停机余量，编码器计数。
     lift_config.yaw_deadzone_deg = 2.0f; // 允许升降的 Yaw 归中角度误差，度。
     lift_config.yaw_stable_ms = 50U; // Yaw 连续处于死区内的时间，ms。
     lift_config.stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
@@ -24,26 +24,27 @@ void LiftConfig_Init(void)
     lift_config.down_stall_current_raw = 75; // 下降堵转电流阈值，反馈原始码。
     lift_config.down_stall_speed_rpm = 1; // 下降堵转低速阈值，rpm。
     lift_config.down_stall_time_ms = 200U; // 下降堵转确认时间，ms。
-    lift_config.up_stall_current_raw = 520; // 上升堵转电流阈值，反馈原始码。
+    lift_config.up_stall_current_raw = 670; // 上升堵转电流阈值，反馈原始码。
     lift_config.up_stall_speed_rpm = 1; // 上升堵转低速阈值，rpm。
-    lift_config.up_stall_time_ms = 300U; // 上升堵转确认时间，ms。
+    lift_config.up_stall_time_ms = 450U; // 上升堵转确认时间，ms。
     lift_config.calibrate_up_speed_rad_s = 500.0f; // 自动找顶部的转子速度，rad/s。
     lift_config.calibrate_timeout_ms = 900000U; // 向上找顶部的最长时间，ms。
     lift_config.travel_turns = 295.0f; // 碰顶基准到低位目标的转子行程，圈。
     lift_config.bottom_mode_enter_turns = 30.0f; // 距低位目标不超过此范围时强制机械模式，转子圈。
     lift_config.bottom_mode_exit_turns = 40.0f; // 上升离开低位超过此范围后解除联锁，需大于进入范围。
-    lift_config.position_kp_rad_s_per_turn = 5.5f; // 每圈位置误差对应的目标速度，rad/s。
-    lift_config.position_min_speed_rad_s = 10.0f; // 主动升降克服静摩擦的最小目标速度，保持时不用，rad/s。
-    lift_config.hold_speed_rad_s = 25.0f; // 外力偏离目标后回位的速度上限，rad/s。
+    lift_config.position_kp_rad_s_per_turn = 5.7f; // 每圈位置误差对应的目标速度，rad/s。
+    lift_config.position_min_speed_rad_s = 8.0f; // 主动升降克服静摩擦的最小目标速度，保持时不用，rad/s。
+    lift_config.hold_speed_rad_s = 15.0f; // 外力偏离目标后回位的速度上限，rad/s。
     lift_config.position_tolerance_counts = 200; // 结束主动升降的误差范围，范围内仍做位置保持，编码器计数。
     lift_config.top_arrival_tolerance_counts = 20000; // 顶部结束主动升降的容差，不清除位置保持误差，编码器计数。
-    lift_config.top_contact_window_turns = 5.0f; // 原顶部附近允许重新确认碰顶的范围，转子圈。
-    lift_config.special_enter_from_top_turns = 50.0f; // 距机械顶点的特殊动作放行范围，转子圈。
-    lift_config.special_exit_from_top_turns = 55.0f; // 离开顶部安全区的撤销范围，需大于进入范围。
+    lift_config.top_hold_offset_turns = 5.0f; // 正常上升留出机械顶端余量，校准碰顶不受影响。
+    lift_config.top_contact_window_turns = 10.0f; // 原顶部附近允许重新确认碰顶的范围，转子圈。
+    lift_config.special_enter_from_top_turns = 70.0f; // 距机械顶点的特殊动作放行范围，转子圈。
+    lift_config.special_exit_from_top_turns = 75.0f; // 离开顶部安全区的撤销范围，需大于进入范围。
     lift_config.special_down_speed_enter_rpm = 30; // 明显下行才按实测转速撤销。
     lift_config.special_down_motion_confirm_ms = 200U; // 过滤高位保持时的短暂下行纠偏。
     lift_config.special_down_speed_release_rpm = 15; // 停止下行后解除锁定的转速门槛。
-    lift_config.special_down_stop_stable_ms = 100U; // 下降结束后解除联锁所需的连续稳定时间，ms。
+    lift_config.special_down_stop_stable_ms = 50U; // 下降结束后解除联锁所需的连续稳定时间，ms。
     lift_config.special_state_timeout_ms = 50U; // 控制任务失去更新时先进入安全态。
     lift_config.lock_tx_period_ms = 10U; // 向下板发送锁车请求的间隔，ms。
     lift_config.chassis_lock_settle_ms = 20U; // 发出锁车请求后的等待时间，ms。
@@ -57,9 +58,18 @@ void ShootConfig_Init(void)
 {
     shoot_config.control_period_ticks = 4U; // 发射任务控制周期，tick。
     shoot_config.fric_target_speed_rpm = 1500; // 摩擦轮目标转速幅值，rpm。
+    shoot_config.fric_block_speed_rpm = 100; // 低于此转速才检查堵转。
+    shoot_config.fric_block_current_raw = 2000; // 排除低负载的慢速转动。
+    shoot_config.fric_block_confirm_ms = 200U; // 过滤短暂的出弹掉速。
+    shoot_config.fric_startup_grace_ms = 500U; // 避开开轮加速阶段。
+    shoot_config.fric_boost_current_raw = 14000; // 两轮沿出弹方向的恢复电流。
+    shoot_config.fric_boost_duration_ms = 400U; // 大电流只维持短时间。
+    shoot_config.fric_recovery_wait_ms = 500U; // 恢复速度环后再检测。
+    shoot_config.fric_recovery_max_attempts = 3U; // 重试用尽后关闭摩擦轮再重启。
+    shoot_config.dial_hold_encoder = 31000U; // 上线和停止供弹后统一回到该单圈位置。
     shoot_config.dial_feed_direction = 1LL; // 供弹方向系数，改变符号反转方向。
     shoot_config.dial_continuous_rounds_per_s = 15.0f; // 连发拨盘速度，圈/s。
-    shoot_config.dial_arrived_error_counts = 500LL; // 单发拨盘到位允许的编码器误差，计数。
+    shoot_config.dial_arrived_error_counts = 150LL; // 单发拨盘到位允许的编码器误差，计数。
     shoot_config.dial_single_move_timeout_ms = 500U; // 单发动作超时，ms。
     shoot_config.dial_block_current_threshold = 600; // 拨盘堵转电流阈值，原始码。
     shoot_config.dial_block_speed_threshold_dps = 10; // 拨盘堵转低速阈值，度/s。
@@ -116,8 +126,8 @@ void CloudConfig_Init(void)
     cloud_config.turn_wheel_trigger_raw = 200; // 拨轮负向达到此阈值时触发调头，遥控原始值。
     cloud_config.turn_wheel_rearm_raw = 50; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
     cloud_config.front_switch_deg = 90.0f; // 用于选择更接近云台指向的车头或车尾，度。
-    cloud_config.turn_duration_s = 0.8f; // 调头时间，越短目标变化越快。
-    cloud_config.turn_tolerance_deg = 3.0f; // 调头目标角的到位误差，度。
+    cloud_config.turn_duration_s = 0.75f; // 调头时间，越短目标变化越快。
+    cloud_config.turn_tolerance_deg = 4.0f; // 调头目标角的到位误差，度。
     cloud_config.turn_speed_raw_max = 20; // 调头到位允许的反馈速度绝对值，电机原始码。
     cloud_config.turn_stable_cycles = 5U; // 调头位置与速度需连续合格的控制周期数。
     cloud_config.spin_wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
@@ -145,7 +155,7 @@ void CloudConfig_Init(void)
     cloud_config.pitch_max_deg = 30.0f; // Pitch 相对机械零点的上限，度。
     cloud_config.lift_pitch_clearance_deg = 1.0f; // 升降低位时 Pitch 的抬起余量，度。
     cloud_config.pitch_target_lead_deg = 12.0f; // 目标允许领先实际位置的最大角度，度。
-    cloud_config.pitch_gravity_k = 1.34f; // 归中点处约等于重力前馈，N·m。
+    cloud_config.pitch_gravity_k = 1.35f; // 归中点处约等于重力前馈，N·m。
 
 }
 

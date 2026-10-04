@@ -67,6 +67,19 @@ static int32_t LiftControl_DownSign(void)
     return lift_config.down_direction > 0.0f ? 1 : -1;
 }
 
+// 机械顶点只作基准，正常高位按下降方向留出余量。
+static int32_t LiftControl_TopTarget(int32_t contact)
+{
+    float offset = lift_config.top_hold_offset_turns;
+    int64_t target;
+    if (!(offset >= 0.0f && offset < lift_config.travel_turns && offset <= 10000.0f))
+    { offset = 0.0f; }
+    target = (int64_t)contact + (int64_t)LiftControl_DownSign() *
+        (int32_t)(offset * LIFT_ENCODER_COUNTS_PER_TURN);
+    if (target > INT32_MAX || target < INT32_MIN) { return contact; }
+    return (int32_t)target;
+}
+
 static void LiftControl_ResetStallCheck(void)
 {
     stall_timing = false;
@@ -238,6 +251,14 @@ static void LiftControl_RecordStall(const Motor2006_Feedback_t *feedback,
     stall_snapshot.direction = direction;
     stall_snapshot.encoder = feedback->encoder;
     stall_snapshot.encoder_total = feedback->encoder_total;
+    stall_snapshot.speed_rpm = feedback->speed_rpm;
+    stall_snapshot.current_raw = feedback->current_raw;
+    stall_snapshot.requested_direction = requested_direction;
+    stall_snapshot.target_encoder_total = lift_hold_target_encoder_total;
+    stall_snapshot.top_contact_encoder_total = lift_top_contact_encoder_total;
+    stall_snapshot.from_top_turns = (float)(feedback->encoder_total -
+        lift_top_contact_encoder_total) * LiftControl_DownSign() /
+        LIFT_ENCODER_COUNTS_PER_TURN;
     stall_snapshot.rotor_turns = (float)feedback->encoder_total /
                                  LIFT_ENCODER_COUNTS_PER_TURN;
     stall_snapshot.time_ms = now;
@@ -385,7 +406,7 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
             LiftControl_CalibrationFail(LIFT_STALLED);
             return;
         }
-        // 碰顶位置即高位目标；低位仍从该机械顶点向下计算。
+        // 校准仍碰机械顶点；正常高位留余量，低位从机械顶点计算。
         top = feedback->encoder_total;
         bottom = feedback->encoder_total + LiftControl_DownSign() *
             (int32_t)(lift_config.travel_turns *
@@ -398,9 +419,10 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
             LiftControl_CalibrationFail(LIFT_AT_LIMIT);
             return;
         }
-        lift_top_encoder_total = top;
+        lift_top_encoder_total = LiftControl_TopTarget(top);
         lift_top_contact_encoder_total = feedback->encoder_total;
         lift_bottom_encoder_total = bottom;
+        // 首次校准完成留在碰顶位置，后续上升才使用正常高位。
         lift_hold_target_encoder_total = top;
         lift_hold_target_valid = true;
         calibration_active = false;
@@ -504,6 +526,9 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     float bottom_margin_turns = (float)lift_config.position_tolerance_counts /
                                 LIFT_ENCODER_COUNTS_PER_TURN;
 
+    // 顶部有效余量与碰顶窗口一致，避免基准偏差提前撤销许可。
+    if (lift_config.top_contact_window_turns > top_margin_turns)
+    { top_margin_turns = lift_config.top_contact_window_turns; }
     next.from_top_turns = -1.0f;
     next.update_ms = now;
     feedback_online = Motor2006_OnlineCheck() &&
@@ -594,8 +619,11 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
         }
     }
     descending_command = descending_command || pending_descent;
+    // 上升进入顶部放行区后释放云台，电机仍继续走顶部目标。
+    // 新升降请求和下降过程保持回零联锁。
     next.yaw_home_required = lift_calibrated &&
-        (requested_direction != LIFT_STOPPED || pending_lift_command);
+        (pending_lift_command || requested_direction == LIFT_DESCENDING ||
+         (requested_direction == LIFT_ASCENDING && !next.upper_zone));
     // 安全快照先于云台控制更新，使新下降指令当周期就能抬起 Pitch。
     lift_pitch_nonnegative_required = remote != NULL &&
         remote->safety.online && feedback_online &&
@@ -911,8 +939,11 @@ void LiftControl_Update(const RemoteState_t *remote)
     if (LiftControl_StallCheck(&feedback, direction, now,
                                requested_direction != LIFT_STOPPED, &top_contact))
     {
-        if (direction == LIFT_ASCENDING &&
-            target == lift_top_encoder_total &&
+        // 上升过冲后的反向纠偏仍属于顶部动作，不是新的主动下降。
+        // 首次校准的碰顶保持点和正常偏移高位都可结束顶部动作。
+        if (requested_direction != LIFT_DESCENDING &&
+            (target == lift_top_encoder_total ||
+             target == lift_top_contact_encoder_total) &&
             (top_contact ||
              (requested_direction == LIFT_ASCENDING &&
               LiftControl_Abs((int32_t)feedback.speed_rpm) <=
@@ -923,10 +954,10 @@ void LiftControl_Update(const RemoteState_t *remote)
                 (int32_t)(lift_config.top_contact_window_turns *
                           LIFT_ENCODER_COUNTS_PER_TURN))
         {
-            // 已知顶部附近停住按到位处理；只有高电流接触才修正机械顶点。
-            if (top_contact)
+            // 顶部反向保持卡住改为实测点保持；只有向上接触才修正顶点。
+            if (top_contact && direction == LIFT_ASCENDING)
             {
-                lift_top_encoder_total = feedback.encoder_total;
+                lift_top_encoder_total = LiftControl_TopTarget(feedback.encoder_total);
                 lift_top_contact_encoder_total = feedback.encoder_total;
             }
             lift_hold_target_encoder_total = feedback.encoder_total;

@@ -24,20 +24,20 @@ void Motor4310Config_Init(void)
     motor4310_config.yaw_speed_feedforward_deadband_raw = 0.0f; // 4310 原始目标速度超过此值才加前馈。
 
     // Yaw：独立调头，轨迹跟踪不叠加固定方向转矩。
-    motor4310_config.yaw_turn_pid.position_kp = 0.75f; // 调头独立位置环比例增益。
+    motor4310_config.yaw_turn_pid.position_kp = 0.7f; // 调头独立位置环比例增益。
     motor4310_config.yaw_turn_pid.position_ki = 0.0f; // 调头独立位置环积分增益。
     motor4310_config.yaw_turn_pid.position_kd = 0.0001f; // 调头独立位置环微分增益。
     motor4310_config.yaw_turn_pid.position_integral_limit = 0.0f; // 调头独立位置环积分项限幅。
     motor4310_config.yaw_turn_pid.position_output_limit = 1500.0f; // 调头独立位置环目标速度限幅，原始码。
-    motor4310_config.yaw_turn_pid.speed_kp = 1.7f; // 调头独立速度环比例增益。
+    motor4310_config.yaw_turn_pid.speed_kp = 1.8f; // 调头独立速度环比例增益。
     motor4310_config.yaw_turn_pid.speed_ki = 0.1f; // 调头独立速度环积分增益。
     motor4310_config.yaw_turn_pid.speed_kd = 0.0f; // 调头独立速度环微分增益。
     motor4310_config.yaw_turn_pid.speed_integral_limit = 0.0f; // 调头独立速度环积分项限幅。
     motor4310_config.yaw_turn_pid.speed_output_limit = 2047.0f; // 调头独立速度环转矩输出限幅，原始码。
 
     // Pitch：独立位置与速度环
-    motor4310_config.pitch_pid.position_kp = 0.3f; // Pitch 位置环比例增益。
-    motor4310_config.pitch_pid.position_ki = 0.0f; // Pitch 位置环积分增益。
+    motor4310_config.pitch_pid.position_kp = 0.35f; // Pitch 位置环比例增益。
+    motor4310_config.pitch_pid.position_ki = 0.1f; // Pitch 位置环积分增益。
     motor4310_config.pitch_pid.position_kd = 0.004f; // Pitch 位置环微分增益。
     motor4310_config.pitch_pid.position_integral_limit = 100.0f; // Pitch 位置环积分限幅。
     motor4310_config.pitch_pid.position_output_limit = 600.0f; // Pitch 目标速度限幅。
@@ -97,13 +97,13 @@ void DialMotorConfig_Init(void)
     dial_motor_config.current_limit = 2000; // 拨盘电流命令限幅，原始码。
     dial_motor_config.offline_timeout_ms = 100U; // 拨盘反馈离线超时，ms。
     dial_motor_config.tx_guard_ms = 1U; // 收到回报或发出上一帧后，下次电机命令需等待的时间，ms。
-    dial_motor_config.position_kp = 0.1f; // 拨盘位置环比例增益。
-    dial_motor_config.position_ki = 0.0f; // 拨盘位置环积分增益。
+    dial_motor_config.position_kp = 0.12f; // 拨盘位置环比例增益。
+    dial_motor_config.position_ki = 0.05f; // 拨盘位置环积分增益。
     dial_motor_config.position_kd = 0.0f; // 拨盘位置环微分增益。
     dial_motor_config.position_integral_limit = 0.0f; // 位置环积分项限幅。
     dial_motor_config.position_speed_limit_dps = 7000.0f; // 位置环目标速度限幅，度/s。
-    dial_motor_config.speed_kp = 0.06f; // 单发速度环比例增益。
-    dial_motor_config.speed_ki = 0.0f; // 单发速度环积分增益。
+    dial_motor_config.speed_kp = 0.08f; // 单发速度环比例增益。
+    dial_motor_config.speed_ki = 0.05f; // 单发速度环积分增益。
     dial_motor_config.speed_kd = 0.0f; // 单发速度环微分增益。
     dial_motor_config.speed_integral_limit = 500.0f; // 速度环积分项限幅。
     dial_motor_config.speed_output_limit = 1500.0f; // 速度环电流码输出限幅。

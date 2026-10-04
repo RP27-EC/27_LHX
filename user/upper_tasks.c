@@ -61,7 +61,7 @@ static void UpperTasks_ShootStep(void)
     RemoteState_Get(&remote);
 
     shoot_allowed = LiftControl_SafetyGet(&safety) && safety.shoot_allowed &&
-                    remote.mode.chassis != REMOTE_MODE_SPIN;
+                    (remote.mode.chassis != REMOTE_MODE_SPIN || remote.input.keyboard_active);
     if (last_input_valid && remote.safety.online &&
         remote.input.keyboard_active == last_keyboard_active)
     {
@@ -88,7 +88,7 @@ static void UpperTasks_ShootStep(void)
     last_right_switch = remote.input.right_switch;
 
     if (!remote.safety.online) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_REMOTE; }
-    else if (remote.mode.chassis == REMOTE_MODE_SPIN)
+    else if (remote.mode.chassis == REMOTE_MODE_SPIN && !remote.input.keyboard_active)
     { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_SPIN; }
     else if (!shoot_allowed) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_LIFT; }
     else if (!remote.safety.shoot_armed || shoot_rearm_required)
@@ -104,6 +104,8 @@ static void UpperTasks_ShootStep(void)
     // 拨盘离线时只允许摩擦轮待发，不允许供弹。
     if (!dial_motor_online && shoot_mode != REMOTE_SHOOT_OFF)
     { shoot_mode = REMOTE_SHOOT_READY; }
+
+    ShootControl_SetIdleHoldEnabled(remote.safety.online && dial_motor_online);
 
     if (remote.input.keyboard_active)
     {

@@ -34,6 +34,12 @@ typedef struct
     LiftControl_State_t direction; // 堵转时的运动方向。
     uint16_t encoder; // 堵转瞬间单圈编码器值。
     int32_t encoder_total; // 堵转瞬间上电累计计数。
+    int16_t speed_rpm; // 堵转时实测转速。
+    int16_t current_raw; // 堵转时实测电流码。
+    LiftControl_State_t requested_direction; // 堵转时的主动请求，不包含保持纠偏。
+    int32_t target_encoder_total; // 堵转时正在执行的位置目标。
+    int32_t top_contact_encoder_total; // 堵转时采用的机械顶部基准。
+    float from_top_turns; // 堵转瞬间距机械顶部，向下为正。
     float rotor_turns; // encoder_total / 8192，转子圈数。
     uint32_t time_ms; // 堵转快照记录时间，ms。
 } LiftControl_StallSnapshot_t;
@@ -44,7 +50,7 @@ typedef struct
     bool position_valid; // 校准完成、2006 在线且累计位置处于行程内。
     bool upper_zone; // 已进入顶端放行区，门槛由升降应用参数设置。
     bool bottom_mode_blocked; // 接近低位时强制机械 Yaw，并通知下板退出跟随/小陀螺。
-    bool yaw_home_required; // 主动升降或新请求要求 Yaw 回开机机械零点，到位后解除。
+    bool yaw_home_required; // 下降、顶部区外上升或新请求要求 Yaw 回机械零点。
     bool descending; // 收到下降目标或实测持续下行。
     bool special_allowed; // 顶部位置及两轴状态允许调头。
     bool spin_allowed; // 小陀螺额外要求 IMU 可用。

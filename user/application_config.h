@@ -39,6 +39,7 @@ typedef struct
     float hold_speed_rad_s; // 位置保持被外力推开后的最大回位速度。
     int32_t position_tolerance_counts; // 结束主动升降的误差范围，范围内仍做位置保持。
     int32_t top_arrival_tolerance_counts; // 顶部结束主动升降的容差，不清除位置保持误差。
+    float top_hold_offset_turns; // 正常高位距机械顶点向下的偏移，转子圈。
     float top_contact_window_turns; // 原顶部附近允许重新确认碰顶的范围，转子圈。
     float special_enter_from_top_turns; // 距机械顶点的特殊动作放行范围，转子圈。
     float special_exit_from_top_turns; // 离开顶部安全区的撤销范围，需大于进入范围。
@@ -59,6 +60,15 @@ typedef struct
 {
     uint32_t control_period_ticks; // 对应控制任务的执行周期，tick。
     int32_t fric_target_speed_rpm; // 两轮共同目标速度幅值，rpm。
+    int32_t fric_block_speed_rpm; // 堵转时的低速门槛，转子 rpm。
+    int32_t fric_block_current_raw; // 堵转反馈电流门槛，原始码。
+    uint32_t fric_block_confirm_ms; // 低速高电流需持续的时间。
+    uint32_t fric_startup_grace_ms; // 开轮后的启动检测等待时间。
+    int32_t fric_boost_current_raw; // 正向恢复脉冲电流幅值，受驱动限幅。
+    uint32_t fric_boost_duration_ms; // 单次大电流脉冲时长。
+    uint32_t fric_recovery_wait_ms; // 脉冲后恢复速度环的观察时间。
+    uint32_t fric_recovery_max_attempts; // 一次开启期间允许的恢复次数。
+    uint16_t dial_hold_encoder; // 拨盘固定保持的单圈编码器位置。
     int64_t dial_feed_direction; // 供弹方向系数，改变符号反转方向。
     float dial_continuous_rounds_per_s; // 连发拨盘目标圈速，圈/秒。
     int64_t dial_arrived_error_counts; // 单发拨盘到位允许的编码器误差，计数。

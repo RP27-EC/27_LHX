@@ -55,7 +55,7 @@ static RemoteMode_t RemoteState_MapSwitchMode(uint8_t left_switch)
 }
 
 // 键鼠：Z/X 选模式，G 切换小陀螺，B 在机械模式切换升降目标。
-// F/左键控制发射；小陀螺模式禁止发射。
+// F/左键控制发射，键鼠小陀螺仍可发射。
 static int16_t RemoteState_ClampChannel(int32_t value)
 {
     if (value > 660) { return 660; }
@@ -300,10 +300,9 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             machine.physical.shoot_switch_seen = false;
             machine.physical.shoot_armed = false;
         }
-        if (next.mode.chassis == REMOTE_MODE_SPIN)
+        if (next.mode.chassis == REMOTE_MODE_SPIN && !machine.keyboard.active)
         {
-            // 右拨杆上档只使能自旋，不能同时触发单发供弹。
-            // 键鼠进入小陀螺后也清除 F 锁存，退出后必须重新布防。
+            // 遥控右拨杆只使能自旋；键鼠小陀螺保留 F 和鼠标发射。
             next.mode.shooting = REMOTE_SHOOT_OFF;
             next.safety.shoot_armed = false;
             next.input.right_up = false;
