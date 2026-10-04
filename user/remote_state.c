@@ -147,6 +147,7 @@ static void RemoteState_MapKeyboard(RemoteState_t *next,
     }
 }
 
+// 按遥控离线状态复位模式、操作输入及键鼠切换状态。
 void RemoteState_Init(void)
 {
     RemoteState_Update(NULL, false);
@@ -209,11 +210,11 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             }
             else
             {
-                if (wheel >= -cloud_config.spin_wheel_rearm_raw &&
-                    wheel <= cloud_config.spin_wheel_rearm_raw)
+                if (wheel >= -cloud_config.spin.wheel_rearm_raw &&
+                    wheel <= cloud_config.spin.wheel_rearm_raw)
                 { machine.physical.spin_wheel_ready = true; }
                 else if (machine.physical.spin_wheel_ready &&
-                         wheel >= cloud_config.spin_wheel_trigger_raw)
+                         wheel >= cloud_config.spin.wheel_trigger_raw)
                 {
                     machine.physical.spin_wheel_ready = false;
                     if (machine.physical.spin_selected)

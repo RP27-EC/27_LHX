@@ -12,12 +12,12 @@
 #define COMM_CAN_WHEEL_FILTER_BANK  16U
 #define COMM_CAN_SLAVE_START_BANK   14U
 #define COMM_CAN_STD_ID_TO_FILTER(id) ((uint32_t)(id) << 5U)
-#define COMM_CAN_RX_FRAME_COUNT     5U
+#define COMM_CAN_RX_FRAME_COUNT     6U
 #define COMM_RC_PART_D1             0x01U
 #define COMM_RC_PART_D2             0x02U
 
 static volatile Communication_CanRxFrame_t
-    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; // D1~D5 各自的最新接收快照。
+    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; // D1~D6 各自的最新接收快照。
 static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE]; // D1~D3 拼接中的遥控原始帧。
 static volatile uint8_t communication_rc_assembly_mask; // 已收到 D1/D2 分片的位掩码。
 static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; // 提交给任务解析的完整遥控快照。
@@ -110,7 +110,7 @@ static void Communication_RC_AcceptFragment(
 
 static int32_t Communication_CAN_RxIndex(uint16_t std_id)
 {
-    if ((std_id >= COMM_CAN_RX_ID_D1) && (std_id <= COMM_CAN_RX_ID_D5))
+    if ((std_id >= COMM_CAN_RX_ID_D1) && (std_id <= COMM_CAN_RX_ID_D6))
     {
         return (int32_t)(std_id - COMM_CAN_RX_ID_D1);
     }
@@ -118,12 +118,13 @@ static int32_t Communication_CAN_RxIndex(uint16_t std_id)
     return -1;
 }
 
+// 配置下板反馈 ID 过滤器，启动 CAN2 接收并开启接收中断。
 HAL_StatusTypeDef Communication_CAN_Init(void)
 {
     CAN_FilterTypeDef filter = {0};
     HAL_StatusTypeDef status;
 
-    // CAN2 bank 14 接收 D1~D4，bank 16 接收 D5。
+    // CAN2 bank 14 接收 D1~D4，bank 16 接收 D5/D6。
     filter.FilterBank = COMM_CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDLIST;
     filter.FilterScale = CAN_FILTERSCALE_16BIT;
@@ -141,12 +142,12 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
         return status;
     }
 
-    // bank 15 留给 Yaw 电机；bank 16 单独精确接收 D5 四轮转速。
+    // bank 15 留给 Yaw 电机；bank 16 精确接收四轮转速和热量。
     filter.FilterBank = COMM_CAN_WHEEL_FILTER_BANK;
     filter.FilterIdHigh = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D5);
-    filter.FilterIdLow = filter.FilterIdHigh;
+    filter.FilterIdLow = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D6);
     filter.FilterMaskIdHigh = filter.FilterIdHigh;
-    filter.FilterMaskIdLow = filter.FilterIdHigh;
+    filter.FilterMaskIdLow = filter.FilterIdLow;
     status = HAL_CAN_ConfigFilter(&hcan2, &filter);
     if (status != HAL_OK) { return status; }
 
@@ -521,4 +522,20 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
         Communication_RC_AcceptFragment((uint16_t)header.StdId, data);
     }
+}
+
+bool Communication_GetHeatSnapshot(Communication_HeatSnapshot_t *heat)
+{
+    Communication_CanRxFrame_t frame;
+    if (heat == NULL) { return false; }
+    memset(heat, 0, sizeof(*heat));
+    if (!Communication_CAN_GetLatest(COMM_CAN_RX_ID_D6, &frame)) { return false; }
+    heat->heat = (uint16_t)(frame.data[0] | ((uint16_t)frame.data[1] << 8));
+    heat->limit = (uint16_t)(frame.data[2] | ((uint16_t)frame.data[3] << 8));
+    heat->cooling = (uint16_t)(frame.data[4] | ((uint16_t)frame.data[5] << 8));
+    heat->valid = (frame.data[6] & 1U) != 0U;
+    heat->output_allowed = (frame.data[6] & 2U) != 0U;
+    heat->sequence = frame.data[7];
+    heat->last_rx_ms = frame.last_rx_ms;
+    return true;
 }

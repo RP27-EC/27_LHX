@@ -61,6 +61,7 @@ static HAL_StatusTypeDef Motor2006_UpdateGroup(uint32_t first_slot,
     return Motor2006_SendGroup(snapshot);
 }
 
+// 清空升降反馈和群组电流，初始化速度 PID 并配置 CAN 反馈过滤器。
 HAL_StatusTypeDef Motor2006_Init(void)
 {
     CAN_FilterTypeDef filter = {0};
@@ -70,10 +71,10 @@ HAL_StatusTypeDef Motor2006_Init(void)
     memset(group_current, 0, sizeof(group_current));
     motor2006_last_command_ms = HAL_GetTick();
     motor2006_command_active = false;
-    PID_Init(&motor2006_speed_pid, motor2006_config.speed_kp,
-             motor2006_config.speed_ki, motor2006_config.speed_kd,
-             motor2006_config.speed_integral_limit,
-             motor2006_config.speed_torque_output_limit,
+    PID_Init(&motor2006_speed_pid, motor2006_config.speed.kp,
+             motor2006_config.speed.ki, motor2006_config.speed.kd,
+             motor2006_config.speed.integral_limit,
+             motor2006_config.speed.output_limit,
              motor2006_config.pid_control_time_s);
 
     filter.FilterBank = MOTOR2006_CAN_FILTER_BANK;
@@ -135,9 +136,9 @@ HAL_StatusTypeDef Motor2006_SpeedControl(float target_rotor_rad_s)
     { return Motor2006_Stop(); }
     rotor_rad_s = (float)feedback.speed_rpm * 6.283185307f / 60.0f;
     PID_UpdateParameters(&motor2006_speed_pid,
-        motor2006_config.speed_kp, motor2006_config.speed_ki,
-        motor2006_config.speed_kd, motor2006_config.speed_integral_limit,
-        motor2006_config.speed_torque_output_limit,
+        motor2006_config.speed.kp, motor2006_config.speed.ki,
+        motor2006_config.speed.kd, motor2006_config.speed.integral_limit,
+        motor2006_config.speed.output_limit,
         motor2006_config.pid_control_time_s);
     torque = PID_Calc(&motor2006_speed_pid, target_rotor_rad_s, rotor_rad_s);
     current = torque / motor2006_config.torque_constant;

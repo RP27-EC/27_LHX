@@ -37,6 +37,7 @@ static float Motor3508_LimitSpeed(float value)
     return value;
 }
 
+// 清空摩擦轮反馈，初始化两路速度 PID 并配置 CAN 反馈过滤器。
 HAL_StatusTypeDef Motor3508_Init(void)
 {
     CAN_FilterTypeDef filter = {0};
@@ -47,11 +48,11 @@ HAL_StatusTypeDef Motor3508_Init(void)
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
         PID_Init(&motor3508_speed_pid[index],
-                 motor3508_config.speed_kp,
-                 motor3508_config.speed_ki,
-                 motor3508_config.speed_kd,
-                 motor3508_config.speed_integral_limit,
-                 motor3508_config.speed_output_limit,
+                 motor3508_config.speed.kp,
+                 motor3508_config.speed.ki,
+                 motor3508_config.speed.kd,
+                 motor3508_config.speed.integral_limit,
+                 motor3508_config.speed.output_limit,
                  motor3508_config.pid_control_time_s);
     }
 
@@ -113,9 +114,9 @@ HAL_StatusTypeDef Motor3508_SpeedControl(int16_t target_speed_rpm)
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
         PID_UpdateParameters(&motor3508_speed_pid[index],
-            motor3508_config.speed_kp, motor3508_config.speed_ki,
-            motor3508_config.speed_kd, motor3508_config.speed_integral_limit,
-            motor3508_config.speed_output_limit,
+            motor3508_config.speed.kp, motor3508_config.speed.ki,
+            motor3508_config.speed.kd, motor3508_config.speed.integral_limit,
+            motor3508_config.speed.output_limit,
             motor3508_config.pid_control_time_s);
         current[index] = Motor3508_LimitCurrent(
             PID_Calc(&motor3508_speed_pid[index],

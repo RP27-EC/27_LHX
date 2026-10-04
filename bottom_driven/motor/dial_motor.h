@@ -69,6 +69,9 @@ HAL_StatusTypeDef DialMotor_SetTorqueCurrent(int16_t current);
 
 // 累计编码器位控；以上电首帧为零点，每圈 65536 计数，随发射任务调用。
 HAL_StatusTypeDef DialMotor_PositionControl(int64_t target_encoder_total);
+// 位置闭环附加速度上限，用于热量临界时完成已预留的一发。
+HAL_StatusTypeDef DialMotor_PositionControlLimited(int64_t target_encoder_total,
+                                                  float speed_limit_dps);
 // 拨盘速度闭环；目标和反馈均为电机轴度每秒，随发射任务调用。
 HAL_StatusTypeDef DialMotor_SpeedControl(float target_speed_dps);
 void DialMotor_ResetControl(void);

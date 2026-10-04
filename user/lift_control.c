@@ -64,15 +64,15 @@ static int32_t LiftControl_Abs(int32_t value)
 
 static int32_t LiftControl_DownSign(void)
 {
-    return lift_config.down_direction > 0.0f ? 1 : -1;
+    return lift_config.motion.down_direction > 0.0f ? 1 : -1;
 }
 
 // 机械顶点只作基准，正常高位按下降方向留出余量。
 static int32_t LiftControl_TopTarget(int32_t contact)
 {
-    float offset = lift_config.top_hold_offset_turns;
+    float offset = lift_config.calibration.top_hold_offset_turns;
     int64_t target;
-    if (!(offset >= 0.0f && offset < lift_config.travel_turns && offset <= 10000.0f))
+    if (!(offset >= 0.0f && offset < lift_config.calibration.travel_turns && offset <= 10000.0f))
     { offset = 0.0f; }
     target = (int64_t)contact + (int64_t)LiftControl_DownSign() *
         (int32_t)(offset * LIFT_ENCODER_COUNTS_PER_TURN);
@@ -99,7 +99,7 @@ static bool LiftControl_YawStable(uint32_t now)
         yaw_stable_start_ms = now;
     }
     return (uint32_t)(now - yaw_stable_start_ms) >
-           lift_config.yaw_stable_ms;
+           lift_config.safety.yaw_stable_ms;
 }
 
 static void LiftControl_Stop(void)
@@ -107,7 +107,7 @@ static void LiftControl_Stop(void)
     uint32_t now = HAL_GetTick();
     uint32_t retry_ms = (lift_control_state == LIFT_STALLED ||
                          lift_control_state == LIFT_AT_LIMIT) ?
-                        lift_config.fault_stop_retry_ms : lift_config.stop_retry_ms;
+                        lift_config.motion.fault_stop_retry_ms : lift_config.motion.stop_retry_ms;
 
     if ((!motor_stopped ||
          (uint32_t)(now - last_stop_ms) >= retry_ms) &&
@@ -141,7 +141,7 @@ static void LiftControl_SendChassisHold(bool hold, uint32_t now)
     }
     if ((!chassis_hold_tx_seen ||
          (chassis_hold_request &&
-          (uint32_t)(now - chassis_hold_tx_ms) >= lift_config.lock_tx_period_ms)) &&
+          (uint32_t)(now - chassis_hold_tx_ms) >= lift_config.safety.lock_tx_period_ms)) &&
         Communication_CAN_SendLiftLock(chassis_hold_request,
                                        chassis_hold_sequence) == HAL_OK)
     {
@@ -155,7 +155,7 @@ static bool LiftControl_CalibrationChassisReady(uint32_t now)
     LiftControl_SendChassisHold(true, now);
     if (!chassis_hold_tx_seen ||
         (uint32_t)(now - chassis_hold_start_ms) <
-            lift_config.chassis_lock_settle_ms)
+            lift_config.safety.chassis_lock_settle_ms)
     {
         lift_wait_reason = LIFT_WAIT_CHASSIS_LOCK;
         return false;
@@ -174,7 +174,7 @@ static void LiftControl_StopAndRelease(uint32_t now)
     {
         offline_release_timing = false;
         moving = LiftControl_Abs((int32_t)feedback.speed_rpm) >
-                 lift_config.chassis_release_rpm;
+                 lift_config.safety.chassis_release_rpm;
     }
     else
     {
@@ -184,7 +184,7 @@ static void LiftControl_StopAndRelease(uint32_t now)
             offline_release_start_ms = now;
         }
         moving = (uint32_t)(now - offline_release_start_ms) <
-                 lift_config.offline_release_ms;
+                 lift_config.safety.offline_release_ms;
     }
     if (chassis_hold_request && (!motor_stopped || moving))
     { LiftControl_SendChassisHold(true, now); }
@@ -235,11 +235,11 @@ static bool LiftControl_PowerOnLimit(const Motor2006_Feedback_t *feedback,
                                       LiftControl_State_t direction)
 {
     int32_t distance = feedback->encoder_total * LiftControl_DownSign();
-    int32_t limit = (int32_t)(lift_config.max_rotor_turns *
+    int32_t limit = (int32_t)(lift_config.motion.max_rotor_turns *
                               LIFT_ENCODER_COUNTS_PER_TURN);
 
     if (direction == LIFT_ASCENDING) { distance = -distance; }
-    return limit - distance <= lift_config.limit_stop_margin_counts;
+    return limit - distance <= lift_config.motion.limit_stop_margin_counts;
 }
 
 static void LiftControl_RecordStall(const Motor2006_Feedback_t *feedback,
@@ -272,11 +272,11 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
                                    uint32_t now, bool check_progress, bool *top_contact)
 {
     int32_t current_threshold = direction == LIFT_ASCENDING ?
-        lift_config.up_stall_current_raw : lift_config.down_stall_current_raw;
+        lift_config.stall.up_stall_current_raw : lift_config.stall.down_stall_current_raw;
     int32_t speed_threshold = direction == LIFT_ASCENDING ?
-        lift_config.up_stall_speed_rpm : lift_config.down_stall_speed_rpm;
+        lift_config.stall.up_stall_speed_rpm : lift_config.stall.down_stall_speed_rpm;
     uint32_t duration = direction == LIFT_ASCENDING ?
-        lift_config.up_stall_time_ms : lift_config.down_stall_time_ms;
+        lift_config.stall.up_stall_time_ms : lift_config.stall.down_stall_time_ms;
     bool high_current = LiftControl_Abs((int32_t)feedback->current_raw) >=
                         current_threshold;
     bool low_speed = LiftControl_Abs((int32_t)feedback->speed_rpm) <=
@@ -304,7 +304,7 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
     no_progress = check_progress &&
         (uint32_t)(now - progress_start_ms) >= duration &&
         LiftControl_Abs(feedback->encoder_total - progress_start_counts) <
-            lift_config.stall_progress_counts;
+            lift_config.stall.stall_progress_counts;
     if (current_stall || no_progress)
     {
         *top_contact = current_stall ||
@@ -325,11 +325,11 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
 static bool LiftControl_PositionArrived(const Motor2006_Feedback_t *feedback,
                                         int32_t target)
 {
-    int32_t tolerance = lift_config.position_tolerance_counts;
+    int32_t tolerance = lift_config.hold.position_tolerance_counts;
 
     if (lift_calibrated && target == lift_top_encoder_total &&
-        lift_config.top_arrival_tolerance_counts > tolerance)
-    { tolerance = lift_config.top_arrival_tolerance_counts; }
+        lift_config.hold.top_arrival_tolerance_counts > tolerance)
+    { tolerance = lift_config.hold.top_arrival_tolerance_counts; }
     return LiftControl_Abs(target - feedback->encoder_total) <=
            tolerance;
 }
@@ -346,15 +346,15 @@ static void LiftControl_PositionDrive(const Motor2006_Feedback_t *feedback,
 {
     float speed = (float)(target - feedback->encoder_total) /
                   LIFT_ENCODER_COUNTS_PER_TURN *
-                  lift_config.position_kp_rad_s_per_turn;
+                  lift_config.hold.position_kp_rad_s_per_turn;
 
     if (speed > speed_limit) { speed = speed_limit; }
     else if (speed < -speed_limit) { speed = -speed_limit; }
     // 最小速度只用于主动升降，保持时让纠偏速度随误差减小。
-    if (active_move && speed > 0.0f && speed < lift_config.position_min_speed_rad_s)
-    { speed = lift_config.position_min_speed_rad_s; }
-    else if (active_move && speed < 0.0f && speed > -lift_config.position_min_speed_rad_s)
-    { speed = -lift_config.position_min_speed_rad_s; }
+    if (active_move && speed > 0.0f && speed < lift_config.hold.position_min_speed_rad_s)
+    { speed = lift_config.hold.position_min_speed_rad_s; }
+    else if (active_move && speed < 0.0f && speed > -lift_config.hold.position_min_speed_rad_s)
+    { speed = -lift_config.hold.position_min_speed_rad_s; }
     if (speed > speed_limit) { speed = speed_limit; }
     else if (speed < -speed_limit) { speed = -speed_limit; }
     LiftControl_RunSpeed(speed);
@@ -380,7 +380,7 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
 
     if ((calibration_drive_started &&
          (uint32_t)(now - calibration_start_ms) >=
-             lift_config.calibrate_timeout_ms) ||
+             lift_config.calibration.timeout_ms) ||
         LiftControl_PowerOnLimit(feedback, LIFT_ASCENDING))
     {
         LiftControl_CalibrationFail(LIFT_AT_LIMIT);
@@ -409,11 +409,11 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
         // 校准仍碰机械顶点；正常高位留余量，低位从机械顶点计算。
         top = feedback->encoder_total;
         bottom = feedback->encoder_total + LiftControl_DownSign() *
-            (int32_t)(lift_config.travel_turns *
+            (int32_t)(lift_config.calibration.travel_turns *
                       LIFT_ENCODER_COUNTS_PER_TURN);
-        if (LiftControl_Abs(top) >= (int32_t)(lift_config.max_rotor_turns *
+        if (LiftControl_Abs(top) >= (int32_t)(lift_config.motion.max_rotor_turns *
                 LIFT_ENCODER_COUNTS_PER_TURN) ||
-            LiftControl_Abs(bottom) >= (int32_t)(lift_config.max_rotor_turns *
+            LiftControl_Abs(bottom) >= (int32_t)(lift_config.motion.max_rotor_turns *
                 LIFT_ENCODER_COUNTS_PER_TURN))
         {
             LiftControl_CalibrationFail(LIFT_AT_LIMIT);
@@ -434,10 +434,11 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
         return;
     }
     lift_control_state = LIFT_CALIBRATING_UP;
-    LiftControl_RunSpeed(-lift_config.down_direction *
-                          lift_config.calibrate_up_speed_rad_s);
+    LiftControl_RunSpeed(-lift_config.motion.down_direction *
+                          lift_config.calibration.up_speed_rad_s);
 }
 
+// 清空升降目标、堵转计时和联锁状态，进入等待遥控的未校准状态。
 void LiftControl_Init(void)
 {
     lift_control_state = LIFT_STOPPED;
@@ -520,15 +521,15 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     int32_t down_speed_rpm = 0;
     uint32_t now = HAL_GetTick();
     uint32_t primask;
-    float exit_turns = lift_config.special_exit_from_top_turns;
-    float top_margin_turns = (float)lift_config.top_arrival_tolerance_counts /
+    float exit_turns = lift_config.safety.special_exit_from_top_turns;
+    float top_margin_turns = (float)lift_config.hold.top_arrival_tolerance_counts /
                              LIFT_ENCODER_COUNTS_PER_TURN;
-    float bottom_margin_turns = (float)lift_config.position_tolerance_counts /
+    float bottom_margin_turns = (float)lift_config.hold.position_tolerance_counts /
                                 LIFT_ENCODER_COUNTS_PER_TURN;
 
     // 顶部有效余量与碰顶窗口一致，避免基准偏差提前撤销许可。
-    if (lift_config.top_contact_window_turns > top_margin_turns)
-    { top_margin_turns = lift_config.top_contact_window_turns; }
+    if (lift_config.calibration.top_contact_window_turns > top_margin_turns)
+    { top_margin_turns = lift_config.calibration.top_contact_window_turns; }
     next.from_top_turns = -1.0f;
     next.update_ms = now;
     feedback_online = Motor2006_OnlineCheck() &&
@@ -539,18 +540,18 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
             lift_top_contact_encoder_total) * LiftControl_DownSign() /
             LIFT_ENCODER_COUNTS_PER_TURN;
         next.position_valid = next.from_top_turns >= -top_margin_turns &&
-            next.from_top_turns <= lift_config.travel_turns +
+            next.from_top_turns <= lift_config.calibration.travel_turns +
                                    bottom_margin_turns &&
             !calibration_active &&
             lift_control_state != LIFT_STALLED &&
             lift_control_state != LIFT_AT_LIMIT;
         down_speed_rpm = (int32_t)feedback.speed_rpm * LiftControl_DownSign();
     }
-    if (exit_turns <= lift_config.special_enter_from_top_turns)
-    { exit_turns = lift_config.special_enter_from_top_turns + 1.0f; }
-    if (!next.position_valid || lift_config.special_enter_from_top_turns <= 0.0f)
+    if (exit_turns <= lift_config.safety.special_enter_from_top_turns)
+    { exit_turns = lift_config.safety.special_enter_from_top_turns + 1.0f; }
+    if (!next.position_valid || lift_config.safety.special_enter_from_top_turns <= 0.0f)
     { upper_mode_zone = false; }
-    else if (next.from_top_turns <= lift_config.special_enter_from_top_turns)
+    else if (next.from_top_turns <= lift_config.safety.special_enter_from_top_turns)
     { upper_mode_zone = true; }
     else if (next.from_top_turns > exit_turns)
     { upper_mode_zone = false; }
@@ -580,13 +581,13 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     next.bottom_mode_blocked = lift_safety_state.bottom_mode_blocked;
     if (lift_calibrated && feedback_online)
     {
-        float enter_turns = lift_config.bottom_mode_enter_turns;
-        float exit_turns = lift_config.bottom_mode_exit_turns;
+        float enter_turns = lift_config.safety.bottom_mode_enter_turns;
+        float exit_turns = lift_config.safety.bottom_mode_exit_turns;
         if (enter_turns < 0.0f) { enter_turns = 0.0f; }
         if (exit_turns <= enter_turns) { exit_turns = enter_turns + 1.0f; }
-        if (next.from_top_turns >= lift_config.travel_turns - enter_turns)
+        if (next.from_top_turns >= lift_config.calibration.travel_turns - enter_turns)
         { next.bottom_mode_blocked = true; }
-        else if (next.from_top_turns <= lift_config.travel_turns - exit_turns)
+        else if (next.from_top_turns <= lift_config.calibration.travel_turns - exit_turns)
         { next.bottom_mode_blocked = false; }
     }
     // 目标与实际运动分开：短暂的位控纠偏不算新的下降指令。
@@ -630,7 +631,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
         (pending_descent || LiftControl_PitchRequired());
     // 遥控下降请求立即撤销许可；高位位控的短暂下行纠偏不算下降。
     if (feedback_online && !holding_position && down_speed_rpm >
-        lift_config.special_down_speed_enter_rpm)
+        lift_config.safety.special_down_speed_enter_rpm)
     {
         if (!down_motion_timing)
         {
@@ -638,7 +639,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
             down_motion_start_ms = now;
         }
         confirmed_down_motion = (uint32_t)(now - down_motion_start_ms) >=
-            lift_config.special_down_motion_confirm_ms;
+            lift_config.safety.special_down_motion_confirm_ms;
     }
     else { down_motion_timing = false; }
     if (descending_command || confirmed_down_motion)
@@ -648,7 +649,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     }
     else if (descent_mode_blocked && feedback_online &&
              (holding_position ||
-              down_speed_rpm <= lift_config.special_down_speed_release_rpm))
+              down_speed_rpm <= lift_config.safety.special_down_speed_release_rpm))
     {
         if (!descent_release_timing)
         {
@@ -656,7 +657,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
             descent_release_start_ms = now;
         }
         else if ((uint32_t)(now - descent_release_start_ms) >=
-                     lift_config.special_down_stop_stable_ms)
+                     lift_config.safety.special_down_stop_stable_ms)
         { descent_mode_blocked = false; }
     }
     else
@@ -691,7 +692,7 @@ bool LiftControl_SafetyGet(LiftSafetyState_t *state)
     __set_PRIMASK(primask);
     if (state->update_ms == 0U ||
         (uint32_t)(HAL_GetTick() - state->update_ms) >=
-            lift_config.special_state_timeout_ms)
+            lift_config.safety.special_state_timeout_ms)
     {
         state->position_valid = false;
         state->upper_zone = false;
@@ -925,7 +926,7 @@ void LiftControl_Update(const RemoteState_t *remote)
         requested_direction = LIFT_STOPPED;
         // 到位容差只结束主动动作，容差内仍持续做位置保持。
         LiftControl_PositionDrive(&feedback, target,
-                                  lift_config.hold_speed_rad_s, false);
+                                  lift_config.hold.hold_speed_rad_s, false);
         return;
     }
     direction = LiftControl_DirectionTo(error);
@@ -947,11 +948,11 @@ void LiftControl_Update(const RemoteState_t *remote)
             (top_contact ||
              (requested_direction == LIFT_ASCENDING &&
               LiftControl_Abs((int32_t)feedback.speed_rpm) <=
-                  lift_config.up_stall_speed_rpm)) &&
-            lift_config.top_contact_window_turns > 0.0f &&
+                  lift_config.stall.up_stall_speed_rpm)) &&
+            lift_config.calibration.top_contact_window_turns > 0.0f &&
             LiftControl_Abs(feedback.encoder_total -
                             lift_top_contact_encoder_total) <=
-                (int32_t)(lift_config.top_contact_window_turns *
+                (int32_t)(lift_config.calibration.top_contact_window_turns *
                           LIFT_ENCODER_COUNTS_PER_TURN))
         {
             // 顶部反向保持卡住改为实测点保持；只有向上接触才修正顶点。
@@ -974,8 +975,8 @@ void LiftControl_Update(const RemoteState_t *remote)
         return;
     }
     speed_limit = requested_direction == LIFT_STOPPED ?
-        lift_config.hold_speed_rad_s : direction == LIFT_ASCENDING ?
-        lift_config.up_speed_rad_s : lift_config.down_speed_rad_s;
+        lift_config.hold.hold_speed_rad_s : direction == LIFT_ASCENDING ?
+        lift_config.motion.up_speed_rad_s : lift_config.motion.down_speed_rad_s;
     lift_control_state = direction;
     LiftControl_PositionDrive(&feedback, target, speed_limit,
                               requested_direction != LIFT_STOPPED);

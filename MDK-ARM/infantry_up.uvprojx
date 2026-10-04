@@ -711,6 +711,16 @@
               <FilePath>../user/shoot_control.h</FilePath>
             </File>
             <File>
+              <FileName>shoot_heat.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/shoot_heat.c</FilePath>
+            </File>
+            <File>
+              <FileName>shoot_heat.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/shoot_heat.h</FilePath>
+            </File>
+            <File>
               <FileName>lift_control.c</FileName>
               <FileType>1</FileType>
               <FilePath>../user/lift_control.c</FilePath>

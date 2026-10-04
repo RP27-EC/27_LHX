@@ -16,6 +16,8 @@ extern "C" {
 #define COMM_CAN_RX_ID_D4  0x0D4U
 #define COMM_CAN_RX_ID_D5  0x0D5U // 四个底盘电机的实时转速。
 
+#define COMM_CAN_RX_ID_D6  0x0D6U // 裁判热量与发射许可。
+
 // 上板发送给下板的标准帧 ID。
 #define COMM_CAN_TX_ID_C1  0x0C1U
 #define COMM_CAN_TX_ID_C2  0x0C2U
@@ -109,9 +111,17 @@ HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
 bool Communication_CAN_GetChassisYawRate(float *rate_deg_s);
 bool Communication_CAN_GetChassisYawRateState(float *rate_deg_s, uint32_t *sample_ms);
 
-// 获取指定 D1~D5 的最新完整快照；尚未收到或参数错误时返回 false。
+// 获取指定 D1~D6 的最新完整快照；尚未收到或参数错误时返回 false。
 bool Communication_CAN_GetLatest(uint16_t std_id,
                                  Communication_CanRxFrame_t *frame);
+
+typedef struct {
+    uint16_t heat, limit, cooling; // 当前热量、上限、每秒冷却量。
+    uint8_t sequence; // 原裁判热量消息更新序号。
+    bool valid, output_allowed; // 下板数据新鲜度和发射许可。
+    uint32_t last_rx_ms; // 板间热量帧到达时刻。
+} Communication_HeatSnapshot_t;
+bool Communication_GetHeatSnapshot(Communication_HeatSnapshot_t *heat);
 
 // 处理 18 字节遥控帧并检测断联，建议每 1~10 ms 调用。
 void Communication_Process(void);
