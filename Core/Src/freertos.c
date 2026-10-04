@@ -37,6 +37,7 @@
 #include "remote_state.h"
 #include "power_communication.h"
 #include "referee_uart.h"
+#include "referee.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -273,7 +274,7 @@ void motor3508_speed_control(void *argument)
         spin_fault_start_ms = HAL_GetTick();
       }
       else if ((uint32_t)(HAL_GetTick() - spin_fault_start_ms) >=
-                    chassis_config.spin_fault_rearm_ms)
+                    chassis_config.spin.fault_rearm_ms)
       { spin_rearm_required = true; }
     }
     if (!remote.safety.online)
@@ -323,24 +324,24 @@ void motor3508_speed_control(void *argument)
         // 机械模式与升降低位强制机械模式使用同一控制分支。
         Chassis_FollowReset();
         Chassis_SpinReset();
-        Chassis_MechanicalUpdate(remote.input.channel[3] * chassis_config.forward_scale,
-                                 remote.input.channel[2] * chassis_config.left_scale,
-                                 remote.input.channel[0] * chassis_config.rotate_scale);
+        Chassis_MechanicalUpdate(remote.input.channel[3] * chassis_config.motion.forward_scale,
+                                 remote.input.channel[2] * chassis_config.motion.left_scale,
+                                 remote.input.channel[0] * chassis_config.motion.rotate_scale);
       }
       else if (remote.mode.chassis == REMOTE_MODE_SPIN)
       {
         // 小陀螺按云台朝向平移，右上档自旋。
         Chassis_FollowReset();
-        Chassis_SpinUpdate(remote.input.channel[3] * chassis_config.forward_scale,
-                           remote.input.channel[2] * chassis_config.left_scale,
+        Chassis_SpinUpdate(remote.input.channel[3] * chassis_config.motion.forward_scale,
+                           remote.input.channel[2] * chassis_config.motion.left_scale,
                            spin_drive_enabled);
       }
       else if (remote.mode.chassis == REMOTE_MODE_FOLLOW)
       {
         Chassis_SpinReset();
         // 跟随模式由 Yaw 角驱动底盘旋转。
-        Chassis_FollowUpdate(remote.input.channel[3] * chassis_config.forward_scale,
-                             remote.input.channel[2] * chassis_config.left_scale,
+        Chassis_FollowUpdate(remote.input.channel[3] * chassis_config.motion.forward_scale,
+                             remote.input.channel[2] * chassis_config.motion.left_scale,
                              (float)remote.input.channel[0]);
       }
       else
@@ -440,10 +441,18 @@ void up_down_communication(void *argument)
 /* USER CODE BEGIN Application */
 static void RefereeTask(void *argument)
 {
+  uint32_t last_heat_tx = 0U;
   (void)argument;
   for (;;)
   {
-    RefereeUart_Process(HAL_GetTick());
+    uint32_t now = HAL_GetTick();
+    RefereeHeatSnapshot_t heat;
+    RefereeUart_Process(now);
+    if ((uint32_t)(now - last_heat_tx) >= remote_config.heat_tx_period_ms &&
+        Referee_GetHeatSnapshot(&heat, now) &&
+        Communication_SendHeatState(heat.heat, heat.limit, heat.cooling,
+            heat.valid, heat.output_allowed, heat.sequence) == HAL_OK)
+    { last_heat_tx = now; }
     osDelay(2U);
   }
 }

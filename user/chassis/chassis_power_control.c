@@ -19,6 +19,7 @@ bool ChassisPowerControl_ConfigValid(const ChassisPowerControlConfig *config)
         config->offline_current_limit >= 0 && config->offline_current_limit <= 16384;
 }
 
+// 将初始电流比例限幅后写入积分项与输出，建立功率 PI 控制起点。
 void ChassisPowerControl_Init(ChassisPowerController *controller, float initial_scale)
 {
     if (controller == NULL) { return; }

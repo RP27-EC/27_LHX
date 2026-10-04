@@ -3,6 +3,10 @@
 #include "peripheral_config.h"
 #include "chassis_power.h"
 
+#define CAP_CONTROL_BUFFER 0U // 未启用缓冲能量字段。
+#define CAP_DISCHARGE_LIMIT (-300) // 放电功率字段，符号按超电协议。
+#define CAP_CHARGE_LIMIT 300U // 正常充电功率字段。
+
 volatile PowerCommunicationState power_communication_state;
 
 static int16_t read_i16_le(const uint8_t *data)
@@ -35,13 +39,13 @@ static void PowerCommunication_SendControl(uint32_t now)
     bool output_allowed;
     uint16_t limit = ChassisPower_GetLimit(now, &output_allowed);
 
-    // 与模板 0x222 的 packed 结构一致，不依赖编译器结构体对齐。
-    data[0] = power_communication_config.chassis_power_buffer;
+    // 逐字节构造控制帧，避免结构体对齐影响协议。
+    data[0] = CAP_CONTROL_BUFFER;
     write_u16_le(&data[1], limit);
-    write_u16_le(&data[3], (uint16_t)power_communication_config.cap_power_out_limit);
-    // 模板在预充模式下把充电功率字段清零。
+    write_u16_le(&data[3], (uint16_t)CAP_DISCHARGE_LIMIT);
+    // 预充模式下清零充电功率字段。
     write_u16_le(&data[5], power_communication_config.precharge_enabled ?
-                 0U : power_communication_config.cap_power_in_limit);
+                 0U : CAP_CHARGE_LIMIT);
     if (power_communication_config.cap_enabled && output_allowed) { data[7] |= 0x01U; }
     if (power_communication_config.turbo_enabled) { data[7] |= 0x02U; }
     if (power_communication_config.precharge_enabled) { data[7] |= 0x04U; }
@@ -95,6 +99,7 @@ void PowerCommunication_ProcessCanFrame(uint32_t id, const uint8_t data[8])
     }
 }
 
+// 清空超电、无线充解析结果及控制帧发送统计。
 void PowerCommunication_Init(void)
 {
     power_communication_state = (PowerCommunicationState){0};

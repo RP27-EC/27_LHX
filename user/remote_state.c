@@ -38,7 +38,7 @@ static RemoteStateMachine_t machine; // 仅状态机任务修改，不直接暴�
 // 将左拨杆档位映射为模式枚举；非法档位保持失能。
 static RemoteMode_t RemoteState_MapSwitchMode(uint8_t left_switch)
 {
-    if (left_switch == chassis_config.follow_switch_position)
+    if (left_switch == RC_SW_UP)
     { return REMOTE_MODE_FOLLOW; }
     if (left_switch == CHASSIS_MECHANICAL_SWITCH_POSITION ||
         left_switch == CHASSIS_MECHANICAL_DOWN_POSITION)
@@ -101,6 +101,7 @@ static void RemoteState_MapKeyboard(RemoteState_t *next,
     next->safety.spin_enabled = machine.keyboard.spin_active;
 }
 
+// 按遥控离线状态复位模式、操作输入及键鼠切换状态。
 void RemoteState_Init(void)
 {
     RemoteState_Update(NULL, false);
@@ -157,11 +158,11 @@ void RemoteState_Update(const RC_ctrl_t *control, bool online)
             }
             else
             {
-                if (wheel >= -chassis_config.spin_wheel_rearm_raw &&
-                    wheel <= chassis_config.spin_wheel_rearm_raw)
+                if (wheel >= -chassis_config.spin.wheel_rearm_raw &&
+                    wheel <= chassis_config.spin.wheel_rearm_raw)
                 { machine.physical.spin_wheel_ready = true; }
                 else if (machine.physical.spin_wheel_ready &&
-                         wheel >= chassis_config.spin_wheel_trigger_raw)
+                         wheel >= chassis_config.spin.wheel_trigger_raw)
                 {
                     machine.physical.spin_wheel_ready = false;
                     if (machine.physical.spin_selected)
@@ -208,12 +209,12 @@ void RemoteState_Update(const RC_ctrl_t *control, bool online)
 
         if (next.safety.online)
         {
-            if (next.input.channel[4] > -chassis_config.turn_wheel_rearm_raw)
+            if (next.input.channel[4] > -chassis_config.turn.wheel_rearm_raw)
             {
                 machine.physical.turnaround_wheel_armed = true;
             }
             else if (machine.physical.turnaround_wheel_armed &&
-                     next.input.channel[4] <= -chassis_config.turn_wheel_trigger_raw)
+                     next.input.channel[4] <= -chassis_config.turn.wheel_trigger_raw)
             {
                 machine.physical.turnaround_wheel_armed = false;
                 machine.physical.turnaround_request_count++;

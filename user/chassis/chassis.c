@@ -43,7 +43,7 @@ static void Chassis_SelectNearestFront(float angle_deg)
 // 遥控平移量定义在云台坐标系；用机械 Yaw 角旋转到底盘坐标系。
 static void Chassis_GimbalToBase(float angle_deg, float *front, float *left)
 {
-    float yaw_rad = angle_deg * chassis_config.spin_yaw_angle_sign *
+    float yaw_rad = angle_deg * chassis_config.spin.yaw_angle_sign *
                     CHASSIS_DEG_TO_RAD;
     float cosine = cosf(yaw_rad);
     float sine = sinf(yaw_rad);
@@ -102,7 +102,7 @@ bool Chassis_TurnaroundUpdate(uint32_t request_count, bool request_allowed)
     if (chassis_turnaround_pending && !chassis_turnaround_seen_active &&
         !turning &&
         (uint32_t)(HAL_GetTick() - chassis_turnaround_request_ms) >=
-            chassis_config.turn_ack_timeout_ms)
+            chassis_config.turn.ack_timeout_ms)
     {
         chassis_turnaround_pending = false;
     }
@@ -144,9 +144,9 @@ void Chassis_MecanumInverse(float front,float left,float cycle)
                                  Chassis_Abs(motor[2]),
                                  Chassis_Abs(motor[3]));
 
-    if (max_abs > chassis_config.max_motor_rpm)
+    if (max_abs > chassis_config.motion.max_motor_rpm)
     {
-        float scale = chassis_config.max_motor_rpm / max_abs;
+        float scale = chassis_config.motion.max_motor_rpm / max_abs;
 
         for (i = 0; i < 4; i++)
         {
@@ -175,7 +175,7 @@ void Chassis_SpinUpdate(float gimbal_front, float gimbal_left,
                         bool spin_enabled)
 {
     const float target_rpm = spin_enabled ?
-        chassis_config.spin_rotate_rpm * chassis_config.spin_rotate_sign : 0.0f;
+        chassis_config.spin.rotate_rpm * chassis_config.spin.rotate_sign : 0.0f;
     float step = target_rpm - chassis_spin_cycle_rpm;
     float yaw_angle_deg;
     float chassis_front = 0.0f;
@@ -188,10 +188,10 @@ void Chassis_SpinUpdate(float gimbal_front, float gimbal_left,
     }
     else
     {
-        if (step > chassis_config.spin_slew_rpm_per_tick)
-        { step = chassis_config.spin_slew_rpm_per_tick; }
-        else if (step < -chassis_config.spin_slew_rpm_per_tick)
-        { step = -chassis_config.spin_slew_rpm_per_tick; }
+        if (step > chassis_config.spin.slew_rpm_per_tick)
+        { step = chassis_config.spin.slew_rpm_per_tick; }
+        else if (step < -chassis_config.spin.slew_rpm_per_tick)
+        { step = -chassis_config.spin.slew_rpm_per_tick; }
         chassis_spin_cycle_rpm += step;
     }
 
@@ -230,41 +230,41 @@ void Chassis_FollowUpdate(float front, float left, float yaw_input)
     Chassis_GimbalToBase(angle_deg, &front, &left);
 
     // 连续软死区内不追，越过边界时从零速平滑起步。
-    if (error_deg > chassis_config.follow_deadband_deg)
-    { error_deg -= chassis_config.follow_deadband_deg; }
-    else if (error_deg < -chassis_config.follow_deadband_deg)
-    { error_deg += chassis_config.follow_deadband_deg; }
+    if (error_deg > chassis_config.follow.deadband_deg)
+    { error_deg -= chassis_config.follow.deadband_deg; }
+    else if (error_deg < -chassis_config.follow.deadband_deg)
+    { error_deg += chassis_config.follow.deadband_deg; }
     else { error_deg = 0.0f; }
 
     // Yaw 输入作旋转前馈，松杆后由角度闭环归中。
-    if (yaw_input > chassis_config.follow_rc_deadband)
+    if (yaw_input > chassis_config.follow.rc_deadband)
     {
         feedforward_rpm =
-            (yaw_input - chassis_config.follow_rc_deadband) *
-            chassis_config.follow_ff_rpm_per_rc;
+            (yaw_input - chassis_config.follow.rc_deadband) *
+            chassis_config.follow.ff_rpm_per_rc;
     }
-    else if (yaw_input < -chassis_config.follow_rc_deadband)
+    else if (yaw_input < -chassis_config.follow.rc_deadband)
     {
         feedforward_rpm =
-            (yaw_input + chassis_config.follow_rc_deadband) *
-            chassis_config.follow_ff_rpm_per_rc;
+            (yaw_input + chassis_config.follow.rc_deadband) *
+            chassis_config.follow.ff_rpm_per_rc;
     }
     else
     {
         feedforward_rpm = 0.0f;
     }
 
-    target_rpm = (error_deg * chassis_config.follow_kp_rpm_per_deg +
-                  feedforward_rpm) * chassis_config.follow_rotate_sign;
-    if (target_rpm > chassis_config.follow_max_rotate_rpm)
-    { target_rpm = chassis_config.follow_max_rotate_rpm; }
-    else if (target_rpm < -chassis_config.follow_max_rotate_rpm)
-    { target_rpm = -chassis_config.follow_max_rotate_rpm; }
+    target_rpm = (error_deg * chassis_config.follow.kp_rpm_per_deg +
+                  feedforward_rpm) * chassis_config.follow.rotate_sign;
+    if (target_rpm > chassis_config.follow.max_rotate_rpm)
+    { target_rpm = chassis_config.follow.max_rotate_rpm; }
+    else if (target_rpm < -chassis_config.follow.max_rotate_rpm)
+    { target_rpm = -chassis_config.follow.max_rotate_rpm; }
     step = target_rpm - chassis_follow_cycle_rpm;
-    if (step > chassis_config.follow_slew_rpm_per_tick)
-    { step = chassis_config.follow_slew_rpm_per_tick; }
-    else if (step < -chassis_config.follow_slew_rpm_per_tick)
-    { step = -chassis_config.follow_slew_rpm_per_tick; }
+    if (step > chassis_config.follow.slew_rpm_per_tick)
+    { step = chassis_config.follow.slew_rpm_per_tick; }
+    else if (step < -chassis_config.follow.slew_rpm_per_tick)
+    { step = -chassis_config.follow.slew_rpm_per_tick; }
     chassis_follow_cycle_rpm += step;
 
     Chassis_MecanumInverse(front, left, chassis_follow_cycle_rpm);

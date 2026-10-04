@@ -4,7 +4,7 @@
 
 typedef struct
 {
-    bool enabled; // 功率反馈闭环开关。
+    bool enabled; // 模型与实测功率限制总开关。
     float offline_limit_w; // 裁判未接或过期时的备用上限。
     float reserve_w; // 从裁判上限扣除的功率余量。
     float deadband_w; // 目标附近的功率误差死区。

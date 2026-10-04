@@ -15,6 +15,7 @@ volatile uint32_t communication_bus_off_count = 0U; // CAN2 Bus-Off 恢复尝试
 volatile uint32_t communication_restart_count = 0U; // CAN2 成功重新启动次数。
 static uint32_t communication_last_restart_ms; // 避免持续断线时频繁重启外设。
 
+// 清空板间接收状态，配置上板反馈过滤器，启动 FDCAN2 接收中断。
 HAL_StatusTypeDef Communication_Init(void)
 {
     FDCAN_FilterTypeDef filter = {0};
@@ -109,7 +110,7 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
 
     if ((data == NULL) ||
         (std_id < COMMUNICATION_TX_ID_D1) ||
-        (std_id > COMMUNICATION_TX_ID_D5))
+        (std_id > COMMUNICATION_TX_ID_D6))
     {
         return HAL_ERROR;
     }
@@ -333,4 +334,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t interrupts)
     {
         Communication_FDCANRxFifo0Callback(hfdcan, interrupts);
     }
+}
+
+HAL_StatusTypeDef Communication_SendHeatState(uint16_t heat, uint16_t limit,
+    uint16_t cooling, bool valid, bool output_allowed, uint8_t sequence)
+{
+    uint8_t data[8] = { (uint8_t)heat, (uint8_t)(heat >> 8),
+        (uint8_t)limit, (uint8_t)(limit >> 8), (uint8_t)cooling, (uint8_t)(cooling >> 8),
+        (uint8_t)((valid ? 1U : 0U) | (output_allowed ? 2U : 0U)), sequence };
+    return Communication_Send(COMMUNICATION_TX_ID_D6, data);
 }

@@ -1091,14 +1091,14 @@
               <FilePath>..\user\chassis\chassis_power.h</FilePath>
             </File>
             <File>
-              <FileName>chassis_power_estimate.c</FileName>
+              <FileName>chassis_power_model.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\user\chassis\chassis_power_estimate.c</FilePath>
+              <FilePath>..\user\chassis\chassis_power_model.c</FilePath>
             </File>
             <File>
-              <FileName>chassis_power_estimate.h</FileName>
+              <FileName>chassis_power_model.h</FileName>
               <FileType>5</FileType>
-              <FilePath>..\user\chassis\chassis_power_estimate.h</FilePath>
+              <FilePath>..\user\chassis\chassis_power_model.h</FilePath>
             </File>
             <File>
               <FileName>chassis_power_control.c</FileName>

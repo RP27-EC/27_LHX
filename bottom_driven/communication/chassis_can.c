@@ -5,6 +5,7 @@
 
 volatile ChassisCanState chassis_can_state;
 
+// 清空底盘 CAN 诊断，配置电机与超电反馈过滤器，启动 FDCAN1 接收中断。
 HAL_StatusTypeDef ChassisCan_Init(void)
 {
     FDCAN_FilterTypeDef filter = {0};

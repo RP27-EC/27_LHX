@@ -7,7 +7,6 @@
 #define MOTOR3508_COUNT          4U
 #define MOTOR3508_FEEDBACK_BASE  0x201U
 #define MOTOR3508_COMMAND_ID     0x200U
-#define MOTOR3508_OFFLINE_TIMEOUT_CNT 50U
 
 // 反馈值均来自 C620 原始报文，不包含 PID 或底盘解算。
 typedef struct

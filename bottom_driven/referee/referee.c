@@ -251,3 +251,28 @@ bool Referee_GetPowerHeat(RefereeWire_power_heat_data_t *data,uint32_t now_ms) {
        (uint32_t)(now_ms-meta.last_rx_ms)>=REFEREE_OFFLINE_TIMEOUT_MS) { return false; }
     return snapshot(data,&referee_state.info.power_heat_data,sizeof(*data)) && version==publish_version;
 }
+
+bool Referee_GetHeatSnapshot(RefereeHeatSnapshot_t *heat, uint32_t now_ms)
+{
+    RefereeRobotStatus_t robot;
+    RefereeWire_power_heat_data_t power;
+    RefereeMessageStatus_t status_meta, heat_meta;
+    uint32_t version = publish_version;
+    if (heat == NULL) { return false; }
+    memset(heat, 0, sizeof(*heat));
+    if ((version & 1U) ||
+        !snapshot(&robot, &referee_state.info.robot_status, sizeof(robot)) ||
+        !snapshot(&power, &referee_state.info.power_heat_data, sizeof(power)) ||
+        !snapshot(&status_meta, &referee_state.message[REFEREE_MSG_robot_status], sizeof(status_meta)) ||
+        !snapshot(&heat_meta, &referee_state.message[REFEREE_MSG_power_heat_data], sizeof(heat_meta)) ||
+        version != publish_version) { return false; }
+    heat->heat = power.shooter_17mm_1_barrel_heat;
+    heat->limit = robot.shooter_barrel_heat_limit;
+    heat->cooling = robot.shooter_barrel_cooling_value;
+    heat->sequence = (uint8_t)heat_meta.rx_count;
+    heat->output_allowed = robot.power_management_shooter_output != 0U;
+    heat->valid = status_meta.valid && heat_meta.valid && heat->limit > 0U &&
+        (uint32_t)(now_ms - status_meta.last_rx_ms) < REFEREE_OFFLINE_TIMEOUT_MS &&
+        (uint32_t)(now_ms - heat_meta.last_rx_ms) < REFEREE_OFFLINE_TIMEOUT_MS;
+    return true;
+}

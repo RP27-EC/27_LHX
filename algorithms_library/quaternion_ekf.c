@@ -60,6 +60,7 @@ static bool ekf_inverse(const float s[9], float inverse[9])
     return true;
 }
 
+// 清空滤波状态，归一化初始四元数并设置状态协方差；无有效姿态时从单位四元数开始。
 void QuaternionEkf_Init(QuaternionEkf *filter, const float quaternion[4])
 {
     uint32_t i;

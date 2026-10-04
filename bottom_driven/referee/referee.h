@@ -135,6 +135,12 @@ bool Referee_GetState(RefereeState_t *state); // 非阻塞一致快照；写入�
 bool Referee_GetRobotStatusSnapshot(RefereeRobotStatus_t *status, uint32_t *last_rx_ms); // 一致读取最后有效状态及原始接收时间。
 bool Referee_GetRobotStatus(RefereeRobotStatus_t *status, uint32_t now_ms); // 只返回新鲜机器人状态。
 bool Referee_GetPowerHeat(RefereeWire_power_heat_data_t *data, uint32_t now_ms); // 只返回新鲜热量/缓冲数据。
+typedef struct {
+    uint16_t heat, limit, cooling; // 当前热量、热量上限、每秒冷却量。
+    uint8_t sequence; // 热量消息更新序号，转发同一数据时保持不变。
+    bool valid, output_allowed; // 两类消息均新鲜、发射电源许可。
+} RefereeHeatSnapshot_t;
+bool Referee_GetHeatSnapshot(RefereeHeatSnapshot_t *heat, uint32_t now_ms);
 int Referee_CommandIndex(uint16_t cmd_id);
 uint8_t Referee_Crc8(const uint8_t *data, size_t length);
 uint16_t Referee_Crc16(const uint8_t *data, size_t length);

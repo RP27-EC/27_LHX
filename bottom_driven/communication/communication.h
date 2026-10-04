@@ -15,6 +15,8 @@
 #define COMMUNICATION_TX_ID_D4         0x0D4U
 #define COMMUNICATION_TX_ID_D5         0x0D5U // 四轮转子转速。
 
+#define COMMUNICATION_TX_ID_D6         0x0D6U // 裁判热量与发射许可。
+
 // 上板发送给下板的报文 ID，也是下板滤波器唯一放行的两个 ID。
 #define COMMUNICATION_RX_ID_C1         0x0C1U
 #define COMMUNICATION_RX_ID_C2         0x0C2U
@@ -40,7 +42,7 @@ HAL_StatusTypeDef Communication_Init(void);
 // 通信任务周期调用：CAN2 进入 Bus-Off 时限频重启，使硬件自动重发恢复工作。
 void Communication_Service(void);
 
-// 发送一帧到上板。std_id 只允许 D1~D5，data 必须指向 8 字节数据。
+// 发送一帧到上板。std_id 只允许 D1~D6，data 必须指向 8 字节数据。
 HAL_StatusTypeDef Communication_Send(uint32_t std_id,
                                      const uint8_t data[COMMUNICATION_FRAME_SIZE]);
 
@@ -61,6 +63,10 @@ HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
 HAL_StatusTypeDef Communication_SendChassisYawRateState(float rate_deg_s, bool valid);
 // D5 每个电机占两个字节，int16 小端，单位 rpm。
 HAL_StatusTypeDef Communication_SendChassisWheelSpeeds(const int16_t speed_rpm[4]);
+
+// D6：热量/上限/冷却量各 uint16 小端，许可标志、热量更新序号。
+HAL_StatusTypeDef Communication_SendHeatState(uint16_t heat, uint16_t limit,
+    uint16_t cooling, bool valid, bool output_allowed, uint8_t sequence);
 
 // 由统一 HAL FDCAN FIFO0 回调调用，不应由任务代码直接调用。
 void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,

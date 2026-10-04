@@ -59,17 +59,17 @@ HAL_StatusTypeDef Motor3508_Init(void)
     pid_pending = false;
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        PID_Init(&motor3508_position_pid[i], motor3508_config.position_kp,
-                 motor3508_config.position_ki, motor3508_config.position_kd,
-                 motor3508_config.position_integral_limit,
-                 motor3508_config.position_output_limit, motor3508_config.pid_control_time_s);
+        PID_Init(&motor3508_position_pid[i], motor3508_config.position.kp,
+                 motor3508_config.position.ki, motor3508_config.position.kd,
+                 motor3508_config.position.integral_limit,
+                 motor3508_config.position.output_limit, motor3508_config.pid_control_time_s);
     }
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        PID_Init(&motor3508_speed_pid[i], motor3508_config.speed_kp,
-                 motor3508_config.speed_ki, motor3508_config.speed_kd,
-                 motor3508_config.speed_integral_limit,
-                 motor3508_config.speed_output_limit, motor3508_config.pid_control_time_s);
+        PID_Init(&motor3508_speed_pid[i], motor3508_config.speed.kp,
+                 motor3508_config.speed.ki, motor3508_config.speed.kd,
+                 motor3508_config.speed.integral_limit,
+                 motor3508_config.speed.output_limit, motor3508_config.pid_control_time_s);
     }
     return HAL_OK;
 }
@@ -123,9 +123,9 @@ HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
         PID_UpdateParameters(&motor3508_speed_pid[i],
-            motor3508_config.speed_kp, motor3508_config.speed_ki,
-            motor3508_config.speed_kd, motor3508_config.speed_integral_limit,
-            motor3508_config.speed_output_limit,
+            motor3508_config.speed.kp, motor3508_config.speed.ki,
+            motor3508_config.speed.kd, motor3508_config.speed.integral_limit,
+            motor3508_config.speed.output_limit,
             motor3508_config.pid_control_time_s);
     }
     for (i = 0U; i < MOTOR3508_COUNT; i++)
@@ -175,15 +175,15 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
     for (index = 0U; index < MOTOR3508_COUNT; ++index)
     {
         PID_UpdateParameters(&motor3508_position_pid[index],
-            motor3508_config.position_kp, motor3508_config.position_ki,
-            motor3508_config.position_kd,
-            motor3508_config.position_integral_limit,
-            motor3508_config.position_output_limit,
+            motor3508_config.position.kp, motor3508_config.position.ki,
+            motor3508_config.position.kd,
+            motor3508_config.position.integral_limit,
+            motor3508_config.position.output_limit,
             motor3508_config.pid_control_time_s);
         PID_UpdateParameters(&motor3508_speed_pid[index],
-            motor3508_config.speed_kp, motor3508_config.speed_ki,
-            motor3508_config.speed_kd, motor3508_config.speed_integral_limit,
-            motor3508_config.speed_output_limit,
+            motor3508_config.speed.kp, motor3508_config.speed.ki,
+            motor3508_config.speed.kd, motor3508_config.speed.integral_limit,
+            motor3508_config.speed.output_limit,
             motor3508_config.pid_control_time_s);
         target_speed = PID_Calc(&motor3508_position_pid[index], target_angles[index],
                                 feedback[index].position_deg);

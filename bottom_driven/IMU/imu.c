@@ -113,6 +113,7 @@ static bool imu_verify(GPIO_TypeDef *port, uint16_t pin,
     return imu_read_reg(port, pin, reg, accel) == value;
 }
 
+// 复位 BMI088 加速度计和陀螺仪，校验芯片 ID 并设置量程、滤波和采样参数。
 static uint8_t bmi088_init(void)
 {
     imu_select(IMU_ACCEL_CS_PORT, IMU_ACCEL_CS_PIN, false);
@@ -240,6 +241,7 @@ static bool imu_update_attitude(const float gyro[3], const float accel[3], float
     return true;
 }
 
+// 复位底盘姿态状态，配置 SPI 与片选，初始化 BMI088 并完成启动静止零偏标定。
 HAL_StatusTypeDef ChassisImu_Init(void)
 {
     GPIO_InitTypeDef gpio = {0};
