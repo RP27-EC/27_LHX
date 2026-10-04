@@ -78,7 +78,7 @@ typedef struct
     uint32_t dial_block_confirm_ticks; // 堵转判据需连续满足的控制周期数。
     uint32_t dial_stuck_reverse_timeout_ms; // 堵转后反向退让的最长时间。
     uint32_t dial_stuck_reload_timeout_ms; // 退让后重试原目标的最长时间。
-    uint32_t dial_safe_stop_retry_ms; // 安全态零电流帧重发间隔。
+    uint32_t dial_safe_stop_retry_ms; // 失联零电流帧重发间隔。
     uint32_t mouse_continuous_threshold_ms; // 鼠标按住转为连发的时间门槛，此前松开记为单发，ms。
 } ShootConfig;
 extern volatile ShootConfig shoot_config; // 发射动作和堵转恢复参数。

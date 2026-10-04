@@ -643,7 +643,7 @@ static void cloud_control_pitch_imu(int16_t input,
         cloud_config.pitch_rate_integral_limit, cloud_config.pitch_torque_limit_raw,
         motor4310_config.control_period_s);
     cloud_pitch_rate_target_deg_s = PID_Calc(&pitch_angle_pid, cloud_pitch_target_deg, angle);
-    // 即使以后启用积分，也不允许目标速度继续指向限位外侧。
+    // 到达限位后拦截向外的目标速度，含积分产生的速度。
     if ((feedback->total_angle <= lower && cloud_pitch_rate_target_deg_s < 0.0f) ||
         (feedback->total_angle >= upper && cloud_pitch_rate_target_deg_s > 0.0f))
     { cloud_pitch_rate_target_deg_s = 0.0f; }

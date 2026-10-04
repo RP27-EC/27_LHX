@@ -76,7 +76,7 @@ void ShootConfig_Init(void)
     shoot_config.dial_block_confirm_ticks = 50U; // 堵转判据需连续满足的控制周期数。
     shoot_config.dial_stuck_reverse_timeout_ms = 200U; // 堵转反向退让超时，ms。
     shoot_config.dial_stuck_reload_timeout_ms = 200U; // 退让后重新上弹超时，ms。
-    shoot_config.dial_safe_stop_retry_ms = 20U; // 安全态零电流帧重发间隔，ms。
+    shoot_config.dial_safe_stop_retry_ms = 20U; // 失联零电流帧重发间隔，ms。
     shoot_config.mouse_continuous_threshold_ms = 200U; // 鼠标按住转为连发的时间门槛，此前松开记为单发，ms。
 }
 

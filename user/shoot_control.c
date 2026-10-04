@@ -228,8 +228,7 @@ static void Shoot_DialUpdate(bool single_rising, bool continuous)
     case SHOOT_DIAL_FEED:
         (void)DialMotor_PositionControl(shoot_control_state.dial.target);
         if (Shoot_DialBlockCheck(&feedback,
-                Shoot_AbsInt64(shoot_control_state.dial.target - feedback.encoder_total) >
-                    shoot_config.dial_arrived_error_counts))
+                !Shoot_DialArrived(&feedback)))
         {
             Shoot_DialEnterStuckRecovery(&feedback, false);
         }

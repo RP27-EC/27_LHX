@@ -382,7 +382,7 @@ void Motor4310_ParseFeedbackMotor(Motor4310_Id_t id,
     counts_per_round = (int32_t)(MOTOR4310_ECD_PER_ROUND + 0.5f);
     if (!motor->initialized)
     {
-        // 上电后以编码器数值 0 为整体零点，而不是以第一帧位置为零点。
+        // 上电后以编码器数值 0 为整体零点。
         motor->last_angle = angle;
         motor->total_angle = (int32_t)angle;
         // 将跨圈附近的编码器值映射到零点附近。

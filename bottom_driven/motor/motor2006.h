@@ -25,7 +25,7 @@ typedef struct
     int16_t current_raw; // C610 回传电流原始码。
     uint8_t temperature; // 电机温度，摄氏度。
     volatile bool received; // 是否收到过有效反馈。
-    volatile bool online; // 最近 100 ms 内是否收到反馈。
+    volatile bool online; // 反馈是否在配置的在线超时范围内。
     volatile uint32_t last_rx_ms; // 最近反馈时间。
     volatile uint32_t rx_count; // 有效反馈累计帧数。
 } Motor2006_Feedback_t;
@@ -38,7 +38,7 @@ HAL_StatusTypeDef Motor2006_Init(void);
 // 与摩擦轮共用 0x200 帧；非零命令超时自动归零。
 HAL_StatusTypeDef Motor2006_SetCurrent(int16_t current_raw);
 HAL_StatusTypeDef Motor2006_Stop(void);
-// 速度目标为转子 rad/s，调用周期 1 ms。
+// 速度目标为转子 rad/s，调用周期与速度 PID 配置一致。
 HAL_StatusTypeDef Motor2006_SpeedControl(float target_rotor_rad_s);
 void Motor2006_ResetSpeedPID(void);
 

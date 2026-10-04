@@ -18,7 +18,7 @@ typedef enum
     UPPER_SHOOT_BLOCK_NONE = 0, // 发射许可有效。
     UPPER_SHOOT_BLOCK_REMOTE, // 遥控无效或离线。
     UPPER_SHOOT_BLOCK_LIFT, // 升降安全快照尚未放行。
-    UPPER_SHOOT_BLOCK_SPIN, // 小陀螺模式禁止发射。
+    UPPER_SHOOT_BLOCK_SPIN, // 遥控拨杆小陀螺禁止发射，键鼠小陀螺允许发射。
     UPPER_SHOOT_BLOCK_REARM, // 等待新的拨杆操作或键鼠布防。
     UPPER_SHOOT_BLOCK_FRICTION, // 摩擦轮电机离线。
     UPPER_SHOOT_BLOCK_DIAL // 拨盘离线，只允许摩擦轮待发。

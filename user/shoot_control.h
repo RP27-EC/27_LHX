@@ -15,7 +15,7 @@ extern "C" {
 
 typedef enum
 {
-    SHOOT_DIAL_IDLE = 0, // 保持当前位置，等待单发触发。
+    SHOOT_DIAL_IDLE = 0, // 保持配置的单圈位置，等待供弹请求。
     SHOOT_DIAL_FEED, // 向累计单发目标正向供弹。
     SHOOT_DIAL_CONTINUOUS, // 速度闭环连续供弹。
     SHOOT_DIAL_STUCK_REVERSE, // 堵转后沿反方向退让。
@@ -27,7 +27,7 @@ typedef struct
     ShootDialState_t state; // 拨盘当前状态枚举。
     uint32_t state_start_ms; // 当前状态进入时间，ms。
     int64_t target; // 拨盘累计编码器目标。
-    bool target_synced; // 目标已与实测位置同步。
+    bool target_synced; // 已根据累计位置建立固定单圈供弹目标。
 } ShootDialMotionState_t;
 
 typedef struct
@@ -40,8 +40,8 @@ typedef struct
 
 typedef struct
 {
-    bool holding; // 待机保持目标已锁定，不随反馈抖动更新。
-    bool stopped; // 安全态零电流命令已成功入队。
+    bool holding; // 待机固定单圈目标已锁定。
+    bool stopped; // 失联零电流命令已成功入队。
     uint32_t last_stop_ms; // 最近一次零电流命令入队时间，ms。
 } ShootDialStopState_t;
 
@@ -89,7 +89,7 @@ typedef struct
     ShootFricRecoveryState_t friction; // 摩擦轮堵转检测和电流脉冲。
     ShootDialMotionState_t dial; // 拨盘位置目标与状态机。
     ShootDialRecoveryState_t recovery; // 堵转检测与恢复过程。
-    ShootDialStopState_t stop; // 安全态零电流命令重发状态。
+    ShootDialStopState_t stop; // 待机位置保持与失联零电流重发状态。
     ShootRemoteEdgeState_t remote; // 遥控拨杆边沿和模式记忆。
     ShootKeyboardSingleState_t keyboard; // 键鼠单发事件锁存。
     ShootCounterState_t count; // 调试器可查看的累计计数。
@@ -98,7 +98,7 @@ typedef struct
 extern volatile ShootControlState_t shoot_control_state; // 发射动作、堵转恢复和事件状态。
 
 void ShootControl_Init(void);
-// 在线时待机锁定位置；断联时撤销保持并输出零电流。
+// 在线时待机保持配置的单圈位置；断联时输出零电流。
 void ShootControl_SetIdleHoldEnabled(bool enabled);
 
 // 随发射任务调用；单发仅在右拨杆进入上档的边沿触发。
