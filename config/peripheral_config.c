@@ -128,19 +128,19 @@ volatile DialMotorConfig dial_motor_config; // 拨盘电机闭环与通信参数
 void DialPositionPidConfig_Init(volatile DialPositionPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.12f; // 拨盘位置环比例增益。
+    config->kp = 0.07f; // 拨盘位置环比例增益。
     config->ki = 0.05f; // 拨盘位置环积分增益。
     config->kd = 0.0f; // 拨盘位置环微分增益。
     config->integral_limit = 0.0f; // 位置环积分项限幅。
-    config->speed_limit_dps = 7000.0f; // 位置环目标速度限幅，度/s。
+    config->speed_limit_dps = 3500.0f; // 位置环目标速度限幅，度/s。
 }
 
 // 加载拨盘单发速度内环 PID 及单发、连发共用的积分与电流限幅。
 void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.08f; // 单发速度环比例增益。
-    config->ki = 0.05f; // 单发速度环积分增益。
+    config->kp = 0.07f; // 单发速度环比例增益。
+    config->ki = 0.03f; // 单发速度环积分增益。
     config->kd = 0.0f; // 单发速度环微分增益。
     config->integral_limit = 500.0f; // 速度环积分项限幅。
     config->output_limit = 1500.0f; // 速度环电流码输出限幅。

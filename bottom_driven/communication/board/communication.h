@@ -1,6 +1,8 @@
 #ifndef COMMUNICATION_H
 #define COMMUNICATION_H
 
+#include "peripheral_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -129,6 +131,55 @@ void Communication_Process(void);
 // 原子复制当前遥控结果；返回值表示遥控链路当前是否在线。
 bool Communication_RC_Get(Communication_RcControl_t *control);
 bool Communication_RC_IsOnline(void);
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const volatile Communication_CanRxFrame_t *frames; // D1~D6 原始帧；控制读取用 ops.can_get_latest。
+    const Communication_RcControl_t *remote; // 拼帧完成后的遥控解析结果。
+} BoardLinkModuleDataRefs;
+
+typedef struct
+{
+    const volatile bool *remote_online; // 遥控链路在线状态。
+    const volatile uint32_t *valid_count; // 有效遥控帧累计数。
+    const volatile uint32_t *last_valid_ms; // 最近有效遥控帧时刻。
+    const volatile uint32_t *assembly_errors; // 遥控拼帧错误数。
+} BoardLinkModuleDiagnosticsRefs;
+
+typedef struct
+{
+    volatile CommunicationConfig *config; // 当前可调驱动参数。
+    BoardLinkModuleDataRefs data; // 反馈与解析数据引用。
+    BoardLinkModuleDiagnosticsRefs diagnostics; // 通信诊断引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*can_init)(void); // 初始化板间 CAN 接收。
+
+    // 数据读取与在线检查。
+    bool (*can_get_chassis_yaw_rate)(float *rate_deg_s); // 读取下板 Yaw 角速度。
+    bool (*can_get_chassis_yaw_rate_state)(float *rate_deg_s, uint32_t *sample_ms); // 读取下板角速度及采样时刻。
+    bool (*can_get_latest)(uint16_t std_id, Communication_CanRxFrame_t *frame); // 复制指定 ID 的原始接收帧。
+    bool (*get_heat_snapshot)(Communication_HeatSnapshot_t *heat); // 复制热量与供弹许可快照。
+    bool (*rc_get)(Communication_RcControl_t *control); // 复制已解析遥控数据。
+    bool (*rc_is_online)(void); // 读取遥控链路在线状态。
+
+    // 控制与发送。
+    HAL_StatusTypeDef (*can_send)(uint16_t std_id, const uint8_t data[COMM_CAN_FRAME_SIZE]); // 发送板间标准帧。
+    HAL_StatusTypeDef (*can_send_c1)(const uint8_t data[COMM_CAN_FRAME_SIZE]); // 发送云台状态帧。
+    HAL_StatusTypeDef (*can_send_c2)(const uint8_t data[COMM_CAN_FRAME_SIZE]); // 发送升降锁车帧。
+    HAL_StatusTypeDef (*can_send_lift_lock)(bool hold, uint8_t sequence); // 编码并发送升降锁车状态。
+    HAL_StatusTypeDef (*can_send_yaw_angle)(float angle_deg); // 编码并发送云台角度。
+    HAL_StatusTypeDef (*can_send_yaw_state)(
+        float angle_deg, bool turning, bool allow_turn, bool allow_spin, bool spin_selected,
+        bool angle_valid, bool bottom_mode_blocked); // 编码并发送云台角度与模式许可。
+
+    // 状态维护。
+    void (*process)(void); // 周期处理接收数据和在线状态。
+} BoardLinkModule;
+
+extern const BoardLinkModule board_link; // 模块统一访问入口。
 
 #ifdef __cplusplus
 }

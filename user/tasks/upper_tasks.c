@@ -32,9 +32,9 @@ static void UpperTasks_CommunicationStep(void)
 {
     Communication_RcControl_t remote_control;
 
-    Communication_Process();
+    board_link.process();
     RemoteState_Update(&remote_control,
-                       Communication_RC_Get(&remote_control));
+                       board_link.rc_get(&remote_control));
 }
 
 static void UpperTasks_ShootStep(void)
@@ -52,12 +52,12 @@ static void UpperTasks_ShootStep(void)
     RemoteState_t remote;
     RemoteShoot_t shoot_mode;
 
-    Motor3508_Heartbeat();
-    DialMotor_Heartbeat();
+    motor3508.heartbeat();
+    dial_motor.heartbeat();
     friction_motors_online =
-        Motor3508_OnlineCheck(SHOOT_LEFT_FRIC_MOTOR_ID) &&
-        Motor3508_OnlineCheck(SHOOT_RIGHT_FRIC_MOTOR_ID);
-    dial_motor_online = DialMotor_OnlineCheck();
+        motor3508.online_check(SHOOT_LEFT_FRIC_MOTOR_ID) &&
+        motor3508.online_check(SHOOT_RIGHT_FRIC_MOTOR_ID);
+    dial_motor_online = dial_motor.online_check();
     RemoteState_Get(&remote);
 
     shoot_allowed = LiftControl_SafetyGet(&safety) && safety.shoot_allowed &&
@@ -132,8 +132,8 @@ static void UpperTasks_ControlStep(void)
     RemoteState_t remote;
 
     // 一次遥控快照先判安全，再供云台和升降使用；C1 不会落后一整周期。
-    (void)GimbalImu_Update();
-    Motor2006_Heartbeat();
+    (void)gimbal_imu_driver.update();
+    motor2006.heartbeat();
     RemoteState_Get(&remote);
     LiftControl_SafetyUpdate(&remote);
     CloudTerrace_Update(&remote);

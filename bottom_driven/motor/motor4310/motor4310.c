@@ -92,11 +92,11 @@ HAL_StatusTypeDef Motor4310_Init(void)
     {
         if (i == MOTOR4310_PITCH)
         {
-            PID_Init(&motor4310_speed_pids[i], pitch_pid.speed.kp,
+            pid_algorithm.ops.init(&motor4310_speed_pids[i], pitch_pid.speed.kp,
                      pitch_pid.speed.ki, pitch_pid.speed.kd,
                      pitch_pid.speed.integral_limit, pitch_pid.speed.output_limit,
                      motor4310_config.control_period_s);
-            PID_Init(&motor4310_position_pids[i], pitch_pid.position.kp,
+            pid_algorithm.ops.init(&motor4310_position_pids[i], pitch_pid.position.kp,
                      pitch_pid.position.ki, pitch_pid.position.kd,
                      pitch_pid.position.integral_limit,
                      pitch_pid.position.output_limit,
@@ -104,12 +104,12 @@ HAL_StatusTypeDef Motor4310_Init(void)
         }
         else
         {
-            PID_Init(&motor4310_speed_pids[i], motor4310_config.yaw_hold.speed.kp,
+            pid_algorithm.ops.init(&motor4310_speed_pids[i], motor4310_config.yaw_hold.speed.kp,
                      motor4310_config.yaw_hold.speed.ki, motor4310_config.yaw_hold.speed.kd,
                      motor4310_config.yaw_hold.speed.integral_limit,
                      motor4310_config.yaw_hold.speed.output_limit,
                      motor4310_config.control_period_s);
-            PID_Init(&motor4310_position_pids[i], motor4310_config.yaw_hold.position.kp,
+            pid_algorithm.ops.init(&motor4310_position_pids[i], motor4310_config.yaw_hold.position.kp,
                      motor4310_config.yaw_hold.position.ki, motor4310_config.yaw_hold.position.kd,
                      motor4310_config.yaw_hold.position.integral_limit,
                      motor4310_config.yaw_hold.position.output_limit,
@@ -148,8 +148,8 @@ bool Motor4310_AllOnline(void)
 void Motor4310_ResetControl(Motor4310_Id_t id)
 {
     if (!valid_id(id)) { return; }
-    PID_Reset(&motor4310_speed_pids[id]);
-    PID_Reset(&motor4310_position_pids[id]);
+    pid_algorithm.ops.reset(&motor4310_speed_pids[id]);
+    pid_algorithm.ops.reset(&motor4310_position_pids[id]);
 }
 
 void Motor4310_Heartbeat(void)
@@ -273,19 +273,19 @@ static HAL_StatusTypeDef motor_speed_control(
     }
     if (active_profile != NULL)
     {
-        PID_UpdateParameters(&motor4310_speed_pids[id],
+        pid_algorithm.ops.update_parameters(&motor4310_speed_pids[id],
             active_profile->speed.kp, active_profile->speed.ki, active_profile->speed.kd,
             active_profile->speed.integral_limit, active_profile->speed.output_limit,
             motor4310_config.control_period_s);
     }
     else
     {
-        PID_UpdateParameters(&motor4310_speed_pids[id],
+        pid_algorithm.ops.update_parameters(&motor4310_speed_pids[id],
             motor4310_config.yaw_hold.speed.kp, motor4310_config.yaw_hold.speed.ki,
             motor4310_config.yaw_hold.speed.kd, motor4310_config.yaw_hold.speed.integral_limit,
             motor4310_config.yaw_hold.speed.output_limit, motor4310_config.control_period_s);
     }
-    output = PID_Calc(&motor4310_speed_pids[id], (float)target_speed,
+    output = pid_algorithm.ops.calc(&motor4310_speed_pids[id], (float)target_speed,
                       (float)feedback.speed);
     torque = (int32_t)output + feedforward_raw;
     if (id == MOTOR4310_YAW && enable_yaw_feedforward)
@@ -329,7 +329,7 @@ HAL_StatusTypeDef Motor4310_PositionControlWithProfile(
     }
     if (active_profile != NULL)
     {
-        PID_UpdateParameters(&motor4310_position_pids[id],
+        pid_algorithm.ops.update_parameters(&motor4310_position_pids[id],
             active_profile->position.kp, active_profile->position.ki,
             active_profile->position.kd, active_profile->position.integral_limit,
             active_profile->position.output_limit,
@@ -337,12 +337,12 @@ HAL_StatusTypeDef Motor4310_PositionControlWithProfile(
     }
     else
     {
-        PID_UpdateParameters(&motor4310_position_pids[id],
+        pid_algorithm.ops.update_parameters(&motor4310_position_pids[id],
             motor4310_config.yaw_hold.position.kp, motor4310_config.yaw_hold.position.ki,
             motor4310_config.yaw_hold.position.kd, motor4310_config.yaw_hold.position.integral_limit,
             motor4310_config.yaw_hold.position.output_limit, motor4310_config.control_period_s);
     }
-    speed = PID_Calc(&motor4310_position_pids[id], (float)target_position,
+    speed = pid_algorithm.ops.calc(&motor4310_position_pids[id], (float)target_position,
                      (float)motor4310_data[id].total_angle);
     return motor_speed_control(id, (int16_t)speed, feedforward_raw, active_profile,
                                enable_yaw_feedforward);
@@ -440,3 +440,40 @@ void Motor4310_CAN_RxFifo0Callback(CAN_HandleTypeDef *hcan)
         { Motor4310_ProcessCanFrame(hcan, header.StdId, data); }
     }
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const Motor4310Module motor4310 =
+{
+    .config = &motor4310_config,
+    .data = {
+        .feedback = motor4310_data,
+    },
+    .control = {
+        .position_pid = motor4310_position_pids,
+        .speed_pid = motor4310_speed_pids,
+    },
+    .init = Motor4310_Init,
+    .online_check = Motor4310_OnlineCheck,
+    .all_online = Motor4310_AllOnline,
+    .get_feedback = Motor4310_GetFeedback,
+    .heartbeat = Motor4310_Heartbeat,
+    .reset_control = Motor4310_ResetControl,
+    .enable_motor = Motor4310_EnableMotor,
+    .disable_motor = Motor4310_DisableMotor,
+    .position_control_motor = Motor4310_PositionControlMotor,
+    .position_control_with_feedforward = Motor4310_PositionControlWithFeedforward,
+    .position_control_with_profile = Motor4310_PositionControlWithProfile,
+    .speed_control_motor = Motor4310_SpeedControlMotor,
+    .speed_control_with_feedforward = Motor4310_SpeedControlWithFeedforward,
+    .set_torque_raw_motor = Motor4310_SetTorqueRawMotor,
+    .parse_feedback_motor = Motor4310_ParseFeedbackMotor,
+    .process_can_frame = Motor4310_ProcessCanFrame,
+    .enable = Motor4310_Enable,
+    .disable = Motor4310_Disable,
+    .set_torque_raw = Motor4310_SetTorqueRaw,
+    .speed_control = Motor4310_SpeedControl,
+    .position_control = Motor4310_PositionControl,
+    .position_to_ecd = Motor4310_PositionToEcd,
+    .parse_feedback = Motor4310_ParseFeedback,
+    .can_rx_fifo0_callback = Motor4310_CAN_RxFifo0Callback,
+};

@@ -104,33 +104,33 @@ int main(void)
   /* USER CODE BEGIN 2 */
   UpperPeripheralConfig_InitAll();
   UpperApplicationConfig_InitAll();
-  if (GimbalImu_Init() != HAL_OK)
+  if (gimbal_imu_driver.init() != HAL_OK)
   {
     /* Yaw 依赖上板 IMU 稳向，初始化失败时不允许进入电机控制。 */
     Error_Handler();
   }
 
-  if (Motor4310_Init() != HAL_OK)
+  if (motor4310.init() != HAL_OK)
   {
     Error_Handler();
   }
 
-  if (Motor3508_Init() != HAL_OK)
+  if (motor3508.init() != HAL_OK)
   {
     Error_Handler();
   }
 
-  if (Motor2006_Init() != HAL_OK)
+  if (motor2006.init() != HAL_OK)
   {
     Error_Handler();
   }
 
-  if (DialMotor_Init() != HAL_OK)
+  if (dial_motor.init() != HAL_OK)
   {
     Error_Handler();
   }
 
-  if (Communication_CAN_Init() != HAL_OK)
+  if (board_link.can_init() != HAL_OK)
   {
     Error_Handler();
   }

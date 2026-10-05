@@ -115,8 +115,8 @@ static void cloud_reset_pitch_imu(void)
     cloud_pitch_imu_online = false;
     cloud_pitch_rate_target_deg_s = 0.0f;
     cloud_pitch_torque_raw = 0;
-    PID_Reset(&pitch_angle_pid);
-    PID_Reset(&pitch_rate_pid);
+    pid_algorithm.ops.reset(&pitch_angle_pid);
+    pid_algorithm.ops.reset(&pitch_rate_pid);
 }
 
 static void cloud_reset_home(void)
@@ -136,10 +136,10 @@ static void cloud_reset_home(void)
 
     yaw_mechanical_target = 0;
     cloud_yaw_mechanical_gyro_online = false;
-    PID_Reset(&yaw_mechanical_rate_pid);
+    pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
     pitch_control.target_counts = 0.0f;
-    PID_Reset(&yaw_angle_pid);
-    PID_Reset(&yaw_rate_pid);
+    pid_algorithm.ops.reset(&yaw_angle_pid);
+    pid_algorithm.ops.reset(&yaw_rate_pid);
     cloud_yaw_imu_online = false;
     cloud_yaw_target_deg = 0.0f;
     cloud_yaw_angle_deg = 0.0f;
@@ -155,22 +155,22 @@ static void cloud_reset_home(void)
 void CloudTerrace_Init(void)
 {
     cloud_clear_chassis_rate_ff();
-    PID_Init(&yaw_angle_pid, cloud_config.yaw.inertial.angle.kp, cloud_config.yaw.inertial.angle.ki,
+    pid_algorithm.ops.init(&yaw_angle_pid, cloud_config.yaw.inertial.angle.kp, cloud_config.yaw.inertial.angle.ki,
              cloud_config.yaw.inertial.angle.kd, cloud_config.yaw.inertial.angle.integral_limit,
              cloud_config.yaw.inertial.angle.output_limit,
              motor4310_config.control_period_s);
-    PID_Init(&yaw_rate_pid, cloud_config.yaw.inertial.rate.kp, cloud_config.yaw.inertial.rate.ki,
+    pid_algorithm.ops.init(&yaw_rate_pid, cloud_config.yaw.inertial.rate.kp, cloud_config.yaw.inertial.rate.ki,
              cloud_config.yaw.inertial.rate.kd, cloud_config.yaw.inertial.rate.integral_limit,
              cloud_config.yaw.inertial.rate.output_limit, motor4310_config.control_period_s);
-    PID_Init(&pitch_angle_pid, cloud_config.pitch.inertial.angle.kp,
+    pid_algorithm.ops.init(&pitch_angle_pid, cloud_config.pitch.inertial.angle.kp,
         cloud_config.pitch.inertial.angle.ki, cloud_config.pitch.inertial.angle.kd,
         cloud_config.pitch.inertial.angle.integral_limit,
         cloud_config.pitch.inertial.angle.output_limit, motor4310_config.control_period_s);
-    PID_Init(&pitch_rate_pid, cloud_config.pitch.inertial.rate.kp,
+    pid_algorithm.ops.init(&pitch_rate_pid, cloud_config.pitch.inertial.rate.kp,
         cloud_config.pitch.inertial.rate.ki, cloud_config.pitch.inertial.rate.kd,
         cloud_config.pitch.inertial.rate.integral_limit, cloud_config.pitch.inertial.rate.output_limit,
         motor4310_config.control_period_s);
-    PID_Init(&yaw_mechanical_rate_pid, cloud_config.yaw.mechanical.rate.kp,
+    pid_algorithm.ops.init(&yaw_mechanical_rate_pid, cloud_config.yaw.mechanical.rate.kp,
         cloud_config.yaw.mechanical.rate.ki, cloud_config.yaw.mechanical.rate.kd,
         cloud_config.yaw.mechanical.rate.integral_limit,
         cloud_config.yaw.mechanical.rate.output_limit, motor4310_config.control_period_s);
@@ -346,8 +346,8 @@ static bool cloud_turn_start(void)
     cloud_yaw_mechanical_gyro_online = false;
     cloud_yaw_imu_online = false; // 完成后惯性控制从实际朝向重新接管。
     Motor4310_ResetControl(MOTOR4310_YAW);
-    PID_Reset(&yaw_angle_pid);
-    PID_Reset(&yaw_rate_pid);
+    pid_algorithm.ops.reset(&yaw_angle_pid);
+    pid_algorithm.ops.reset(&yaw_rate_pid);
     return true;
 }
 
@@ -412,8 +412,8 @@ static void cloud_control_yaw(int16_t input)
         cloud_yaw_mechanical_gyro_online = false;
         // 切回惯性控制时从当前 IMU 朝向重建目标。
         Motor4310_ResetControl(MOTOR4310_YAW);
-        PID_Reset(&yaw_angle_pid);
-        PID_Reset(&yaw_rate_pid);
+        pid_algorithm.ops.reset(&yaw_angle_pid);
+        pid_algorithm.ops.reset(&yaw_rate_pid);
         cloud_yaw_imu_online = false;
         yaw_mechanical_mode = false;
 
@@ -424,8 +424,8 @@ static void cloud_control_yaw(int16_t input)
     if (!GimbalImu_Get(&imu))
     {
         cloud_yaw_imu_online = false;
-        PID_Reset(&yaw_angle_pid);
-        PID_Reset(&yaw_rate_pid);
+        pid_algorithm.ops.reset(&yaw_angle_pid);
+        pid_algorithm.ops.reset(&yaw_rate_pid);
         cloud_yaw_torque_raw = 0;
         (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
         return;
@@ -435,8 +435,8 @@ static void cloud_control_yaw(int16_t input)
     {
         // IMU 恢复时从当前朝向重新接管，避免追赶旧目标突跳。
         cloud_yaw_target_deg = imu.yaw_total_deg;
-        PID_Reset(&yaw_angle_pid);
-        PID_Reset(&yaw_rate_pid);
+        pid_algorithm.ops.reset(&yaw_angle_pid);
+        pid_algorithm.ops.reset(&yaw_rate_pid);
     }
     cloud_yaw_imu_online = true;
     cloud_yaw_angle_deg = imu.yaw_total_deg;
@@ -445,19 +445,19 @@ static void cloud_control_yaw(int16_t input)
     cloud_yaw_target_deg += cloud_config.yaw.rc_direction *
         (float)input / CLOUD_RC_MAX_VALUE * cloud_config.yaw.command_rate_deg_s *
         motor4310_config.control_period_s;
-    PID_UpdateParameters(&yaw_angle_pid,
+    pid_algorithm.ops.update_parameters(&yaw_angle_pid,
         cloud_config.yaw.inertial.angle.kp, cloud_config.yaw.inertial.angle.ki,
         cloud_config.yaw.inertial.angle.kd, cloud_config.yaw.inertial.angle.integral_limit,
         cloud_config.yaw.inertial.angle.output_limit,
         motor4310_config.control_period_s);
-    PID_UpdateParameters(&yaw_rate_pid,
+    pid_algorithm.ops.update_parameters(&yaw_rate_pid,
         cloud_config.yaw.inertial.rate.kp, cloud_config.yaw.inertial.rate.ki,
         cloud_config.yaw.inertial.rate.kd, cloud_config.yaw.inertial.rate.integral_limit,
         cloud_config.yaw.inertial.rate.output_limit,
         motor4310_config.control_period_s);
-    cloud_yaw_rate_target_deg_s = PID_Calc(
+    cloud_yaw_rate_target_deg_s = pid_algorithm.ops.calc(
         &yaw_angle_pid, cloud_yaw_target_deg, imu.yaw_total_deg);
-    torque = PID_Calc(&yaw_rate_pid, cloud_yaw_rate_target_deg_s,
+    torque = pid_algorithm.ops.calc(&yaw_rate_pid, cloud_yaw_rate_target_deg_s,
                       imu.yaw_rate_deg_s);
     // 跟随和小陀螺的 IMU 稳向控制不叠加固定前馈。
     cloud_yaw_torque_raw = (int16_t)torque;
@@ -489,13 +489,13 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
             360.0f / MOTOR4310_ECD_PER_ROUND)) >= cloud_config.yaw.front_switch_deg;
         yaw_mechanical_target = cloud_nearest_front_target(
             cloud_front_reversed, yaw.total_angle);
-        PID_Reset(&yaw_angle_pid);
-        PID_Reset(&yaw_rate_pid);
+        pid_algorithm.ops.reset(&yaw_angle_pid);
+        pid_algorithm.ops.reset(&yaw_rate_pid);
         Motor4310_ResetControl(MOTOR4310_YAW);
         cloud_yaw_imu_online = false;
         yaw_mechanical_mode = true;
         cloud_yaw_mechanical_gyro_online = false;
-        PID_Reset(&yaw_mechanical_rate_pid);
+        pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
 
     }
 
@@ -507,7 +507,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
         // 陀螺仪不可用就停闭环；保留机械目标，恢复后继续回正。
         cloud_yaw_mechanical_gyro_online = false;
         Motor4310_ResetControl(MOTOR4310_YAW);
-        PID_Reset(&yaw_mechanical_rate_pid);
+        pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
         (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
         return;
     }
@@ -526,7 +526,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
         else if (error < -deadzone_counts) { control_target += deadzone_counts; }
         else { control_target = yaw.total_angle; }
     }
-    // 编码器位置外环保持原参数；速度码只是目标指令，随后换算为 °/s。
+    // 编码器位置环生成目标速度码，换算为 °/s 后送入陀螺仪速度环。
     speed_limit = fabsf(motor4310_config.yaw_hold.position.output_limit);
     brake_gain = cloud_config.yaw.mechanical.brake_speed_at_1deg_raw;
     if (brake_gain > 0.0f)
@@ -537,18 +537,18 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
         if (speed_limit > brake_limit) { speed_limit = brake_limit; }
     }
     cloud_yaw_mechanical_speed_limit_raw = speed_limit;
-    PID_UpdateParameters(position_pid, motor4310_config.yaw_hold.position.kp,
+    pid_algorithm.ops.update_parameters(position_pid, motor4310_config.yaw_hold.position.kp,
         motor4310_config.yaw_hold.position.ki, motor4310_config.yaw_hold.position.kd,
         motor4310_config.yaw_hold.position.integral_limit, speed_limit,
         motor4310_config.control_period_s);
     if (gyro_recovered)
     {
         // 恢复时避免位置微分把当前误差当成突变。
-        PID_Reset(position_pid);
+        pid_algorithm.ops.reset(position_pid);
         position_pid->LastError = (float)(control_target - yaw.total_angle);
-        PID_Reset(&yaw_mechanical_rate_pid);
+        pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
     }
-    speed_command = PID_Calc(position_pid, (float)control_target, (float)yaw.total_angle);
+    speed_command = pid_algorithm.ops.calc(position_pid, (float)control_target, (float)yaw.total_angle);
     command_scale = cloud_config.yaw.mechanical.command_deg_s_per_raw;
     if (!(command_scale > 0.0f && command_scale <= 100.0f)) { command_scale = 1.0f; }
     direction = cloud_config.yaw.mechanical.gyro_direction < 0.0f ? -1.0f : 1.0f;
@@ -556,7 +556,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
     cloud_yaw_rate_target_deg_s = speed_command * command_scale +
         cloud_mechanical_chassis_rate_ff();
     cloud_yaw_rate_deg_s = direction * imu.yaw_rate_deg_s;
-    PID_UpdateParameters(&yaw_mechanical_rate_pid,
+    pid_algorithm.ops.update_parameters(&yaw_mechanical_rate_pid,
         cloud_config.yaw.mechanical.rate.kp, cloud_config.yaw.mechanical.rate.ki,
         cloud_config.yaw.mechanical.rate.kd, cloud_config.yaw.mechanical.rate.integral_limit,
         fminf(2047.0f, fabsf(cloud_config.yaw.mechanical.rate.output_limit)),
@@ -567,7 +567,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
             cloud_yaw_rate_target_deg_s - cloud_yaw_rate_deg_s;
     }
     // 内环使用上板陀螺仪；死区内取消回正速度，底盘随动前馈仍保留。
-    torque = PID_Calc(&yaw_mechanical_rate_pid, cloud_yaw_rate_target_deg_s,
+    torque = pid_algorithm.ops.calc(&yaw_mechanical_rate_pid, cloud_yaw_rate_target_deg_s,
                      cloud_yaw_rate_deg_s);
     cloud_yaw_torque_raw = (int16_t)torque;
     (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, cloud_yaw_torque_raw);
@@ -635,21 +635,21 @@ static void cloud_control_pitch_imu(int16_t input,
     upper_deg = angle + (float)(upper - feedback->total_angle) *
         360.0f / MOTOR4310_ECD_PER_ROUND;
     cloud_pitch_target_deg = fmaxf(lower_deg, fminf(upper_deg, cloud_pitch_target_deg));
-    PID_UpdateParameters(&pitch_angle_pid, cloud_config.pitch.inertial.angle.kp,
+    pid_algorithm.ops.update_parameters(&pitch_angle_pid, cloud_config.pitch.inertial.angle.kp,
         cloud_config.pitch.inertial.angle.ki, cloud_config.pitch.inertial.angle.kd,
         cloud_config.pitch.inertial.angle.integral_limit, cloud_config.pitch.inertial.angle.output_limit,
         motor4310_config.control_period_s);
-    PID_UpdateParameters(&pitch_rate_pid, cloud_config.pitch.inertial.rate.kp,
+    pid_algorithm.ops.update_parameters(&pitch_rate_pid, cloud_config.pitch.inertial.rate.kp,
         cloud_config.pitch.inertial.rate.ki, cloud_config.pitch.inertial.rate.kd,
         cloud_config.pitch.inertial.rate.integral_limit, cloud_config.pitch.inertial.rate.output_limit,
         motor4310_config.control_period_s);
-    cloud_pitch_rate_target_deg_s = PID_Calc(&pitch_angle_pid, cloud_pitch_target_deg, angle);
+    cloud_pitch_rate_target_deg_s = pid_algorithm.ops.calc(&pitch_angle_pid, cloud_pitch_target_deg, angle);
     // 到达限位后拦截向外的目标速度，含积分产生的速度。
     if ((feedback->total_angle <= lower && cloud_pitch_rate_target_deg_s < 0.0f) ||
         (feedback->total_angle >= upper && cloud_pitch_rate_target_deg_s > 0.0f))
     { cloud_pitch_rate_target_deg_s = 0.0f; }
     // 速度环纠偏与机械角重力补偿相加，再统一限制转矩。
-    torque = PID_Calc(&pitch_rate_pid, cloud_pitch_rate_target_deg_s,
+    torque = pid_algorithm.ops.calc(&pitch_rate_pid, cloud_pitch_rate_target_deg_s,
                      cloud_pitch_rate_deg_s) + (float)gravity;
     limit = fminf(2047.0f, fabsf(cloud_config.pitch.inertial.rate.output_limit));
     torque = fmaxf(-limit, fminf(limit, torque));

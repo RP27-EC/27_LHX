@@ -1,6 +1,8 @@
 #ifndef MOTOR2006_H
 #define MOTOR2006_H
 
+#include "peripheral_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -54,6 +56,49 @@ HAL_StatusTypeDef Motor2006_SendFrictionCurrents(int16_t left_raw,
 void Motor2006_ProcessCanFrame(CAN_HandleTypeDef *hcan,
                                uint32_t std_id,
                                const uint8_t data[MOTOR2006_FRAME_SIZE]);
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const Motor2006_Feedback_t *feedback; // 升降电机反馈与累计转子位置。
+} Motor2006ModuleDataRefs;
+
+typedef struct
+{
+    const PID_Controller_t *speed_pid; // 升降速度环状态。
+} Motor2006ModuleControlRefs;
+
+typedef struct
+{
+    volatile Motor2006Config *config; // 当前可调驱动参数。
+    Motor2006ModuleDataRefs data; // 反馈与解析数据引用。
+    Motor2006ModuleControlRefs control; // 驱动闭环状态引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*get_feedback)(Motor2006_Feedback_t *feedback); // 复制指定电机反馈。
+    bool (*online_check)(void); // 检查反馈在线状态。
+    float (*get_output_angle_deg)(void); // 读取升降输出轴相对角度。
+
+    // 控制与发送。
+    HAL_StatusTypeDef (*set_current)(int16_t current_raw); // 设置升降电流命令。
+    HAL_StatusTypeDef (*stop)(void); // 发送停止命令。
+    HAL_StatusTypeDef (*speed_control)(float target_rotor_rad_s); // 执行速度闭环。
+    HAL_StatusTypeDef (*send_friction_currents)(int16_t left_raw, int16_t right_raw); // 拼接摩擦轮与升降的群组电流帧。
+
+    // 状态维护。
+    void (*reset_speed_pid)(void); // 清空速度环状态。
+    void (*heartbeat)(void); // 更新反馈在线状态。
+
+    // 接收与解析。
+    void (*process_can_frame)(
+        CAN_HandleTypeDef *hcan, uint32_t std_id, const uint8_t data[MOTOR2006_FRAME_SIZE]); // 分发并解析 CAN 反馈。
+} Motor2006Module;
+
+extern const Motor2006Module motor2006; // 模块统一访问入口。
 
 #ifdef __cplusplus
 }

@@ -47,7 +47,7 @@ HAL_StatusTypeDef Motor3508_Init(void)
     memset(motor3508_feedback, 0, sizeof(motor3508_feedback));
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
-        PID_Init(&motor3508_speed_pid[index],
+        pid_algorithm.ops.init(&motor3508_speed_pid[index],
                  motor3508_config.speed.kp,
                  motor3508_config.speed.ki,
                  motor3508_config.speed.kd,
@@ -113,13 +113,13 @@ HAL_StatusTypeDef Motor3508_SpeedControl(int16_t target_speed_rpm)
     target[1] = base_target * motor3508_config.right_direction;
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
-        PID_UpdateParameters(&motor3508_speed_pid[index],
+        pid_algorithm.ops.update_parameters(&motor3508_speed_pid[index],
             motor3508_config.speed.kp, motor3508_config.speed.ki,
             motor3508_config.speed.kd, motor3508_config.speed.integral_limit,
             motor3508_config.speed.output_limit,
             motor3508_config.pid_control_time_s);
         current[index] = Motor3508_LimitCurrent(
-            PID_Calc(&motor3508_speed_pid[index],
+            pid_algorithm.ops.calc(&motor3508_speed_pid[index],
                      target[index],
                      (float)motor3508_feedback[index].speed_rpm));
     }
@@ -131,7 +131,7 @@ void Motor3508_ResetSpeedPID(void)
     uint32_t index;
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
-        PID_Reset(&motor3508_speed_pid[index]);
+        pid_algorithm.ops.reset(&motor3508_speed_pid[index]);
     }
 }
 
@@ -214,3 +214,25 @@ void Motor3508_ProcessCanFrame(
     motor->received = true;
     motor->online = true;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const Motor3508Module motor3508 =
+{
+    .config = &motor3508_config,
+    .data = {
+        .feedback = motor3508_feedback,
+    },
+    .control = {
+        .speed_pid = motor3508_speed_pid,
+    },
+    .init = Motor3508_Init,
+    .send_current = Motor3508_SendCurrent,
+    .speed_control = Motor3508_SpeedControl,
+    .stop = Motor3508_Stop,
+    .reset_speed_pid = Motor3508_ResetSpeedPID,
+    .get_feedback = Motor3508_GetFeedback,
+    .online_check = Motor3508_OnlineCheck,
+    .all_online = Motor3508_AllOnline,
+    .heartbeat = Motor3508_Heartbeat,
+    .process_can_frame = Motor3508_ProcessCanFrame,
+};

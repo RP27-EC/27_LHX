@@ -226,7 +226,7 @@ static bool imu_update_attitude(const float gyro[3], const float accel[3], float
     float q0, q1, q2, q3;
     float yaw_delta;
 
-    if (!QuaternionEkf_Update(&attitude_filter, &config, gyro, accel, dt))
+    if (!quaternion_ekf_algorithm.ops.update(&attitude_filter, &config, gyro, accel, dt))
     { return false; }
     memcpy((void *)gimbal_imu.quaternion, attitude_filter.q, sizeof(attitude_filter.q));
     memcpy((void *)gimbal_imu.gyro_rad_s, attitude_filter.gyro, sizeof(attitude_filter.gyro));
@@ -262,7 +262,7 @@ HAL_StatusTypeDef GimbalImu_Init(void)
 
     memset((void *)&gimbal_imu, 0, sizeof(gimbal_imu));
     memset(gyro_bias, 0, sizeof(gyro_bias));
-    QuaternionEkf_Init(&attitude_filter, NULL);
+    quaternion_ekf_algorithm.ops.init(&attitude_filter, NULL);
     gimbal_imu.quaternion[0] = 1.0f;
     yaw_last_deg = 0.0f;
     yaw_rounds = 0;
@@ -358,3 +358,15 @@ bool GimbalImu_Get(GimbalImu_Data_t *data)
     __set_PRIMASK(primask);
     return data->online && data->calibrated;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const GimbalImuModule gimbal_imu_driver =
+{
+    .config = &gimbal_imu_config,
+    .data = {
+        .sample = &gimbal_imu,
+    },
+    .init = GimbalImu_Init,
+    .update = GimbalImu_Update,
+    .get = GimbalImu_Get,
+};

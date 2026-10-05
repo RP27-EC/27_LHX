@@ -40,9 +40,10 @@ typedef struct
     float yaw_speed_feedforward_deadband_raw; // 驱动速度环目标的前馈启用死区，原始码。
     Motor4310_PidProfile_t pitch; // Pitch 独立位置-速度串级 PID 参数。
 } Motor4310Config;
-// 反馈定义：motor/motor4310.h，Motor4310_Data_t。
+// 反馈定义：bottom_driven/motor/motor4310/motor4310.h，Motor4310_Data_t。
 // Watch：motor4310_data[MOTOR4310_PITCH] / motor4310_data[MOTOR4310_YAW]。
 // 包含位置、速度、转矩原值及累计角度；控制读取用 Motor4310_GetFeedback()。
+// 模块入口：motor4310；参数用 .config，状态用 .data，操作用 .ops。
 extern volatile Motor4310Config motor4310_config; // 云台电机闭环与通信参数。
 void Motor4310Config_Init(void);
 
@@ -51,11 +52,12 @@ typedef struct
     uint32_t timeout_ms; // D1~D3 有效遥控帧超过此时长未更新，即判断控。
     uint32_t yaw_rate_timeout_ms; // D4 底盘角速度帧的有效期。
 } CommunicationConfig;
-// 数据定义：communication/communication.h。
+// 数据定义：bottom_driven/communication/board/communication.h。
 // 遥控解析：Communication_RcControl_t，Watch 为 communication_rc；用 Communication_RC_Get() 读取。
 // CAN 原帧：Communication_CanRxFrame_t，用 Communication_CAN_GetLatest() 按 D1~D6 读取。
 // 热量解析：Communication_HeatSnapshot_t，用 Communication_GetHeatSnapshot() 读取 D6。
 // 底盘角速度：Communication_CAN_GetChassisYawRateState() 返回 deg/s 与接收时刻。
+// 模块入口：board_link；参数用 .config，状态用 .data，操作用 .ops。
 extern volatile CommunicationConfig communication_config; // 板间通信重试和超时参数。
 void CommunicationConfig_Init(void);
 
@@ -78,9 +80,10 @@ typedef struct
     Motor3508SpeedPidConfig speed; // 速度环参数。
     float pid_control_time_s; // 电机 PID 每次调用使用的控制周期，s。
 } Motor3508Config;
-// 反馈定义：motor/motor3508.h，Motor3508_Feedback_t。
+// 反馈定义：bottom_driven/motor/motor3508/motor3508.h，Motor3508_Feedback_t。
 // Watch：motor3508_feedback[]，数组下标按电机 ID 顺序；控制读取用 Motor3508_GetFeedback()。
 // encoder 为单圈原值，speed_rpm 为转子转速，current_raw 为电调反馈电流码。
+// 模块入口：motor3508；参数用 .config，状态用 .data，操作用 .ops。
 extern volatile Motor3508Config motor3508_config; // 电机闭环与命令保护参数。
 void Motor3508Config_Init(void);
 
@@ -102,9 +105,10 @@ typedef struct
     Motor2006SpeedPidConfig speed; // 速度环参数。
     float pid_control_time_s; // 电机 PID 每次调用使用的控制周期，s。
 } Motor2006Config;
-// 反馈定义：motor/motor2006.h，Motor2006_Feedback_t。
+// 反馈定义：bottom_driven/motor/motor2006/motor2006.h，Motor2006_Feedback_t。
 // Watch：motor2006_feedback；控制读取用 Motor2006_GetFeedback()。
 // encoder_total 为相对首帧的转子累计计数；输出轴角度用 Motor2006_GetOutputAngleDeg()。
+// 模块入口：motor2006；参数用 .config，状态用 .data，操作用 .ops。
 extern volatile Motor2006Config motor2006_config; // 升降电机速度环与命令保护参数。
 void Motor2006Config_Init(void);
 
@@ -143,10 +147,11 @@ typedef struct
     DialContinuousSpeedPidConfig continuous_speed; // 连发速度环参数。
     float pid_control_time_s; // 电机 PID 每次调用使用的控制周期，s。
 } DialMotorConfig;
-// 反馈定义：motor/dial_motor.h，DialMotor_Feedback_t。
+// 反馈定义：bottom_driven/motor/dial_motor/dial_motor.h，DialMotor_Feedback_t。
 // Watch：dial_motor_feedback；控制读取用 DialMotor_GetFeedback()。
 // encoder 为单圈原值，encoder_total / position_deg 为相对首帧的累计位置，speed_dps 为度/s。
 // 发送诊断：DialMotor_TxDiagnostics_t，Watch 为 dial_motor_tx_diagnostics。
+// 模块入口：dial_motor；参数用 .config，状态用 .data，操作用 .ops。
 extern volatile DialMotorConfig dial_motor_config; // 拨盘电机闭环与通信参数。
 void DialMotorConfig_Init(void);
 
@@ -158,9 +163,10 @@ typedef struct
     float yaw_rate_filter_alpha; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     uint32_t read_timeout_ms; // 连续未读到 IMU 超过此时间才判离线。
 } GimbalImuConfig;
-// 数据定义：IMU/imu.h，GimbalImu_Data_t；Watch 为 gimbal_imu，用 GimbalImu_Get() 读取。
+// 数据定义：bottom_driven/IMU/imu.h，GimbalImu_Data_t；Watch 为 gimbal_imu，用 GimbalImu_Get() 读取。
 // gyro_rad_s / accel_m_s2 为换算后的角速度、加速度；四元数及角度为 EKF 姿态结果。
 // yaw_rate_deg_s 为控制用 Yaw 角速度，ekf_bias_rad_s 为在线零偏估计。
+// 模块入口：gimbal_imu_driver；参数用 .config，状态用 .data，操作用 .ops。
 extern volatile GimbalImuConfig gimbal_imu_config; // 上板 IMU 姿态与滤波参数。
 void GimbalImuConfig_Init(void);
 

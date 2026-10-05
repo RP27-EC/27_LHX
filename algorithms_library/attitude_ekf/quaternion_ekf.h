@@ -37,4 +37,21 @@ void QuaternionEkf_Init(QuaternionEkf *filter, const float quaternion[4]);
 bool QuaternionEkf_Update(QuaternionEkf *filter, const QuaternionEkfConfig *config,
                           const float gyro[3], const float accel[3], float dt);
 
+
+// 共用算法入口；各控制器实例保存自己的参数和运行状态。
+typedef struct
+{
+    void (*init)(QuaternionEkf *filter, const float quaternion[4]); // 初始化模块。
+    bool (*update)(
+        QuaternionEkf *filter, const QuaternionEkfConfig *config, const float gyro[3],
+        const float accel[3], float dt); // 执行一次状态更新。
+} QuaternionEkfAlgorithmOps;
+
+typedef struct
+{
+    QuaternionEkfAlgorithmOps ops; // 固定操作接口，随程序保存。
+} QuaternionEkfAlgorithm;
+
+extern const QuaternionEkfAlgorithm quaternion_ekf_algorithm; // 模块统一访问入口。
+
 #endif // QUATERNION_EKF_H

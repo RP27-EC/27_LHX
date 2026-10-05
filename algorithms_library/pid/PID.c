@@ -156,3 +156,15 @@ void PID_Reset(PID_Controller_t *pid)
     pid->PreviousError = 0.0f;
     pid->Integral = 0.0f;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const PidAlgorithm pid_algorithm =
+{
+    .ops = {
+        .init = PID_Init,
+        .update_parameters = PID_UpdateParameters,
+        .calc = PID_Calc,
+        .calc_incremental = PID_Calc_Incremental,
+        .reset = PID_Reset,
+    }
+};

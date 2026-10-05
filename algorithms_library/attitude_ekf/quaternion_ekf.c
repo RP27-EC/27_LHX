@@ -245,3 +245,12 @@ bool QuaternionEkf_Update(QuaternionEkf *e, const QuaternionEkfConfig *c,
     e->accel_used=true;
     return true;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const QuaternionEkfAlgorithm quaternion_ekf_algorithm =
+{
+    .ops = {
+        .init = QuaternionEkf_Init,
+        .update = QuaternionEkf_Update,
+    }
+};

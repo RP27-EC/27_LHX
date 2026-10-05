@@ -1,6 +1,8 @@
 #ifndef DIAL_MOTOR_H
 #define DIAL_MOTOR_H
 
+#include "peripheral_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -85,6 +87,54 @@ void DialMotor_ProcessCanFrame(
     CAN_HandleTypeDef *hcan,
     uint32_t std_id,
     const uint8_t data[DIAL_MOTOR_FRAME_SIZE]);
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const DialMotor_Feedback_t *feedback; // 拨盘反馈与累计位置。
+    const volatile DialMotor_TxDiagnostics_t *tx; // 拨盘命令发送统计。
+} DialMotorModuleDataRefs;
+
+typedef struct
+{
+    const PID_Controller_t *position_pid; // 拨盘位置环状态。
+    const PID_Controller_t *speed_pid; // 单发速度环状态。
+    const PID_Controller_t *continuous_speed_pid; // 连发速度环状态。
+} DialMotorModuleControlRefs;
+
+typedef struct
+{
+    volatile DialMotorConfig *config; // 当前可调驱动参数。
+    DialMotorModuleDataRefs data; // 反馈与解析数据引用。
+    DialMotorModuleControlRefs control; // 驱动闭环状态引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*get_feedback)(DialMotor_Feedback_t *feedback); // 复制指定电机反馈。
+    bool (*online_check)(void); // 检查反馈在线状态。
+
+    // 控制与发送。
+    HAL_StatusTypeDef (*run)(void); // 发送拨盘运行命令。
+    HAL_StatusTypeDef (*stop)(void); // 发送停止命令。
+    HAL_StatusTypeDef (*close)(void); // 发送拨盘关闭命令。
+    HAL_StatusTypeDef (*set_torque_current)(int16_t current); // 发送拨盘转矩电流命令。
+    HAL_StatusTypeDef (*position_control)(int64_t target_encoder_total); // 执行位置闭环。
+    HAL_StatusTypeDef (*position_control_limited)(int64_t target_encoder_total, float speed_limit_dps); // 按附加速度上限执行拨盘位控。
+    HAL_StatusTypeDef (*speed_control)(float target_speed_dps); // 执行速度闭环。
+
+    // 状态维护。
+    void (*reset_control)(void); // 清空闭环状态。
+    void (*heartbeat)(void); // 更新反馈在线状态。
+
+    // 接收与解析。
+    void (*process_can_frame)(
+        CAN_HandleTypeDef *hcan, uint32_t std_id, const uint8_t data[DIAL_MOTOR_FRAME_SIZE]); // 分发并解析 CAN 反馈。
+} DialMotorModule;
+
+extern const DialMotorModule dial_motor; // 模块统一访问入口。
 
 #ifdef __cplusplus
 }

@@ -495,16 +495,16 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         if (hcan->Instance == CAN1)
         {
             // CAN1 共用：Pitch 4310、两路 3508、M2006 和 LK4005。
-            Motor4310_ProcessCanFrame(hcan, header.StdId, data);
-            Motor3508_ProcessCanFrame(hcan, header.StdId, data);
-            Motor2006_ProcessCanFrame(hcan, header.StdId, data);
-            DialMotor_ProcessCanFrame(hcan, header.StdId, data);
+            motor4310.process_can_frame(hcan, header.StdId, data);
+            motor3508.process_can_frame(hcan, header.StdId, data);
+            motor2006.process_can_frame(hcan, header.StdId, data);
+            dial_motor.process_can_frame(hcan, header.StdId, data);
             continue;
         }
 
         if (header.StdId == MOTOR4310_FEEDBACK_CAN_ID)
         {
-            Motor4310_ProcessCanFrame(hcan, header.StdId, data);
+            motor4310.process_can_frame(hcan, header.StdId, data);
             continue;
         }
 
@@ -539,3 +539,33 @@ bool Communication_GetHeatSnapshot(Communication_HeatSnapshot_t *heat)
     heat->last_rx_ms = frame.last_rx_ms;
     return true;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const BoardLinkModule board_link =
+{
+    .config = &communication_config,
+    .data = {
+        .frames = communication_rx_frames,
+        .remote = &communication_rc,
+    },
+    .diagnostics = {
+        .remote_online = &communication_rc_online,
+        .valid_count = &communication_rc_valid_count,
+        .last_valid_ms = &communication_rc_last_valid_ms,
+        .assembly_errors = &communication_rc_assembly_error_count,
+    },
+    .can_init = Communication_CAN_Init,
+    .can_send = Communication_CAN_Send,
+    .can_send_c1 = Communication_CAN_SendC1,
+    .can_send_c2 = Communication_CAN_SendC2,
+    .can_send_lift_lock = Communication_CAN_SendLiftLock,
+    .can_send_yaw_angle = Communication_CAN_SendYawAngle,
+    .can_send_yaw_state = Communication_CAN_SendYawState,
+    .can_get_chassis_yaw_rate = Communication_CAN_GetChassisYawRate,
+    .can_get_chassis_yaw_rate_state = Communication_CAN_GetChassisYawRateState,
+    .can_get_latest = Communication_CAN_GetLatest,
+    .get_heat_snapshot = Communication_GetHeatSnapshot,
+    .process = Communication_Process,
+    .rc_get = Communication_RC_Get,
+    .rc_is_online = Communication_RC_IsOnline,
+};

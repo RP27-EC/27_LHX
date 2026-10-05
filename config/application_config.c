@@ -16,9 +16,9 @@ void LiftMotionConfig_Init(volatile LiftMotionConfig *config)
 {
     if (config == NULL) { return; }
     config->down_direction = -1.0f; // 编码器计数减小表示下降。
-    config->down_speed_rad_s = 1000.0f; // 正常下降的转子速度上限，rad/s。
-    config->up_speed_rad_s = 1000.0f; // 正常上升的转子速度上限，rad/s。
-    config->max_rotor_turns = 320.0f; // 上电后正、反向累计转数限制，圈。
+    config->down_speed_rad_s = 1200.0f; // 正常下降的转子速度上限，rad/s。
+    config->up_speed_rad_s = 1200.0f; // 正常上升的转子速度上限，rad/s。
+    config->max_rotor_turns = 330.0f; // 上电后正、反向累计转数限制，圈。
     config->limit_stop_margin_counts = 200; // 行程边界前的停机余量，编码器计数。
     config->stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
     config->fault_stop_retry_ms = 5U; // 故障停机命令重发间隔，ms。
@@ -188,12 +188,12 @@ void YawMechanicalRateConfig_Init(volatile YawMechanicalRateConfig *config)
 void YawMechanicalConfig_Init(volatile YawMechanicalConfig *config)
 {
     if (config == NULL) { return; }
-    config->deadzone_deg = 0.5f; // 连续位置死区，内部保留速度环制动。
-    config->brake_speed_at_1deg_raw = 80.0f; // 单位角度误差对应的回正速度码上限，按误差平方根缩小；零关闭。
+    config->deadzone_deg = 0.4f; // 连续位置死区，内部保留速度环制动。
+    config->brake_speed_at_1deg_raw = 60.0f; // 单位角度误差对应的回正速度码上限，按误差平方根缩小；零关闭。
     config->command_deg_s_per_raw = 1.0f; // 位置环速度原始码到目标角速度的换算系数，度/s/码。
     config->gyro_direction = 1.0f; // 与现有惯性 Yaw 使用同一 IMU 正方向。
     config->chassis_rate_ff_gain = 1.0f; // 跟随底盘转速的前馈增益，符号按两板 IMU 方向设置。
-    config->chassis_rate_ff_limit_deg_s = 40.0f; // 叠加到速度目标的前馈限幅，度/s。
+    config->chassis_rate_ff_limit_deg_s = 50.0f; // 叠加到速度目标的前馈限幅，度/s。
     YawMechanicalRateConfig_Init(&config->rate);
 }
 
@@ -203,8 +203,8 @@ void YawTurnConfig_Init(volatile YawTurnConfig *config)
     if (config == NULL) { return; }
     config->wheel_trigger_raw = 200; // 拨轮负向达到此阈值时触发调头，遥控原始值。
     config->wheel_rearm_raw = 50; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
-    config->duration_s = 0.75f; // 调头时间，越短目标变化越快。
-    config->tolerance_deg = 4.0f; // 调头目标角的到位误差，度。
+    config->duration_s = 0.78f; // 调头时间，越短目标变化越快。
+    config->tolerance_deg = 2.0f; // 调头目标角的到位误差，度。
     config->speed_raw_max = 20; // 调头到位允许的反馈速度绝对值，电机原始码。
     config->stable_cycles = 5U; // 调头位置与速度需连续合格的控制周期数。
 }
@@ -235,7 +235,7 @@ void GimbalSpinConfig_Init(volatile GimbalSpinConfig *config)
 void PitchInertialAngleConfig_Init(volatile PitchInertialAngleConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 8.0f; // Pitch 惯性位置环比例增益。
+    config->kp = 9.0f; // Pitch 惯性位置环比例增益。
     config->ki = 0.0f; // Pitch 惯性位置环积分增益。
     config->kd = 0.0f; // Pitch 惯性位置环微分增益。
     config->integral_limit = 0.0f; // Pitch 惯性位置环积分项限幅。
@@ -272,7 +272,7 @@ void PitchConfig_Init(volatile PitchConfig *config)
     config->min_deg = (-8.5f); // Pitch 相对机械零点的下限，度。
     config->max_deg = 30.0f; // Pitch 相对机械零点的上限，度。
     config->lift_clearance_deg = 1.0f; // 升降低位时 Pitch 的抬起余量，度。
-    config->target_lead_deg = 12.0f; // 目标允许领先实际位置的最大角度，度。
+    config->target_lead_deg = 17.0f; // 目标允许领先实际位置的最大角度，度。
     config->gravity_k = 1.35f; // 归中点处约等于重力前馈，N·m。
     PitchInertialConfig_Init(&config->inertial);
 }
@@ -318,15 +318,15 @@ void ShootHeatConfig_Init(void)
 {
     shoot_heat_config.enabled = true; // 热量限制总开关。
     shoot_heat_config.allow_offline = false; // 脱离裁判调车时才允许打开。
-    shoot_heat_config.heat_per_shot = 10.0f; // 每次新供弹预留的热量。
-    shoot_heat_config.stop_remaining = 20.0f; // 剩余量到此阈值停止供弹。
+    shoot_heat_config.heat_per_shot = 20.0f; // 每次新供弹预留的热量。
+    shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
     shoot_heat_config.low_remaining = 50.0f; // 低射频档剩余量上界。
     shoot_heat_config.high_remaining = 100.0f; // 高射频档剩余量下界。
     shoot_heat_config.low_rate_hz = 3.0f; // 低余量档射频。
     shoot_heat_config.middle_rate_hz = 10.0f; // 中余量档射频。
     shoot_heat_config.high_rate_hz = 15.0f; // 高余量档射频。
     shoot_heat_config.offline_heat_limit = 200.0f; // 离线调试尚无裁判数据时的上限。
-    shoot_heat_config.offline_cooling_per_s = 40.0f; // 离线调试备用冷却速率。
-    shoot_heat_config.referee_timeout_ms = 200U; // 板间热量快照有效期。
+    shoot_heat_config.offline_cooling_per_s = 30.0f; // 离线调试备用冷却速率。
+    shoot_heat_config.referee_timeout_ms = 100U; // 板间热量快照有效期。
     shoot_heat_config.calibration_settle_ms = 500U; // 停止供弹后允许向下校准的等待时间。
 }

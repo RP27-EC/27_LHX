@@ -36,4 +36,26 @@ float PID_Calc(PID_Controller_t *pid, float setpoint, float current_value);
 float PID_Calc_Incremental(PID_Controller_t *pid, float setpoint, float current_value);
 void PID_Reset(PID_Controller_t *pid);
 
+
+// 共用算法入口；各控制器实例保存自己的参数和运行状态。
+typedef struct
+{
+    void (*init)(
+        PID_Controller_t *pid, float kp, float ki, float kd, float integral_limit, float output_limit,
+        float control_time); // 初始化模块。
+    void (*update_parameters)(
+        PID_Controller_t *pid, float kp, float ki, float kd, float integral_limit, float output_limit,
+        float control_time); // 同步变化后的 PID 参数。
+    float (*calc)(PID_Controller_t *pid, float setpoint, float current_value); // 计算位置式 PID 输出。
+    float (*calc_incremental)(PID_Controller_t *pid, float setpoint, float current_value); // 计算增量式 PID 输出。
+    void (*reset)(PID_Controller_t *pid); // 清空 PID 积分和误差状态。
+} PidAlgorithmOps;
+
+typedef struct
+{
+    PidAlgorithmOps ops; // 固定操作接口，随程序保存。
+} PidAlgorithm;
+
+extern const PidAlgorithm pid_algorithm; // 模块统一访问入口。
+
 #endif // __PID_H

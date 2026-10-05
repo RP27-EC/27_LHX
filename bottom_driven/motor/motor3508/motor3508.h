@@ -1,6 +1,8 @@
 #ifndef MOTOR3508_H
 #define MOTOR3508_H
 
+#include "peripheral_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,6 +57,48 @@ void Motor3508_ProcessCanFrame(
     CAN_HandleTypeDef *hcan,
     uint32_t std_id,
     const uint8_t data[MOTOR3508_FRAME_SIZE]);
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const Motor3508_Feedback_t *feedback; // 按电机 ID 顺序观察摩擦轮反馈。
+} Motor3508ModuleDataRefs;
+
+typedef struct
+{
+    const PID_Controller_t *speed_pid; // 两路摩擦轮速度环状态。
+} Motor3508ModuleControlRefs;
+
+typedef struct
+{
+    volatile Motor3508Config *config; // 当前可调驱动参数。
+    Motor3508ModuleDataRefs data; // 反馈与解析数据引用。
+    Motor3508ModuleControlRefs control; // 驱动闭环状态引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*get_feedback)(uint8_t motor_id, Motor3508_Feedback_t *feedback); // 复制指定电机反馈。
+    bool (*online_check)(uint8_t motor_id); // 检查反馈在线状态。
+    bool (*all_online)(void); // 检查全部电机在线状态。
+
+    // 控制与发送。
+    HAL_StatusTypeDef (*send_current)(int16_t current_1, int16_t current_2); // 发送群组电流命令。
+    HAL_StatusTypeDef (*speed_control)(int16_t target_speed_rpm); // 执行速度闭环。
+    HAL_StatusTypeDef (*stop)(void); // 发送停止命令。
+
+    // 状态维护。
+    void (*reset_speed_pid)(void); // 清空速度环状态。
+    void (*heartbeat)(void); // 更新反馈在线状态。
+
+    // 接收与解析。
+    void (*process_can_frame)(
+        CAN_HandleTypeDef *hcan, uint32_t std_id, const uint8_t data[MOTOR3508_FRAME_SIZE]); // 分发并解析 CAN 反馈。
+} Motor3508Module;
+
+extern const Motor3508Module motor3508; // 模块统一访问入口。
 
 #ifdef __cplusplus
 }

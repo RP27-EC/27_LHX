@@ -71,7 +71,7 @@ HAL_StatusTypeDef Motor2006_Init(void)
     memset(group_current, 0, sizeof(group_current));
     motor2006_last_command_ms = HAL_GetTick();
     motor2006_command_active = false;
-    PID_Init(&motor2006_speed_pid, motor2006_config.speed.kp,
+    pid_algorithm.ops.init(&motor2006_speed_pid, motor2006_config.speed.kp,
              motor2006_config.speed.ki, motor2006_config.speed.kd,
              motor2006_config.speed.integral_limit,
              motor2006_config.speed.output_limit,
@@ -135,12 +135,12 @@ HAL_StatusTypeDef Motor2006_SpeedControl(float target_rotor_rad_s)
     if (!Motor2006_GetFeedback(&feedback) || !Motor2006_OnlineCheck())
     { return Motor2006_Stop(); }
     rotor_rad_s = (float)feedback.speed_rpm * 6.283185307f / 60.0f;
-    PID_UpdateParameters(&motor2006_speed_pid,
+    pid_algorithm.ops.update_parameters(&motor2006_speed_pid,
         motor2006_config.speed.kp, motor2006_config.speed.ki,
         motor2006_config.speed.kd, motor2006_config.speed.integral_limit,
         motor2006_config.speed.output_limit,
         motor2006_config.pid_control_time_s);
-    torque = PID_Calc(&motor2006_speed_pid, target_rotor_rad_s, rotor_rad_s);
+    torque = pid_algorithm.ops.calc(&motor2006_speed_pid, target_rotor_rad_s, rotor_rad_s);
     current = torque / motor2006_config.torque_constant;
     if (current > motor2006_config.current_limit) { current = motor2006_config.current_limit; }
     if (current < -motor2006_config.current_limit) { current = -motor2006_config.current_limit; }
@@ -149,7 +149,7 @@ HAL_StatusTypeDef Motor2006_SpeedControl(float target_rotor_rad_s)
 
 void Motor2006_ResetSpeedPID(void)
 {
-    PID_Reset(&motor2006_speed_pid);
+    pid_algorithm.ops.reset(&motor2006_speed_pid);
 }
 
 bool Motor2006_GetFeedback(Motor2006_Feedback_t *feedback)
@@ -223,3 +223,26 @@ void Motor2006_ProcessCanFrame(CAN_HandleTypeDef *hcan,
     motor2006_feedback.received = true;
     motor2006_feedback.online = true;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const Motor2006Module motor2006 =
+{
+    .config = &motor2006_config,
+    .data = {
+        .feedback = &motor2006_feedback,
+    },
+    .control = {
+        .speed_pid = &motor2006_speed_pid,
+    },
+    .init = Motor2006_Init,
+    .set_current = Motor2006_SetCurrent,
+    .stop = Motor2006_Stop,
+    .speed_control = Motor2006_SpeedControl,
+    .reset_speed_pid = Motor2006_ResetSpeedPID,
+    .get_feedback = Motor2006_GetFeedback,
+    .online_check = Motor2006_OnlineCheck,
+    .heartbeat = Motor2006_Heartbeat,
+    .get_output_angle_deg = Motor2006_GetOutputAngleDeg,
+    .send_friction_currents = Motor2006_SendFrictionCurrents,
+    .process_can_frame = Motor2006_ProcessCanFrame,
+};

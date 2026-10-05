@@ -43,9 +43,9 @@ typedef struct
     volatile uint32_t rx_count; // 累计接收的有效反馈帧数。
     volatile uint32_t last_rx_ms; // 最近一次反馈的毫秒时间戳。
     volatile bool online; // 心跳检测得到的当前在线状态。
-    volatile bool enabled; // 最近一次成功入队的使能/失能命令状态，不等于电机硬件确认。
+    volatile bool enabled; // 最近一次成功入队的使能/失能命令状态。
     uint32_t last_enable_ms; // 最近一次发送使能命令的时间。
-    volatile bool disable_command_sent; // 仅表示上次失能命令已入队，断联时仍会重发。
+    volatile bool disable_command_sent; // 上次失能命令的入队标志，断联时周期重发。
     uint32_t last_disable_ms; // 最近一次发送失能命令的时间。
 } Motor4310_Data_t;
 
@@ -92,6 +92,67 @@ int32_t Motor4310_PositionToEcd(float rounds, float degree);
 
 void Motor4310_ParseFeedback(const uint8_t data[MOTOR4310_CAN_FRAME_SIZE]);
 void Motor4310_CAN_RxFifo0Callback(CAN_HandleTypeDef *hcan);
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const Motor4310_Data_t *feedback; // 按 Pitch、Yaw 枚举下标观察反馈。
+} Motor4310ModuleDataRefs;
+
+typedef struct
+{
+    const PID_Controller_t *position_pid; // 各轴位置环状态。
+    const PID_Controller_t *speed_pid; // 各轴电机速度环状态。
+} Motor4310ModuleControlRefs;
+
+typedef struct
+{
+    volatile Motor4310Config *config; // 当前可调驱动参数。
+    Motor4310ModuleDataRefs data; // 反馈与解析数据引用。
+    Motor4310ModuleControlRefs control; // 驱动闭环状态引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*online_check)(Motor4310_Id_t id); // 检查反馈在线状态。
+    bool (*all_online)(void); // 检查全部电机在线状态。
+    bool (*get_feedback)(Motor4310_Id_t id, Motor4310_Data_t *feedback); // 复制指定电机反馈。
+
+    // 控制与发送。
+    HAL_StatusTypeDef (*enable_motor)(Motor4310_Id_t id); // 发送指定轴使能命令。
+    HAL_StatusTypeDef (*disable_motor)(Motor4310_Id_t id); // 发送指定轴失能命令。
+    HAL_StatusTypeDef (*position_control_motor)(Motor4310_Id_t id, int32_t target_position); // 执行指定轴位置闭环。
+    HAL_StatusTypeDef (*position_control_with_feedforward)(
+        Motor4310_Id_t id, int32_t target_position, int16_t feedforward_raw); // 位置闭环叠加转矩前馈。
+    HAL_StatusTypeDef (*position_control_with_profile)(
+        Motor4310_Id_t id, int32_t target_position, int16_t feedforward_raw,
+        const Motor4310_PidProfile_t *profile, bool enable_yaw_feedforward); // 按指定 PID 参数执行位置闭环。
+    HAL_StatusTypeDef (*speed_control_motor)(Motor4310_Id_t id, int16_t target_speed); // 执行指定轴速度闭环。
+    HAL_StatusTypeDef (*speed_control_with_feedforward)(
+        Motor4310_Id_t id, int16_t target_speed, int16_t feedforward_raw); // 速度闭环叠加转矩前馈。
+    HAL_StatusTypeDef (*set_torque_raw_motor)(Motor4310_Id_t id, int16_t torque); // 发送指定轴转矩码。
+    HAL_StatusTypeDef (*enable)(void); // 发送 Yaw 使能命令。
+    HAL_StatusTypeDef (*disable)(void); // 发送 Yaw 失能命令。
+    HAL_StatusTypeDef (*set_torque_raw)(int16_t torque); // 发送 Yaw 转矩码。
+    HAL_StatusTypeDef (*speed_control)(int16_t target_speed); // 执行速度闭环。
+    HAL_StatusTypeDef (*position_control)(int32_t target_position); // 执行位置闭环。
+    int32_t (*position_to_ecd)(float rounds, float degree); // 将圈数和角度换成编码器目标。
+
+    // 状态维护。
+    void (*heartbeat)(void); // 更新反馈在线状态。
+    void (*reset_control)(Motor4310_Id_t id); // 清空闭环状态。
+
+    // 接收与解析。
+    void (*parse_feedback_motor)(Motor4310_Id_t id, const uint8_t data[MOTOR4310_CAN_FRAME_SIZE]); // 解析指定轴反馈。
+    void (*process_can_frame)(
+        CAN_HandleTypeDef *hcan, uint32_t std_id, const uint8_t data[MOTOR4310_CAN_FRAME_SIZE]); // 分发并解析 CAN 反馈。
+    void (*parse_feedback)(const uint8_t data[MOTOR4310_CAN_FRAME_SIZE]); // 解析 Yaw 电机反馈。
+    void (*can_rx_fifo0_callback)(CAN_HandleTypeDef *hcan); // 处理 CAN 接收中断。
+} Motor4310Module;
+
+extern const Motor4310Module motor4310; // 模块统一访问入口。
 
 #ifdef __cplusplus
 }

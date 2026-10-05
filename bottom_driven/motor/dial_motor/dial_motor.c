@@ -99,21 +99,21 @@ HAL_StatusTypeDef DialMotor_Init(void)
            sizeof(dial_motor_tx_diagnostics));
     dial_motor_last_tx_ms = 0U;
     dial_motor_tx_sent = false;
-    PID_Init(&dial_motor_position_pid,
+    pid_algorithm.ops.init(&dial_motor_position_pid,
              dial_motor_config.position.kp,
              dial_motor_config.position.ki,
              dial_motor_config.position.kd,
              dial_motor_config.position.integral_limit,
              dial_motor_config.position.speed_limit_dps,
              dial_motor_config.pid_control_time_s);
-    PID_Init(&dial_motor_speed_pid,
+    pid_algorithm.ops.init(&dial_motor_speed_pid,
              dial_motor_config.speed.kp,
              dial_motor_config.speed.ki,
              dial_motor_config.speed.kd,
              dial_motor_config.speed.integral_limit,
              dial_motor_config.speed.output_limit,
              dial_motor_config.pid_control_time_s);
-    PID_Init(&dial_motor_continuous_speed_pid,
+    pid_algorithm.ops.init(&dial_motor_continuous_speed_pid,
              dial_motor_config.continuous_speed.kp,
              dial_motor_config.continuous_speed.ki,
              dial_motor_config.continuous_speed.kd,
@@ -186,9 +186,9 @@ HAL_StatusTypeDef DialMotor_SetTorqueCurrent(int16_t current)
 
 void DialMotor_ResetControl(void)
 {
-    PID_Reset(&dial_motor_position_pid);
-    PID_Reset(&dial_motor_speed_pid);
-    PID_Reset(&dial_motor_continuous_speed_pid);
+    pid_algorithm.ops.reset(&dial_motor_position_pid);
+    pid_algorithm.ops.reset(&dial_motor_speed_pid);
+    pid_algorithm.ops.reset(&dial_motor_continuous_speed_pid);
 }
 
 HAL_StatusTypeDef DialMotor_PositionControl(int64_t target_encoder_total)
@@ -215,21 +215,21 @@ HAL_StatusTypeDef DialMotor_PositionControlLimited(int64_t target_encoder_total,
     if (speed_limit_dps > dial_motor_config.position.speed_limit_dps)
     { speed_limit_dps = dial_motor_config.position.speed_limit_dps; }
 
-    PID_UpdateParameters(&dial_motor_position_pid,
+    pid_algorithm.ops.update_parameters(&dial_motor_position_pid,
         dial_motor_config.position.kp, dial_motor_config.position.ki,
         dial_motor_config.position.kd,
         dial_motor_config.position.integral_limit,
         speed_limit_dps,
         dial_motor_config.pid_control_time_s);
-    PID_UpdateParameters(&dial_motor_speed_pid,
+    pid_algorithm.ops.update_parameters(&dial_motor_speed_pid,
         dial_motor_config.speed.kp, dial_motor_config.speed.ki,
         dial_motor_config.speed.kd, dial_motor_config.speed.integral_limit,
         dial_motor_config.speed.output_limit,
         dial_motor_config.pid_control_time_s);
-    target_speed_dps = PID_Calc(&dial_motor_position_pid,
+    target_speed_dps = pid_algorithm.ops.calc(&dial_motor_position_pid,
                                 (float)target_encoder_total,
                                 (float)feedback.encoder_total);
-    current = PID_Calc(&dial_motor_speed_pid,
+    current = pid_algorithm.ops.calc(&dial_motor_speed_pid,
                        target_speed_dps,
                        (float)feedback.speed_dps);
     return DialMotor_SetTorqueCurrent((int16_t)current);
@@ -247,14 +247,14 @@ HAL_StatusTypeDef DialMotor_SpeedControl(float target_speed_dps)
         return HAL_ERROR;
     }
 
-    PID_UpdateParameters(&dial_motor_continuous_speed_pid,
+    pid_algorithm.ops.update_parameters(&dial_motor_continuous_speed_pid,
         dial_motor_config.continuous_speed.kp,
         dial_motor_config.continuous_speed.ki,
         dial_motor_config.continuous_speed.kd,
         dial_motor_config.speed.integral_limit,
         dial_motor_config.speed.output_limit,
         dial_motor_config.pid_control_time_s);
-    current = PID_Calc(&dial_motor_continuous_speed_pid,
+    current = pid_algorithm.ops.calc(&dial_motor_continuous_speed_pid,
                        target_speed_dps, (float)feedback.speed_dps);
     return DialMotor_SetTorqueCurrent((int16_t)current);
 }
@@ -347,3 +347,31 @@ void DialMotor_ProcessCanFrame(
         (float)dial_motor_feedback.encoder_total *
         (360.0f / DIAL_MOTOR_ENCODER_COUNTS_PER_REV);
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const DialMotorModule dial_motor =
+{
+    .config = &dial_motor_config,
+    .data = {
+        .feedback = &dial_motor_feedback,
+        .tx = &dial_motor_tx_diagnostics,
+    },
+    .control = {
+        .position_pid = &dial_motor_position_pid,
+        .speed_pid = &dial_motor_speed_pid,
+        .continuous_speed_pid = &dial_motor_continuous_speed_pid,
+    },
+    .init = DialMotor_Init,
+    .run = DialMotor_Run,
+    .stop = DialMotor_Stop,
+    .close = DialMotor_Close,
+    .set_torque_current = DialMotor_SetTorqueCurrent,
+    .position_control = DialMotor_PositionControl,
+    .position_control_limited = DialMotor_PositionControlLimited,
+    .speed_control = DialMotor_SpeedControl,
+    .reset_control = DialMotor_ResetControl,
+    .get_feedback = DialMotor_GetFeedback,
+    .online_check = DialMotor_OnlineCheck,
+    .heartbeat = DialMotor_Heartbeat,
+    .process_can_frame = DialMotor_ProcessCanFrame,
+};

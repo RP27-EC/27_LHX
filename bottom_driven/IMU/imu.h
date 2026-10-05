@@ -1,6 +1,8 @@
 #ifndef GIMBAL_IMU_H
 #define GIMBAL_IMU_H
 
+#include "peripheral_config.h"
+
 #include "stm32f4xx_hal.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -32,5 +34,29 @@ bool GimbalImu_Update(void);
 bool GimbalImu_Get(GimbalImu_Data_t *data);
 
 extern volatile GimbalImu_Data_t gimbal_imu;
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const volatile GimbalImu_Data_t *sample; // 姿态和角速度结果；控制读取用 ops.get。
+} GimbalImuModuleDataRefs;
+
+typedef struct
+{
+    volatile GimbalImuConfig *config; // 当前可调驱动参数。
+    GimbalImuModuleDataRefs data; // 反馈与解析数据引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*get)(GimbalImu_Data_t *data); // 复制当前数据快照。
+
+    // 状态维护。
+    bool (*update)(void); // 执行一次状态更新。
+} GimbalImuModule;
+
+extern const GimbalImuModule gimbal_imu_driver; // 模块统一访问入口。
 
 #endif // GIMBAL_IMU_H
