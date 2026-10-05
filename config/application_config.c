@@ -322,11 +322,11 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
     shoot_heat_config.low_remaining = 50.0f; // 低射频档剩余量上界。
     shoot_heat_config.high_remaining = 100.0f; // 高射频档剩余量下界。
-    shoot_heat_config.low_rate_hz = 3.0f; // 低余量档射频。
+    shoot_heat_config.low_rate_hz = 6.0f; // 低余量档射频。
     shoot_heat_config.middle_rate_hz = 10.0f; // 中余量档射频。
     shoot_heat_config.high_rate_hz = 15.0f; // 高余量档射频。
-    shoot_heat_config.offline_heat_limit = 200.0f; // 离线调试尚无裁判数据时的上限。
-    shoot_heat_config.offline_cooling_per_s = 30.0f; // 离线调试备用冷却速率。
+    shoot_heat_config.offline_heat_limit = 100.0f; // 离线调试尚无裁判数据时的上限。
+    shoot_heat_config.offline_cooling_per_s = 10.0f; // 离线调试备用冷却速率。
     shoot_heat_config.referee_timeout_ms = 100U; // 板间热量快照有效期。
-    shoot_heat_config.calibration_settle_ms = 500U; // 停止供弹后允许向下校准的等待时间。
+    shoot_heat_config.calibration_settle_ms = 500U; // 近期供弹热量的反馈保护时间。
 }

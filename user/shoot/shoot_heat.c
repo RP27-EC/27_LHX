@@ -3,8 +3,44 @@
 #include <math.h>
 
 #define HEAT_VALUE_MAX 65535.0f // 裁判热量字段的协议范围。
+#define HEAT_RESERVATION_CAPACITY 64U // 近期供弹记录容量，满后合并为保守预留。
 
 volatile ShootHeatState shoot_heat_state;
+
+typedef struct
+{
+    uint32_t time_ms;
+    float heat;
+} HeatReservation;
+
+static struct
+{
+    HeatReservation shots[HEAT_RESERVATION_CAPACITY];
+    uint32_t head;
+    uint32_t count;
+    float overflow_heat; // 记录满后合并的热量，等待最后一笔过期。
+    uint32_t overflow_ms;
+} reservations;
+
+// 只保留反馈延迟窗口内的供弹，较早的预测误差交给裁判校准。
+static void expire_reservations(const ShootHeatConfig *c, uint32_t now_ms)
+{
+    while (reservations.count > 0U &&
+        (uint32_t)(now_ms - reservations.shots[reservations.head].time_ms) >= c->calibration_settle_ms)
+    {
+        shoot_heat_state.recent_reserved_heat -= reservations.shots[reservations.head].heat;
+        reservations.head = (reservations.head + 1U) % HEAT_RESERVATION_CAPACITY;
+        --reservations.count;
+    }
+    if (reservations.overflow_heat > 0.0f &&
+        (uint32_t)(now_ms - reservations.overflow_ms) >= c->calibration_settle_ms)
+    {
+        shoot_heat_state.recent_reserved_heat -= reservations.overflow_heat;
+        reservations.overflow_heat = 0.0f;
+    }
+    shoot_heat_state.recent_reserved_heat = reservations.count == 0U && reservations.overflow_heat == 0.0f ?
+        0.0f : fmaxf(0.0f, shoot_heat_state.recent_reserved_heat);
+}
 
 static bool nonnegative(float value)
 { return value >= 0.0f && value <= HEAT_VALUE_MAX; }
@@ -32,6 +68,7 @@ static void refresh_remaining(void)
 void ShootHeat_Init(uint32_t now_ms)
 {
     memset((void *)&shoot_heat_state, 0, sizeof(shoot_heat_state));
+    memset(&reservations, 0, sizeof(reservations));
     shoot_heat_state.last_update_ms = now_ms;
     shoot_heat_state.last_feed_ms = now_ms;
 }
@@ -45,6 +82,7 @@ void ShootHeat_Update(const ShootHeatConfig *c, uint32_t now_ms,
     shoot_heat_state.config_valid = valid_config(c);
     if (!shoot_heat_state.config_valid)
     { shoot_heat_state.referee_valid = false; shoot_heat_state.continuous_rate_hz = 0.0f; return; }
+    expire_reservations(c, now_ms);
     shoot_heat_state.predicted_heat = fmaxf(0.0f,
         shoot_heat_state.predicted_heat - shoot_heat_state.cooling_per_s * dt);
     if (feeding) { shoot_heat_state.last_feed_ms = now_ms; }
@@ -57,12 +95,17 @@ void ShootHeat_Update(const ShootHeatConfig *c, uint32_t now_ms,
         shoot_heat_state.cooling_per_s = cooling;
         if (!shoot_heat_state.sample_seen || sequence != shoot_heat_state.sample_sequence)
         {
-            // 等待已在途弹丸进入裁判反馈后，才允许消除本地多计热量。
+            // 新样本可双向校准；近期供弹的预留覆盖裁判反馈延迟。
             bool settled = !feeding &&
                 (uint32_t)(now_ms - shoot_heat_state.last_feed_ms) >= c->calibration_settle_ms;
             if (!shoot_heat_state.initialized || settled)
             { shoot_heat_state.predicted_heat = heat; }
-            else { shoot_heat_state.predicted_heat = fmaxf(shoot_heat_state.predicted_heat, heat); }
+            else
+            {
+                float upper_heat = heat + shoot_heat_state.recent_reserved_heat;
+                shoot_heat_state.predicted_heat = fmaxf(heat,
+                    fminf(shoot_heat_state.predicted_heat, upper_heat));
+            }
             shoot_heat_state.referee_heat = heat;
             shoot_heat_state.sample_sequence = sequence;
             shoot_heat_state.sample_seen = true;
@@ -96,6 +139,20 @@ bool ShootHeat_CanStart(const ShootHeatConfig *c)
 void ShootHeat_RecordShot(const ShootHeatConfig *c, uint32_t now_ms)
 {
     // 新供弹开始前计入，堵转重试沿用原预留。
+    expire_reservations(c, now_ms);
+    if (reservations.count < HEAT_RESERVATION_CAPACITY)
+    {
+        uint32_t tail = (reservations.head + reservations.count) % HEAT_RESERVATION_CAPACITY;
+        reservations.shots[tail].time_ms = now_ms;
+        reservations.shots[tail].heat = c->heat_per_shot;
+        ++reservations.count;
+    }
+    else
+    {
+        reservations.overflow_heat += c->heat_per_shot;
+        reservations.overflow_ms = now_ms;
+    }
+    shoot_heat_state.recent_reserved_heat += c->heat_per_shot;
     shoot_heat_state.predicted_heat += c->heat_per_shot;
     shoot_heat_state.last_feed_ms = now_ms;
     shoot_heat_state.predicted_shots++;

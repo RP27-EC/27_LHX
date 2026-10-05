@@ -17,13 +17,14 @@ typedef struct
     float offline_heat_limit; // 调试备用热量上限。
     float offline_cooling_per_s; // 调试备用冷却速率。
     uint32_t referee_timeout_ms; // 上板热量报文的有效时间。
-    uint32_t calibration_settle_ms; // 停止供弹后，允许向下校准前的等待时间。
+    uint32_t calibration_settle_ms; // 供弹到裁判反馈的保护时间，窗口内保留本地计热。
 } ShootHeatConfig;
 
 typedef struct
 {
     float predicted_heat; // 本地预测热量。
     float referee_heat; // 最近收到的裁判当前热量。
+    float recent_reserved_heat; // 反馈保护窗口内的供弹预留热量。
     float heat_limit; // 当前生效的热量上限。
     float cooling_per_s; // 当前生效的每秒冷却值。
     float remaining; // 可用剩余热量。
@@ -42,7 +43,7 @@ typedef struct
 
 extern volatile ShootHeatState shoot_heat_state;
 void ShootHeat_Init(uint32_t now_ms);
-// 每周期先冷却；射击中仅向上校准，停射等待后同步裁判值。
+// 每周期冷却，新裁判样本双向校准，并保留近期供弹热量。
 void ShootHeat_Update(const ShootHeatConfig *config, uint32_t now_ms,
                       bool valid, bool output_allowed, uint8_t sequence,
                       float heat, float limit, float cooling, bool feeding);
