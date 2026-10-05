@@ -114,30 +114,30 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LowerPeripheralConfig_InitAll();
   LowerApplicationConfig_InitAll();
-  Referee_Init();
+  referee.init();
   ChassisPower_Init();
-  PowerCommunication_Init();
-  if (RefereeUart_Start(&huart1) != HAL_OK)
+  power_link.init();
+  if (referee_uart_driver.start(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (Motor3508_Init() != HAL_OK)
+  if (motor3508.init() != HAL_OK)
   {
     Error_Handler();
   }
-  if (ChassisCan_Init() != HAL_OK)
+  if (chassis_can.init() != HAL_OK)
   {
     Error_Handler();
   }
-  if (Communication_Init() != HAL_OK)
+  if (board_link.init() != HAL_OK)
   {
     Error_Handler();
   }
-  if (ChassisImu_Init() != HAL_OK)
+  if (chassis_imu_driver.init() != HAL_OK)
   {
     Error_Handler();
   }
-  control_usart_init(sbus_rx_buf[0], sbus_rx_buf[1], SBUS_RX_BUF_NUM);
+  telecontrol.uart_init(sbus_rx_buf[0], sbus_rx_buf[1], SBUS_RX_BUF_NUM);
   HAL_GPIO_WritePin(GPIOC,GPIO_PIN_14,GPIO_PIN_SET);
   /* USER CODE END 2 */
 

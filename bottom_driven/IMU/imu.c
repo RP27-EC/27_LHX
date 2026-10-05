@@ -204,7 +204,7 @@ static bool imu_update_attitude(const float gyro[3], const float accel[3], float
     float q0, q1, q2, q3;
     float yaw_delta;
 
-    if (!QuaternionEkf_Update(&attitude_filter, &config, gyro, accel, dt))
+    if (!quaternion_ekf_algorithm.ops.update(&attitude_filter, &config, gyro, accel, dt))
     { return false; }
     memcpy((void *)chassis_imu.quaternion, attitude_filter.q, sizeof(attitude_filter.q));
     memcpy((void *)chassis_imu.gyro_rad_s, attitude_filter.gyro, sizeof(attitude_filter.gyro));
@@ -254,7 +254,7 @@ HAL_StatusTypeDef ChassisImu_Init(void)
     chassis_imu.quaternion[0] = 1.0f;
     memset(gyro_bias, 0, sizeof(gyro_bias));
     memset(gyro_bias_sum, 0, sizeof(gyro_bias_sum));
-    QuaternionEkf_Init(&attitude_filter, NULL);
+    quaternion_ekf_algorithm.ops.init(&attitude_filter, NULL);
     calibration_count = 0U; last_update_ms = HAL_GetTick();
     yaw_last_deg = 0.0f; yaw_rounds = 0;
 
@@ -377,3 +377,16 @@ bool ChassisImu_GetYawRate(float *yaw_rate_deg_s)
     *yaw_rate_deg_s = data.yaw_rate_deg_s;
     return true;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const ChassisImuModule chassis_imu_driver =
+{
+    .config = &imu_config,
+    .data = {
+        .sample = &chassis_imu,
+    },
+    .init = ChassisImu_Init,
+    .update = ChassisImu_Update,
+    .get = ChassisImu_Get,
+    .get_yaw_rate = ChassisImu_GetYawRate,
+};

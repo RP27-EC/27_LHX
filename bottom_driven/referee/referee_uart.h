@@ -25,4 +25,34 @@ HAL_StatusTypeDef RefereeUart_Start(UART_HandleTypeDef *uart); // 外设配置�
 void RefereeUart_Process(uint32_t now_ms); // 只由一个任务周期调用；CRC和解析在这里执行。
 bool RefereeUart_OnRxEvent(UART_HandleTypeDef *uart, uint16_t position);
 bool RefereeUart_OnError(UART_HandleTypeDef *uart);
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const uint8_t *dma_bytes; // 循环 DMA 原始字节。
+} RefereeUartModuleDataRefs;
+
+typedef struct
+{
+    const volatile RefereeUartDiagnostics_t *state; // 串口 DMA、队列和错误统计。
+} RefereeUartModuleDiagnosticsRefs;
+
+typedef struct
+{
+    RefereeUartModuleDataRefs data; // 反馈与解析数据引用。
+    RefereeUartModuleDiagnosticsRefs diagnostics; // 通信诊断引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*start)(UART_HandleTypeDef *uart); // 绑定裁判串口并启动循环 DMA。
+
+    // 状态维护。
+    void (*process)(uint32_t now_ms); // 周期处理接收数据和在线状态。
+
+    // 接收与解析。
+    bool (*on_rx_event)(UART_HandleTypeDef *uart, uint16_t position); // 处理裁判串口接收事件。
+    bool (*on_error)(UART_HandleTypeDef *uart); // 处理裁判串口错误。
+} RefereeUartModule;
+
+extern const RefereeUartModule referee_uart_driver; // 模块统一访问入口。
+
 #endif

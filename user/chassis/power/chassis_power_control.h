@@ -27,4 +27,21 @@ bool ChassisPowerControl_ConfigValid(const ChassisPowerControlConfig *config);
 float ChassisPowerControl_Update(ChassisPowerController *controller,
                                 const ChassisPowerControlConfig *config,
                                 float power_w, float target_w, float dt_s);
+
+// 共用 PI 入口，每个功率控制器保存独立状态。
+typedef struct
+{
+    void (*init)(ChassisPowerController *controller, float initial_scale); // 建立积分与输出初值。
+    bool (*config_valid)(const ChassisPowerControlConfig *config); // 检查反馈控制参数。
+    float (*update)(ChassisPowerController *controller,
+                    const ChassisPowerControlConfig *config,
+                    float power_w, float target_w, float dt_s); // 更新统一电流比例。
+} ChassisPowerControlOps;
+
+typedef struct
+{
+    ChassisPowerControlOps ops; // 实测功率反馈操作表。
+} ChassisPowerControlAlgorithm;
+
+extern const ChassisPowerControlAlgorithm chassis_power_pi_algorithm; // 功率 PI 算法入口。
 #endif

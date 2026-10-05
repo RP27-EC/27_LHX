@@ -1,6 +1,8 @@
 #ifndef CHASSIS_IMU_H
 #define CHASSIS_IMU_H
 
+#include "peripheral_config.h"
+
 #include "stm32h7xx_hal.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -38,5 +40,30 @@ bool ChassisImu_Get(ChassisImu_Data_t *data);
 bool ChassisImu_GetYawRate(float *yaw_rate_deg_s);
 
 extern volatile ChassisImu_Data_t chassis_imu;
+
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const volatile ChassisImu_Data_t *sample; // 姿态和角速度结果；控制读取用 ops.get。
+} ChassisImuModuleDataRefs;
+
+typedef struct
+{
+    volatile ImuConfig *config; // 当前可调驱动参数。
+    ChassisImuModuleDataRefs data; // 反馈与解析数据引用。
+
+    // 初始化。
+    HAL_StatusTypeDef (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*get)(ChassisImu_Data_t *data); // 复制当前数据快照。
+    bool (*get_yaw_rate)(float *yaw_rate_deg_s); // 读取底盘 Yaw 角速度。
+
+    // 状态维护。
+    bool (*update)(void); // 执行一次状态更新。
+} ChassisImuModule;
+
+extern const ChassisImuModule chassis_imu_driver; // 模块统一访问入口。
 
 #endif // CHASSIS_IMU_H

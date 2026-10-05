@@ -168,18 +168,18 @@ void StartRcTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-      if (RC_TakeFrame(rc_task_frame, &received_ms))
+      if (telecontrol.take_frame(rc_task_frame, &received_ms))
     {
         rc_task_frame_count++;
 
-        if (RC_ParseFrame(rc_task_frame, &rc_ctrl))
+        if (telecontrol.parse_frame(rc_task_frame, &rc_ctrl))
         {
-            RC_MarkValidFrame(received_ms);
+            telecontrol.mark_valid_frame(received_ms);
         }
 
     }
 
-      RemoteState_Update(&rc_ctrl, RC_CheckOnline(HAL_GetTick()));
+      RemoteState_Update(&rc_ctrl, telecontrol.check_online(HAL_GetTick()));
 
         // 按配置周期解析遥控并检测在线状态。
       next_tick += remote_config.task_period_ticks;
@@ -232,21 +232,21 @@ void motor3508_speed_control(void *argument)
   for(;;)
   {
     // 更新底盘 IMU。
-    (void)ChassisImu_Update();
+    (void)chassis_imu_driver.update();
     // 所有模式持续上报 D4；IMU 不可用时明确发送无效位，撤销上板前馈。
     chassis_yaw_rate_deg_s = 0.0f;
-    chassis_yaw_rate_valid = ChassisImu_GetYawRate(&chassis_yaw_rate_deg_s);
+    chassis_yaw_rate_valid = chassis_imu_driver.get_yaw_rate(&chassis_yaw_rate_deg_s);
     if ((uint32_t)(HAL_GetTick() - last_yaw_rate_tx_ms) >=
             chassis_config.yaw_rate_tx_period_ms &&
-        Communication_SendChassisYawRateState(chassis_yaw_rate_deg_s,
+        board_link.send_chassis_yaw_rate_state(chassis_yaw_rate_deg_s,
                                                chassis_yaw_rate_valid) == HAL_OK)
     { last_yaw_rate_tx_ms = HAL_GetTick(); }
     RemoteState_Get(&remote);
     turn_hold = false;
-    lift_hold = Communication_GetLiftLock(NULL);
-    spin_frame_valid = Communication_GetSpinState(&upper_spin_selected,
+    lift_hold = board_link.get_lift_lock(NULL);
+    spin_frame_valid = board_link.get_spin_state(&upper_spin_selected,
                                                   &spin_allowed);
-    bottom_mode_blocked = Communication_GetBottomModeBlocked();
+    bottom_mode_blocked = board_link.get_bottom_mode_blocked();
     if (remote.mode.chassis != REMOTE_MODE_SPIN)
     {
       spin_rearm_required = false;
@@ -289,13 +289,13 @@ void motor3508_speed_control(void *argument)
     // 自旋由本板遥控档位和上板模式许可共同决定；Yaw 角仅用于平移坐标。
     spin_drive_enabled = remote.mode.chassis == REMOTE_MODE_SPIN &&
                          remote.safety.online && remote.safety.spin_enabled &&
-                         Motor3508_OnlineCheck() && !turn_hold && !lift_hold &&
+                         motor3508.online_check() && !turn_hold && !lift_hold &&
                          !bottom_mode_blocked &&
                          spin_frame_valid && upper_spin_selected &&
                          spin_allowed && !spin_rearm_required;
     if (remote.mode.chassis != REMOTE_MODE_SPIN)
     { chassis_spin_block_reason = 0U; }
-    else if (!remote.safety.online || !Motor3508_OnlineCheck() ||
+    else if (!remote.safety.online || !motor3508.online_check() ||
              turn_hold || lift_hold)
     { chassis_spin_block_reason = 6U; }
     else if (!remote.safety.spin_enabled)
@@ -314,7 +314,7 @@ void motor3508_speed_control(void *argument)
     if (spin_was_driving && !spin_drive_enabled)
     { chassis_spin_stop_count++; }
     spin_was_driving = spin_drive_enabled;
-    if (remote.safety.online && Motor3508_OnlineCheck() && !turn_hold && !lift_hold)
+    if (remote.safety.online && motor3508.online_check() && !turn_hold && !lift_hold)
     {
       if (remote.mode.chassis == REMOTE_MODE_MECHANICAL ||
           (bottom_mode_blocked &&
@@ -348,27 +348,27 @@ void motor3508_speed_control(void *argument)
       {
         Chassis_FollowReset();
         Chassis_SpinReset();
-        (void)Motor3508_Stop();
+        (void)motor3508.stop();
       }
     }
     else
     {
       Chassis_FollowReset();
       Chassis_SpinReset();
-      (void)Motor3508_Stop();
+      (void)motor3508.stop();
     }
-    wheel_feedback_valid = Motor3508_OnlineCheck();
+    wheel_feedback_valid = motor3508.online_check();
     for (wheel_id = 1U; wheel_feedback_valid && wheel_id <= MOTOR3508_COUNT;
          wheel_id++)
     {
-      if (!Motor3508_GetFeedback(wheel_id, &wheel_feedback))
+      if (!motor3508.get_feedback(wheel_id, &wheel_feedback))
       { wheel_feedback_valid = false; }
       else { wheel_speed_rpm[wheel_id - 1U] = wheel_feedback.speed_rpm; }
     }
     if (wheel_feedback_valid &&
         (uint32_t)(HAL_GetTick() - last_wheel_speed_tx_ms) >=
             chassis_config.wheel_speed_tx_period_ms &&
-        Communication_SendChassisWheelSpeeds(wheel_speed_rpm) == HAL_OK)
+        board_link.send_chassis_wheel_speeds(wheel_speed_rpm) == HAL_OK)
     {
       last_wheel_speed_tx_ms = HAL_GetTick();
     }
@@ -406,8 +406,8 @@ void up_down_communication(void *argument)
   for(;;)
   {
     // 转发遥控数据。
-    Communication_Service();
-    PowerCommunication_Service();
+    board_link.service();
+    power_link.service();
     taskENTER_CRITICAL();
     frame_count_snapshot = rc_task_frame_count;
     if (frame_count_snapshot > 0U)
@@ -416,16 +416,16 @@ void up_down_communication(void *argument)
     }
     taskEXIT_CRITICAL();
 
-    if (frame_count_snapshot > 0U && RC_online_return())
+    if (frame_count_snapshot > 0U && telecontrol.online_return())
     {
       memcpy(tx_d1, &raw_frame[0], COMMUNICATION_FRAME_SIZE);
       memcpy(tx_d2, &raw_frame[8], COMMUNICATION_FRAME_SIZE);
       memset(tx_d3, 0, sizeof(tx_d3));
       memcpy(tx_d3, &raw_frame[16], RC_FRAME_LEN - 16U);
 
-      (void)Communication_Send(COMMUNICATION_TX_ID_D1, tx_d1);
-      (void)Communication_Send(COMMUNICATION_TX_ID_D2, tx_d2);
-      (void)Communication_Send(COMMUNICATION_TX_ID_D3, tx_d3);
+      (void)board_link.send(COMMUNICATION_TX_ID_D1, tx_d1);
+      (void)board_link.send(COMMUNICATION_TX_ID_D2, tx_d2);
+      (void)board_link.send(COMMUNICATION_TX_ID_D3, tx_d3);
     }
 
     next_tick += remote_config.period_ticks;
@@ -447,10 +447,10 @@ static void RefereeTask(void *argument)
   {
     uint32_t now = HAL_GetTick();
     RefereeHeatSnapshot_t heat;
-    RefereeUart_Process(now);
+    referee_uart_driver.process(now);
     if ((uint32_t)(now - last_heat_tx) >= remote_config.heat_tx_period_ms &&
-        Referee_GetHeatSnapshot(&heat, now) &&
-        Communication_SendHeatState(heat.heat, heat.limit, heat.cooling,
+        referee.get_heat_snapshot(&heat, now) &&
+        board_link.send_heat_state(heat.heat, heat.limit, heat.cooling,
             heat.valid, heat.output_allowed, heat.sequence) == HAL_OK)
     { last_heat_tx = now; }
     osDelay(2U);

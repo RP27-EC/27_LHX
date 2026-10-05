@@ -7,6 +7,7 @@
 - [工程职责](#工程职责)
 - [文档索引](#文档索引)
 - [工程结构](#工程结构)
+- [模块结构体接口](#模块结构体接口)
 - [程序流程](#程序流程)
 - [操作入口](#操作入口)
 - [参数与观察变量](#参数与观察变量)
@@ -32,22 +33,41 @@
 | [通信与总线](文档/09_通信与总线.md) | C1/C2/D1～D6、字节序、有效期、总线分发 |
 | [算法库](文档/10_算法库.md) | PID和四元数EKF原理、实例状态、复用范围 |
 | [配置与调参](文档/11_配置与调参.md) | 应用/外设配置对象、完整字段表、单位及调参顺序 |
+| [模块接口与目录](文档/12_模块接口与目录.md) | 文件分组、配置位置、模块结构体、函数指针调用与移植 |
+| [任务耗时与优化检查](文档/13_任务耗时与优化检查.md) | 分任务耗时预算、状态模拟、总线负载、异常路径与优化建议 |
 
 ## 工程结构
 
 ```text
 infantry _down/
-├─ Core/                 CubeMX外设、启动与RTOS入口
-├─ user/                 应用状态机、控制逻辑和配置
-│  └─ chassis/          底盘解算、功率模型与反馈控制
-├─ bottom_driven/        电机、IMU、通信及外设配置
-│  ├─ referee/          裁判串口与解析
-│  └─ telecontrol/      DBUS接收
-├─ algorithms_library/   PID、四元数EKF
-├─ 文档/                 本工程模块说明
-├─ MDK-ARM/              Keil工程
-└─ Drivers/Middlewares/  HAL、CMSIS、FreeRTOS
+├─ config/                           应用、驱动默认参数
+├─ user/
+│  ├─ chassis/
+│  │  └─ power/                     功率模型与反馈控制
+│  └─ remote/                       遥控模式与操作事件
+├─ bottom_driven/
+│  ├─ motor/motor3508/              底盘四轮
+│  ├─ communication/
+│  │  ├─ board/                     板间 CAN
+│  │  ├─ chassis_can/               底盘 CAN 分发
+│  │  └─ power/                     超电与无线充
+│  ├─ IMU/                          BMI088 与姿态输出
+│  ├─ telecontrol/                  DBUS
+│  └─ referee/                      裁判串口与解析
+├─ algorithms_library/
+│  ├─ pid/                          PID
+│  └─ attitude_ekf/                 四元数 EKF
+├─ Core/                            CubeMX 外设与 RTOS 入口
+├─ 文档/                            模块说明与接口索引
+├─ MDK-ARM/                         Keil 工程
+└─ Drivers/Middlewares/             HAL、CMSIS、FreeRTOS
 ```
+
+## 模块结构体接口
+
+驱动入口在同一结构体内保存数据引用与函数指针。数据按 `config`、`data`、`control`、`diagnostics` 分类，函数按用途分区，读取反馈可用 `motor3508.get_feedback()`。下板四轮命令入口为 `motor3508.execute()`，PID 状态放在 `motor3508.control`。算法使用共用入口，每个实例保存独立状态。
+
+原函数继续提供，启动、任务和总线分发已接入新入口。完整入口表与调用示例见 [模块接口与目录](文档/12_模块接口与目录.md)。
 
 ## 程序流程
 
@@ -69,7 +89,7 @@ DBUS→遥控状态→安全与模式判定→麦轮目标→速度PID→单轮�
 
 ## 参数与观察变量
 
-默认配置在 `user/application_config.c` 和 `bottom_driven/peripheral_config.c`。运行时修改只在本次上电有效，验证后回填源码。
+默认配置在 `config/application_config.c` 和 `config/peripheral_config.c`。运行时修改只在本次上电有效，验证后回填源码。
 
 模块配置内部使用命名子结构体，按部件、模式和功能分类；每组有独立默认值初始化函数。类型、成员路径与初始化入口见 [配置与调参](文档/11_配置与调参.md)。
 

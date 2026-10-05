@@ -40,7 +40,7 @@ HAL_StatusTypeDef RefereeUart_Start(UART_HandleTypeDef *uart) {
     result=HAL_UARTEx_ReceiveToIdle_DMA(uart,referee_uart_dma_buffer,REFEREE_DMA_BUFFER_SIZE);
     referee_uart_diagnostics.receiving=result==HAL_OK;
     if (result!=HAL_OK) { referee_uart_diagnostics.restart_error_count++; }
-    // 循环DMA保留HT、TC中断，即使连续无IDLE也能持续搬运。
+    // 循环 DMA 保留 HT、TC 中断，通过半满和全满事件持续搬运数据。
     return result;
 }
 // 中断只搬运字节，队列满时记录数据断点。
@@ -83,7 +83,7 @@ void RefereeUart_Process(uint32_t now_ms) {
     __disable_irq(); gap=queue_gap; queue_gap=false;
     if(gap) { queue_tail=queue_head; }
     __set_PRIMASK(primask);
-    if(gap) { Referee_ResetStream(); }
+    if(gap) { referee.reset_stream(); }
     if(restart_pending && referee_uart!=NULL) {
         restart_pending=false;
         (void)HAL_UART_AbortReceive(referee_uart);
@@ -92,8 +92,23 @@ void RefereeUart_Process(uint32_t now_ms) {
     while(count<sizeof(block) && queue_tail!=queue_head) {
         block[count++]=byte_queue[queue_tail%REFEREE_RX_QUEUE_SIZE]; __DMB(); queue_tail++;
     }
-    if(count) { Referee_Feed(block,count,now_ms); }
-    else { Referee_Update(now_ms); }
+    if(count) { referee.feed(block,count,now_ms); }
+    else { referee.update(now_ms); }
 }
 
 // HAL回调由Core/Src/usart.c统一拥有，调用本模块的OnRxEvent/OnError。
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const RefereeUartModule referee_uart_driver =
+{
+    .data = {
+        .dma_bytes = referee_uart_dma_buffer,
+    },
+    .diagnostics = {
+        .state = &referee_uart_diagnostics,
+    },
+    .start = RefereeUart_Start,
+    .process = RefereeUart_Process,
+    .on_rx_event = RefereeUart_OnRxEvent,
+    .on_error = RefereeUart_OnError,
+};

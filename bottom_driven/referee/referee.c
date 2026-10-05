@@ -177,7 +177,7 @@ static void parse(uint32_t now_ms) {
             referee_state.message[index].received_frame_count++;
             referee_state.message[index].received_payload_length=payload_length;
         }
-        // 整帧有效不等于当前命令布局有效，decode 还会核对负载长度。
+        // 整帧 CRC 校验后，decode 再按命令核对负载长度。
         parsed=decode(command,frame+7,payload_length);
         if(parsed && index>=0) {
             referee_state.message[index].valid=true; referee_state.message[index].fresh=true;
@@ -276,3 +276,23 @@ bool Referee_GetHeatSnapshot(RefereeHeatSnapshot_t *heat, uint32_t now_ms)
         (uint32_t)(now_ms - heat_meta.last_rx_ms) < REFEREE_OFFLINE_TIMEOUT_MS;
     return true;
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const RefereeModule referee =
+{
+    .data = {
+        .state = &referee_state,
+    },
+    .init = Referee_Init,
+    .feed = Referee_Feed,
+    .update = Referee_Update,
+    .reset_stream = Referee_ResetStream,
+    .get_state = Referee_GetState,
+    .get_robot_status_snapshot = Referee_GetRobotStatusSnapshot,
+    .get_robot_status = Referee_GetRobotStatus,
+    .get_power_heat = Referee_GetPowerHeat,
+    .get_heat_snapshot = Referee_GetHeatSnapshot,
+    .command_index = Referee_CommandIndex,
+    .crc8 = Referee_Crc8,
+    .crc16 = Referee_Crc16,
+};

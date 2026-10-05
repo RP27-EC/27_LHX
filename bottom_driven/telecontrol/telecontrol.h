@@ -1,6 +1,8 @@
 #ifndef TELECONTROL_H
 #define TELECONTROL_H
 
+#include "peripheral_config.h"
+
 #include <stdbool.h>
 #include "stm32h7xx_hal.h"
 #include "usart.h"
@@ -79,5 +81,41 @@ void RC_MarkValidFrame(uint32_t received_ms);
 //在线检测回调，在线回1否则回0
 uint8_t RC_online_return(void);
 
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const RC_ctrl_t *parsed; // 已解析的遥控通道、拨杆和键鼠。
+    const uint8_t *dma_bytes; // 双缓冲 DMA 原始字节。
+} TelecontrolModuleDataRefs;
+
+typedef struct
+{
+    const volatile uint32_t *frame_count; // 串口接收事件累计数。
+    const volatile uint16_t *last_size; // 最近接收长度。
+} TelecontrolModuleDiagnosticsRefs;
+
+typedef struct
+{
+    volatile TelecontrolConfig *config; // 当前可调驱动参数。
+    TelecontrolModuleDataRefs data; // 反馈与解析数据引用。
+    TelecontrolModuleDiagnosticsRefs diagnostics; // 通信诊断引用。
+
+    // 初始化。
+    void (*uart_init)(uint8_t *rx_1buff, uint8_t *rx_2buff, uint16_t dma_buf_num); // 启动遥控 UART 双缓冲 DMA 接收。
+
+    // 数据读取与在线检查。
+    bool (*take_frame)(uint8_t frame[RC_FRAME_LEN], uint32_t *received_ms); // 取出最新完整遥控帧。
+    bool (*check_online)(uint32_t now_ms); // 按时间检查遥控在线状态。
+    uint8_t (*online_return)(void); // 读取遥控在线状态。
+
+    // 状态维护。
+    void (*mark_valid_frame)(uint32_t received_ms); // 记录有效遥控帧时刻。
+
+    // 接收与解析。
+    bool (*parse_frame)(const uint8_t frame[RC_FRAME_LEN], RC_ctrl_t *control); // 校验并解析遥控帧。
+    void (*uart5_idle_handler)(void); // 处理遥控串口空闲中断。
+} TelecontrolModule;
+
+extern const TelecontrolModule telecontrol; // 模块统一访问入口。
 
 #endif

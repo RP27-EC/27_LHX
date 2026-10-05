@@ -301,11 +301,11 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 // 裁判串口回调只搬运数据，CRC 和字段解析留给任务。
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *uart, uint16_t size)
 {
-    (void)RefereeUart_OnRxEvent(uart, size);
+    (void)referee_uart_driver.on_rx_event(uart, size);
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
-    (void)RefereeUart_OnError(uart);
+    (void)referee_uart_driver.on_error(uart);
 }
 
 

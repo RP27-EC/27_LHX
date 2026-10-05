@@ -322,3 +322,24 @@ uint8_t RC_online_return(void){
         return 0;
     }
 }
+
+// 绑定现有状态与函数，供外部通过模块结构体访问。
+const TelecontrolModule telecontrol =
+{
+    .config = &telecontrol_config,
+    .data = {
+        .parsed = &rc_ctrl,
+        .dma_bytes = &sbus_rx_buf[0][0],
+    },
+    .diagnostics = {
+        .frame_count = &rc_rx_frame_count,
+        .last_size = &rc_rx_last_size,
+    },
+    .uart_init = control_usart_init,
+    .uart5_idle_handler = RC_UART5_IdleHandler,
+    .take_frame = RC_TakeFrame,
+    .parse_frame = RC_ParseFrame,
+    .check_online = RC_CheckOnline,
+    .mark_valid_frame = RC_MarkValidFrame,
+    .online_return = RC_online_return,
+};

@@ -20,4 +20,21 @@ float ChassisPowerModel_Predict(const ChassisPowerModelConfig *config,
 float ChassisPowerModel_Limit(const ChassisPowerModelConfig *config,
                              const int16_t current[4], const int16_t rpm[4], float limit_w);
 
+// 共用功率预测入口，模型参数由调用者传入。
+typedef struct
+{
+    bool (*config_valid)(const ChassisPowerModelConfig *config); // 检查模型系数。
+    float (*predict)(const ChassisPowerModelConfig *config,
+                     const int16_t current[4], const int16_t rpm[4], float scale); // 预测四轮正功率。
+    float (*limit)(const ChassisPowerModelConfig *config,
+                   const int16_t current[4], const int16_t rpm[4], float limit_w); // 求允许的电流比例。
+} ChassisPowerModelOps;
+
+typedef struct
+{
+    ChassisPowerModelOps ops; // 功率模型操作表。
+} ChassisPowerModelAlgorithm;
+
+extern const ChassisPowerModelAlgorithm chassis_power_model_algorithm; // 功率预测算法入口。
+
 #endif

@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_PWR_LDO_SUPPLY,USE_HAL_DRIVER,STM32H723xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library;../bottom_driven;../bottom_driven/telecontrol;../bottom_driven/motor;../bottom_driven/communication;../bottom_driven/IMU;../user;../user/chassis;../bottom_driven/referee</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library/attitude_ekf;../algorithms_library/pid;../bottom_driven/IMU;../bottom_driven/communication/board;../bottom_driven/communication/chassis_can;../bottom_driven/communication/power;../bottom_driven/motor/motor3508;../bottom_driven/referee;../bottom_driven/telecontrol;../config;../user/chassis;../user/chassis/power;../user/remote</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;..\bottom_driven\telecontrol;..\bottom_driven\motor;..\bottom_driven\communication;..\bottom_driven\IMU;..\algorithms_library;..\user;..\user\chassis</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library/attitude_ekf;../algorithms_library/pid;../bottom_driven/IMU;../bottom_driven/communication/board;../bottom_driven/communication/chassis_can;../bottom_driven/communication/power;../bottom_driven/motor/motor3508;../bottom_driven/referee;../bottom_driven/telecontrol;../config;../user/chassis;../user/chassis/power;../user/remote</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -938,117 +938,27 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>bottom_driven/telecontrol</GroupName>
-          <Files>
-            <File>
-              <FileName>telecontrol.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\bottom_driven\telecontrol\telecontrol.c</FilePath>
-            </File>
-            <File>
-              <FileName>telecontrol.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\bottom_driven\telecontrol\telecontrol.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>bottom_driven/motor</GroupName>
-          <Files>
-            <File>
-              <FileName>motor3508.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\bottom_driven\motor\motor3508.c</FilePath>
-            </File>
-            <File>
-              <FileName>motor3508.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\bottom_driven\motor\motor3508.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>configuration</GroupName>
+          <GroupName>config</GroupName>
           <Files>
             <File>
               <FileName>peripheral_config.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../bottom_driven/peripheral_config.c</FilePath>
+              <FilePath>../config/peripheral_config.c</FilePath>
             </File>
             <File>
               <FileName>peripheral_config.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../bottom_driven/peripheral_config.h</FilePath>
+              <FilePath>../config/peripheral_config.h</FilePath>
             </File>
             <File>
               <FileName>application_config.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../user/application_config.c</FilePath>
+              <FilePath>../config/application_config.c</FilePath>
             </File>
             <File>
               <FileName>application_config.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../user/application_config.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>bottom_driven/communication</GroupName>
-          <Files>
-            <File>
-              <FileName>power_communication.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\bottom_driven\communication\power_communication.c</FilePath>
-            </File>
-            <File>
-              <FileName>power_communication.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\bottom_driven\communication\power_communication.h</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_can.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\bottom_driven\communication\chassis_can.c</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_can.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\bottom_driven\communication\chassis_can.h</FilePath>
-            </File>
-            <File>
-              <FileName>communication.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\bottom_driven\communication\communication.c</FilePath>
-            </File>
-            <File>
-              <FileName>communication.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\bottom_driven\communication\communication.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>algorithms_library</GroupName>
-          <Files>
-            <File>
-              <FileName>quaternion_ekf.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../algorithms_library/quaternion_ekf.c</FilePath>
-            </File>
-            <File>
-              <FileName>quaternion_ekf.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>../algorithms_library/quaternion_ekf.h</FilePath>
-            </File>
-            <File>
-              <FileName>PID.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\algorithms_library\PID.c</FilePath>
-            </File>
-            <File>
-              <FileName>PID.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\algorithms_library\PID.h</FilePath>
+              <FilePath>../config/application_config.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1068,62 +978,62 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>user/chassis</GroupName>
+          <GroupName>bottom_driven/communication/board</GroupName>
           <Files>
             <File>
-              <FileName>chassis.c</FileName>
+              <FileName>communication.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\user\chassis\chassis.c</FilePath>
+              <FilePath>..\bottom_driven\communication\board\communication.c</FilePath>
             </File>
             <File>
-              <FileName>chassis.h</FileName>
+              <FileName>communication.h</FileName>
               <FileType>5</FileType>
-              <FilePath>..\user\chassis\chassis.h</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_power.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\user\chassis\chassis_power.c</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_power.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\user\chassis\chassis_power.h</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_power_model.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\user\chassis\chassis_power_model.c</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_power_model.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\user\chassis\chassis_power_model.h</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_power_control.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\user\chassis\chassis_power_control.c</FilePath>
-            </File>
-            <File>
-              <FileName>chassis_power_control.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\user\chassis\chassis_power_control.h</FilePath>
+              <FilePath>..\bottom_driven\communication\board\communication.h</FilePath>
             </File>
           </Files>
         </Group>
         <Group>
-          <GroupName>user</GroupName>
+          <GroupName>bottom_driven/communication/chassis_can</GroupName>
           <Files>
             <File>
-              <FileName>remote_state.c</FileName>
+              <FileName>chassis_can.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../user/remote_state.c</FilePath>
+              <FilePath>..\bottom_driven\communication\chassis_can\chassis_can.c</FilePath>
             </File>
             <File>
-              <FileName>remote_state.h</FileName>
+              <FileName>chassis_can.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../user/remote_state.h</FilePath>
+              <FilePath>..\bottom_driven\communication\chassis_can\chassis_can.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>bottom_driven/communication/power</GroupName>
+          <Files>
+            <File>
+              <FileName>power_communication.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\communication\power\power_communication.c</FilePath>
+            </File>
+            <File>
+              <FileName>power_communication.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\communication\power\power_communication.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>bottom_driven/motor/motor3508</GroupName>
+          <Files>
+            <File>
+              <FileName>motor3508.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\motor\motor3508\motor3508.c</FilePath>
+            </File>
+            <File>
+              <FileName>motor3508.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\motor\motor3508\motor3508.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1154,6 +1064,116 @@
               <FileName>referee_uart.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\bottom_driven\referee\referee_uart.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>bottom_driven/telecontrol</GroupName>
+          <Files>
+            <File>
+              <FileName>telecontrol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bottom_driven\telecontrol\telecontrol.c</FilePath>
+            </File>
+            <File>
+              <FileName>telecontrol.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bottom_driven\telecontrol\telecontrol.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>user/chassis</GroupName>
+          <Files>
+            <File>
+              <FileName>chassis.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\chassis.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\chassis.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>user/chassis/power</GroupName>
+          <Files>
+            <File>
+              <FileName>chassis_power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\power\chassis_power.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\power\chassis_power.h</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_model.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\power\chassis_power_model.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_model.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\power\chassis_power_model.h</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\user\chassis\power\chassis_power_control.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_power_control.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\user\chassis\power\chassis_power_control.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>user/remote</GroupName>
+          <Files>
+            <File>
+              <FileName>remote_state.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/remote/remote_state.c</FilePath>
+            </File>
+            <File>
+              <FileName>remote_state.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/remote/remote_state.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>algorithms_library/attitude_ekf</GroupName>
+          <Files>
+            <File>
+              <FileName>quaternion_ekf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../algorithms_library/attitude_ekf/quaternion_ekf.c</FilePath>
+            </File>
+            <File>
+              <FileName>quaternion_ekf.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../algorithms_library/attitude_ekf/quaternion_ekf.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>algorithms_library/pid</GroupName>
+          <Files>
+            <File>
+              <FileName>PID.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\algorithms_library\pid\PID.c</FilePath>
+            </File>
+            <File>
+              <FileName>PID.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\algorithms_library\pid\PID.h</FilePath>
             </File>
           </Files>
         </Group>

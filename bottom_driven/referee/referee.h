@@ -104,7 +104,7 @@ typedef struct {
     uint16_t interaction_user_length; // 0x0301实际user_data长度，尾部已清零。
 } RefereeInfo_t;
 typedef struct {
-    bool online; // 最近收到CRC正确的完整帧；不表示功率数据一定新鲜。
+    bool online; // 最近 CRC 正确帧的在线状态；各消息有效期查看 message[].fresh。
     uint8_t last_seq;
     uint16_t last_cmd_id;
     uint16_t last_payload_length;
@@ -144,4 +144,38 @@ bool Referee_GetHeatSnapshot(RefereeHeatSnapshot_t *heat, uint32_t now_ms);
 int Referee_CommandIndex(uint16_t cmd_id);
 uint8_t Referee_Crc8(const uint8_t *data, size_t length);
 uint16_t Referee_Crc16(const uint8_t *data, size_t length);
+
+// 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
+typedef struct
+{
+    const volatile RefereeState_t *state; // 各命令解析结果、消息有效期与解析诊断。
+} RefereeModuleDataRefs;
+
+typedef struct
+{
+    RefereeModuleDataRefs data; // 反馈与解析数据引用。
+
+    // 初始化。
+    void (*init)(void); // 初始化模块。
+
+    // 数据读取与在线检查。
+    bool (*get_state)(RefereeState_t *state); // 复制裁判解析结果与诊断。
+    bool (*get_robot_status_snapshot)(RefereeRobotStatus_t *status, uint32_t *last_rx_ms); // 复制机器人状态及接收时刻。
+    bool (*get_robot_status)(RefereeRobotStatus_t *status, uint32_t now_ms); // 读取新鲜机器人状态。
+    bool (*get_power_heat)(RefereeWire_power_heat_data_t *data, uint32_t now_ms); // 读取新鲜功率和热量数据。
+    bool (*get_heat_snapshot)(RefereeHeatSnapshot_t *heat, uint32_t now_ms); // 复制热量与供弹许可快照。
+    int (*command_index)(uint16_t cmd_id); // 查找裁判命令对应的消息下标。
+
+    // 状态维护。
+    void (*feed)(const uint8_t *data, size_t length, uint32_t now_ms); // 向裁判解析器追加接收字节。
+    void (*update)(uint32_t now_ms); // 执行一次状态更新。
+    void (*reset_stream)(void); // 丢弃待解析半帧并保留有效数据。
+
+    // 数据校验。
+    uint8_t (*crc8)(const uint8_t *data, size_t length); // 计算帧头 CRC。
+    uint16_t (*crc16)(const uint8_t *data, size_t length); // 计算整帧 CRC。
+} RefereeModule;
+
+extern const RefereeModule referee; // 模块统一访问入口。
+
 #endif
