@@ -755,6 +755,16 @@
               <FileType>5</FileType>
               <FilePath>../user/shoot/shoot_heat.h</FilePath>
             </File>
+            <File>
+              <FileName>shoot_speed.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/shoot/shoot_speed.c</FilePath>
+            </File>
+            <File>
+              <FileName>shoot_speed.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/shoot/shoot_speed.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

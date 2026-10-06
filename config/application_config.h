@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "shoot_heat.h"
+#include "shoot_speed.h"
 
 // 启动时加载默认值；运行时可修改配置变量。
 typedef struct
@@ -85,6 +86,7 @@ void LiftConfig_Init(void);
 typedef struct
 {
     int32_t target_speed_rpm; // 两轮共同目标速度幅值，rpm。
+    ShootSpeedConfig adaptive; // 弹速反馈调速、余量和正常转速上限。
     int32_t block_speed_rpm; // 堵转时的低速门槛，转子 rpm。
     int32_t block_current_raw; // 堵转反馈电流门槛，原始码。
     uint32_t block_confirm_ms; // 低速高电流需持续的时间。
@@ -269,6 +271,7 @@ void LiftStallConfig_Init(volatile LiftStallConfig *config);
 void LiftCalibrationConfig_Init(volatile LiftCalibrationConfig *config);
 void LiftHoldConfig_Init(volatile LiftHoldConfig *config);
 void FrictionConfig_Init(volatile FrictionConfig *config);
+void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config);
 void DialFeedConfig_Init(volatile DialFeedConfig *config);
 void GimbalHomeConfig_Init(volatile GimbalHomeConfig *config);
 void YawInertialAngleConfig_Init(volatile YawInertialAngleConfig *config);

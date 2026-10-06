@@ -143,7 +143,7 @@ static void Shoot_FricOutput(void)
             (int16_t)(current * motor3508_config.left_direction),
             (int16_t)(current * motor3508_config.right_direction));
     } else {
-        (void)Motor3508_SpeedControl(shoot_config.friction.target_speed_rpm);
+        (void)Motor3508_SpeedControl((int16_t)shoot_control_state.speed.target_speed_rpm);
     }
 }
 
@@ -418,10 +418,11 @@ static void Shoot_DialIdleHold(void)
     }
 }
 
-// 初始化本地热量，清空供弹、堵转恢复和输入边沿状态，启用待机位置保持。
+// 初始化热量和弹速调节，清空供弹、堵转及输入状态，启用待机保持。
 void ShootControl_Init(void)
 {
     ShootHeat_Init(HAL_GetTick());
+    ShootSpeed_Init(&shoot_control_state.speed);
     continuous_tracking = false;
     idle_hold_enabled = true;
     shoot_control_state.stop.holding = false;
@@ -470,6 +471,27 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
     { if (mode != REMOTE_SHOOT_OFF) { mode = REMOTE_SHOOT_READY; } }
 
     friction_ready = Shoot_FricPrepare(mode != REMOTE_SHOOT_OFF);
+    {
+        Communication_ShotSnapshot_t shot;
+        ShootSpeedFeedback feedback;
+        ShootSpeedConfig config = shoot_config.friction.adaptive;
+        uint32_t now = HAL_GetTick();
+        bool received = Communication_GetShotSnapshot(&shot);
+        bool ready = friction_ready && shoot_control_state.friction.enabled &&
+            shoot_control_state.friction.state == SHOOT_FRIC_NORMAL &&
+            (uint32_t)(now - shoot_control_state.friction.state_start_ms) >= shoot_config.friction.startup_grace_ms;
+        if (received) {
+            feedback.actual_m_s = shot.speed_m_s;
+            feedback.limit_m_s = shot.speed_limit_m_s;
+            feedback.sequence = shot.sequence;
+            feedback.valid = shot.valid;
+            feedback.limit_valid = shot.speed_limit_valid;
+            feedback.received_ms = shot.last_rx_ms;
+            feedback.sample_ms = shot.sample_ms;
+        }
+        ShootSpeed_Update(&shoot_control_state.speed, &config, shoot_config.friction.target_speed_rpm,
+            motor3508_config.max_speed_rpm, received ? &feedback : NULL, ready, now);
+    }
     // 恢复期间停拨盘，避免继续供弹；群组电流仍在拨盘命令之后发送。
     if (mode != REMOTE_SHOOT_OFF && !friction_ready) { mode = REMOTE_SHOOT_READY; }
 

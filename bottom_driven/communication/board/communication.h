@@ -19,6 +19,7 @@ extern "C" {
 #define COMM_CAN_RX_ID_D5  0x0D5U // 四个底盘电机的实时转速。
 
 #define COMM_CAN_RX_ID_D6  0x0D6U // 裁判热量与发射许可。
+#define COMM_CAN_RX_ID_D7  0x0D7U // 枪管测速、弹速上限和样本年龄。
 
 // 上板发送给下板的标准帧 ID。
 #define COMM_CAN_TX_ID_C1  0x0C1U
@@ -113,7 +114,7 @@ HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
 bool Communication_CAN_GetChassisYawRate(float *rate_deg_s);
 bool Communication_CAN_GetChassisYawRateState(float *rate_deg_s, uint32_t *sample_ms);
 
-// 获取指定 D1~D6 的最新完整快照；尚未收到或参数错误时返回 false。
+// 获取指定 D1~D7 的最新完整快照；尚未收到或参数错误时返回 false。
 bool Communication_CAN_GetLatest(uint16_t std_id,
                                  Communication_CanRxFrame_t *frame);
 
@@ -124,6 +125,14 @@ typedef struct {
     uint32_t last_rx_ms; // 板间热量帧到达时刻。
 } Communication_HeatSnapshot_t;
 bool Communication_GetHeatSnapshot(Communication_HeatSnapshot_t *heat);
+
+typedef struct {
+    float speed_m_s, speed_limit_m_s; // 主枪管实测弹速与裁判弹速上限。
+    uint16_t sequence; // 原枪管测速更新序号。
+    bool valid, speed_limit_valid; // 两项数据的独立有效标志。
+    uint32_t last_rx_ms, sample_ms; // 板间接收时间和折算到上板的测速时间。
+} Communication_ShotSnapshot_t;
+bool Communication_GetShotSnapshot(Communication_ShotSnapshot_t *shot);
 
 // 处理 18 字节遥控帧并检测断联，建议每 1~10 ms 调用。
 void Communication_Process(void);
@@ -136,7 +145,7 @@ bool Communication_RC_IsOnline(void);
 // 模块入口引用当前驱动数据；控制读取使用模块的快照接口。
 typedef struct
 {
-    const volatile Communication_CanRxFrame_t *frames; // D1~D6 原始帧；控制读取用 ops.can_get_latest。
+    const volatile Communication_CanRxFrame_t *frames; // D1~D7 原始帧；控制读取用 can_get_latest。
     const Communication_RcControl_t *remote; // 拼帧完成后的遥控解析结果。
 } BoardLinkModuleDataRefs;
 
@@ -162,6 +171,7 @@ typedef struct
     bool (*can_get_chassis_yaw_rate_state)(float *rate_deg_s, uint32_t *sample_ms); // 读取下板角速度及采样时刻。
     bool (*can_get_latest)(uint16_t std_id, Communication_CanRxFrame_t *frame); // 复制指定 ID 的原始接收帧。
     bool (*get_heat_snapshot)(Communication_HeatSnapshot_t *heat); // 复制热量与供弹许可快照。
+    bool (*get_shot_snapshot)(Communication_ShotSnapshot_t *shot); // 复制测速、上限及原样本时间。
     bool (*rc_get)(Communication_RcControl_t *control); // 复制已解析遥控数据。
     bool (*rc_is_online)(void); // 读取遥控链路在线状态。
 

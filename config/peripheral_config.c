@@ -12,18 +12,18 @@ void Motor4310YawHoldConfig_Init(volatile Motor4310_PidProfile_t *config)
     config->speed.kd = 0.0f; // 4310 速度环微分增益。
     config->speed.integral_limit = 350.0f; // 速度环积分项限幅。
     config->speed.output_limit = 2047.0f; // 速度环转矩码输出限幅。
-    config->position.kp = 0.3f; // Yaw 机械保持位置环比例增益。
-    config->position.ki = 0.1f; // 4310 位置环积分增益。
+    config->position.kp = 0.4f; // Yaw 机械保持位置环比例增益。
+    config->position.ki = 0.15f; // 4310 位置环积分增益。
     config->position.kd = 0.001f; // 4310 位置环微分增益。
     config->position.integral_limit = 150.0f; // 位置环积分项限幅。
-    config->position.output_limit = 300.0f; // 位置环目标速度限幅。
+    config->position.output_limit = 400.0f; // 位置环目标速度限幅。
 }
 
 // 加载 Yaw 调头专用的电机位置、速度串级 PID 默认值。
 void Motor4310YawTurnConfig_Init(volatile Motor4310_PidProfile_t *config)
 {
     if (config == NULL) { return; }
-    config->position.kp = 0.7f; // 调头独立位置环比例增益。
+    config->position.kp = 0.8f; // 调头独立位置环比例增益。
     config->position.ki = 0.0f; // 调头独立位置环积分增益。
     config->position.kd = 0.0001f; // 调头独立位置环微分增益。
     config->position.integral_limit = 0.0f; // 调头独立位置环积分项限幅。
@@ -69,7 +69,7 @@ volatile CommunicationConfig communication_config; // 板间通信重试和超�
 // 加载下板遥控和底盘角速度反馈的接收有效期。
 void CommunicationConfig_Init(void)
 {
-    communication_config.timeout_ms = 100U; // 下板遥控 CAN 帧接收超时，ms。
+    communication_config.timeout_ms = 100U; // 从 D1 接收起计算遥控有效期，ms。
     communication_config.yaw_rate_timeout_ms = 100U; // 下板角速度帧有效期，ms。
 }
 
@@ -79,18 +79,18 @@ volatile Motor3508Config motor3508_config; // 电机闭环与命令保护参数�
 void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 2.0f; // 摩擦轮速度环比例增益。
-    config->ki = 1.0f; // 摩擦轮速度环积分增益。
+    config->kp = 5.0f; // 摩擦轮速度环比例增益。
+    config->ki = 2.0f; // 摩擦轮速度环积分增益。
     config->kd = 0.0f; // 摩擦轮速度环微分增益。
     config->integral_limit = 500.0f; // 速度环积分项限幅。
-    config->output_limit = 5000.0f; // 速度环电流码输出限幅。
+    config->output_limit = 16384.0f; // 速度环电流码输出限幅。
 }
 
 // 加载摩擦轮方向、转速、电流保护、在线超时及速度环默认值。
 void Motor3508Config_Init(void)
 {
     motor3508_config.current_limit = 16384; // 摩擦轮电流命令限幅，原始码。
-    motor3508_config.max_speed_rpm = 2000.0f; // 摩擦轮目标转速上限，rpm。
+    motor3508_config.max_speed_rpm = 8000.0f; // 摩擦轮目标转速上限，rpm。
     motor3508_config.left_direction = 1.0f; // 左摩擦轮转向系数。
     motor3508_config.right_direction = (-1.0f); // 右摩擦轮转向系数。
     motor3508_config.offline_timeout_ms = 100U; // 摩擦轮反馈离线超时，ms。
@@ -128,11 +128,11 @@ volatile DialMotorConfig dial_motor_config; // 拨盘电机闭环与通信参数
 void DialPositionPidConfig_Init(volatile DialPositionPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.07f; // 拨盘位置环比例增益。
+    config->kp = 0.09f; // 拨盘位置环比例增益。
     config->ki = 0.05f; // 拨盘位置环积分增益。
     config->kd = 0.0f; // 拨盘位置环微分增益。
     config->integral_limit = 0.0f; // 位置环积分项限幅。
-    config->speed_limit_dps = 3500.0f; // 位置环目标速度限幅，度/s。
+    config->speed_limit_dps = 2500.0f; // 位置环目标速度限幅，度/s。
 }
 
 // 加载拨盘单发速度内环 PID 及单发、连发共用的积分与电流限幅。
@@ -143,15 +143,15 @@ void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
     config->ki = 0.03f; // 单发速度环积分增益。
     config->kd = 0.0f; // 单发速度环微分增益。
     config->integral_limit = 500.0f; // 速度环积分项限幅。
-    config->output_limit = 1500.0f; // 速度环电流码输出限幅。
+    config->output_limit = 1600.0f; // 速度环电流码输出限幅。
 }
 
 // 加载拨盘连发专用速度环 PID 增益。
 void DialContinuousSpeedPidConfig_Init(volatile DialContinuousSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.08f; // 连发速度环比例增益。
-    config->ki = 0.0f; // 连发速度环积分增益。
+    config->kp = 0.12f; // 连发速度环比例增益。
+    config->ki = 0.5f; // 连发速度环积分增益。
     config->kd = 0.0f; // 连发速度环微分增益。
 }
 
@@ -184,7 +184,7 @@ void GimbalAttitudeEkfConfig_Init(volatile QuaternionEkfConfig *config)
 void GimbalImuConfig_Init(void)
 {
     gimbal_imu_config.update_period_s = 0.004f; // IMU 姿态积分使用的更新周期，s。
-    gimbal_imu_config.calibration_samples = 1000U; // 静止时估计陀螺零偏的采样次数。
+    gimbal_imu_config.calibration_samples = 1500U; // 静止时估计陀螺零偏的采样次数。
     gimbal_imu_config.yaw_rate_filter_alpha = 1.0f; // Yaw 角速度低通的新样本权重，越大响应越快、滤波越弱。
     gimbal_imu_config.read_timeout_ms = 12U; // 容忍单次 SPI 丢帧，连续失败再停惯性控制。
     GimbalAttitudeEkfConfig_Init(&gimbal_imu_config.attitude_ekf);

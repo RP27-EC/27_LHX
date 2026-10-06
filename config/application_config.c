@@ -92,11 +92,26 @@ void LiftConfig_Init(void)
 
 volatile ShootConfig shoot_config; // 发射动作和堵转恢复参数。
 
+// 加载弹速调节步长、目标余量、正常转速上限及反馈时序。
+void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
+{
+    if (config == NULL) { return; }
+    config->enabled = true; // 使用枪管测速调整摩擦轮。
+    config->step_rpm = 400; // 单次转速调整步长。
+    config->max_speed_rpm = 6500; // 正常转速上限，还受驱动上限约束。
+    config->margin_m_s = 1.5f; // 预留弹速余量。
+    config->deadband_m_s = 0.5f; // 小幅弹速波动保持当前转速。
+    config->fallback_limit_m_s = 25.0f; // 无裁判弹速上限时的调试上限。
+    config->feedback_timeout_ms = 100U; // 板间测速帧有效期。
+    config->settle_time_ms = 200U; // 调速后等待轮速稳定。
+}
+
 // 加载摩擦轮目标转速、堵转检测及正向脉冲恢复参数。
 void FrictionConfig_Init(volatile FrictionConfig *config)
 {
     if (config == NULL) { return; }
-    config->target_speed_rpm = 1500; // 摩擦轮目标转速幅值，rpm。
+    config->target_speed_rpm = 6000; // 摩擦轮目标转速幅值，rpm。
+    ShootSpeedConfig_Init(&config->adaptive);
     config->block_speed_rpm = 100; // 低于此转速才检查堵转。
     config->block_current_raw = 2000; // 排除低负载的慢速转动。
     config->block_confirm_ms = 200U; // 过滤短暂的出弹掉速。
@@ -203,9 +218,9 @@ void YawTurnConfig_Init(volatile YawTurnConfig *config)
     if (config == NULL) { return; }
     config->wheel_trigger_raw = 200; // 拨轮负向达到此阈值时触发调头，遥控原始值。
     config->wheel_rearm_raw = 50; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
-    config->duration_s = 0.78f; // 调头时间，越短目标变化越快。
+    config->duration_s = 0.80f; // 调头时间，越短目标变化越快。
     config->tolerance_deg = 2.0f; // 调头目标角的到位误差，度。
-    config->speed_raw_max = 20; // 调头到位允许的反馈速度绝对值，电机原始码。
+    config->speed_raw_max = 25; // 调头到位允许的反馈速度绝对值，电机原始码。
     config->stable_cycles = 5U; // 调头位置与速度需连续合格的控制周期数。
 }
 
@@ -246,7 +261,7 @@ void PitchInertialAngleConfig_Init(volatile PitchInertialAngleConfig *config)
 void PitchInertialRateConfig_Init(volatile PitchInertialRateConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 8.0f; // Pitch 陀螺仪速度环比例增益。
+    config->kp = 9.0f; // Pitch 陀螺仪速度环比例增益。
     config->ki = 0.0f; // Pitch 陀螺仪速度环积分增益。
     config->kd = 0.0f; // Pitch 陀螺仪速度环微分增益。
     config->integral_limit = 0.0f; // Pitch 速度环积分项限幅。
@@ -320,11 +335,11 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.allow_offline = false; // 脱离裁判调车时才允许打开。
     shoot_heat_config.heat_per_shot = 20.0f; // 每次新供弹预留的热量。
     shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
-    shoot_heat_config.low_remaining = 50.0f; // 低射频档剩余量上界。
-    shoot_heat_config.high_remaining = 100.0f; // 高射频档剩余量下界。
-    shoot_heat_config.low_rate_hz = 6.0f; // 低余量档射频。
-    shoot_heat_config.middle_rate_hz = 10.0f; // 中余量档射频。
-    shoot_heat_config.high_rate_hz = 15.0f; // 高余量档射频。
+    shoot_heat_config.low_remaining = 70.0f; // 低射频档剩余量上界。
+    shoot_heat_config.high_remaining = 120.0f; // 高射频档剩余量下界。
+    shoot_heat_config.low_rate_hz = 9.0f; // 低余量档射频。
+    shoot_heat_config.middle_rate_hz = 14.0f; // 中余量档射频。
+    shoot_heat_config.high_rate_hz = 18.0f; // 高余量档射频。
     shoot_heat_config.offline_heat_limit = 100.0f; // 离线调试尚无裁判数据时的上限。
     shoot_heat_config.offline_cooling_per_s = 10.0f; // 离线调试备用冷却速率。
     shoot_heat_config.referee_timeout_ms = 100U; // 板间热量快照有效期。

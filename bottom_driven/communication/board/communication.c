@@ -12,17 +12,18 @@
 #define COMM_CAN_WHEEL_FILTER_BANK  16U
 #define COMM_CAN_SLAVE_START_BANK   14U
 #define COMM_CAN_STD_ID_TO_FILTER(id) ((uint32_t)(id) << 5U)
-#define COMM_CAN_RX_FRAME_COUNT     6U
+#define COMM_CAN_RX_FRAME_COUNT     7U
 #define COMM_RC_PART_D1             0x01U
 #define COMM_RC_PART_D2             0x02U
 
 static volatile Communication_CanRxFrame_t
-    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; // D1~D6 各自的最新接收快照。
+    communication_rx_frames[COMM_CAN_RX_FRAME_COUNT]; // D1~D7 各自的最新接收快照。
 static uint8_t communication_rc_assembly[COMM_RC_FRAME_SIZE]; // D1~D3 拼接中的遥控原始帧。
 static volatile uint8_t communication_rc_assembly_mask; // 已收到 D1/D2 分片的位掩码。
+static volatile uint32_t communication_rc_assembly_start_ms; // 本轮 D1 接收时间，后续分片共用此有效期。
 static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; // 提交给任务解析的完整遥控快照。
 static volatile bool communication_rc_snapshot_ready; // 是否有完整遥控帧等待任务解析。
-static volatile uint32_t communication_rc_snapshot_ms; // 完整遥控帧拼接完成的时间。
+static volatile uint32_t communication_rc_snapshot_ms; // 完整遥控帧对应的 D1 接收时间。
 
 Communication_RcControl_t communication_rc; // 当前已解析的遥控器数据。
 volatile bool communication_rc_online = false; // 遥控链路当前是否在线。
@@ -67,13 +68,16 @@ static void Communication_RC_AcceptFragment(
     if (std_id == COMM_CAN_RX_ID_D1)
     {
         memcpy(&communication_rc_assembly[0], data, COMM_CAN_FRAME_SIZE);
+        communication_rc_assembly_start_ms = HAL_GetTick();
         communication_rc_assembly_mask = COMM_RC_PART_D1;
         return;
     }
 
     if (std_id == COMM_CAN_RX_ID_D2)
     {
-        if (communication_rc_assembly_mask != COMM_RC_PART_D1)
+        if ((communication_rc_assembly_mask != COMM_RC_PART_D1) ||
+            ((uint32_t)(HAL_GetTick() - communication_rc_assembly_start_ms) >=
+             communication_config.timeout_ms))
         {
             communication_rc_assembly_mask = 0U;
             communication_rc_assembly_error_count++;
@@ -89,6 +93,8 @@ static void Communication_RC_AcceptFragment(
     {
         if ((communication_rc_assembly_mask !=
              (COMM_RC_PART_D1 | COMM_RC_PART_D2)) ||
+            ((uint32_t)(HAL_GetTick() - communication_rc_assembly_start_ms) >=
+             communication_config.timeout_ms) ||
             !Communication_RC_D3PaddingIsZero(data))
         {
             communication_rc_assembly_mask = 0U;
@@ -100,7 +106,8 @@ static void Communication_RC_AcceptFragment(
         communication_rc_assembly[17] = data[1];
         memcpy(communication_rc_snapshot, communication_rc_assembly,
                COMM_RC_FRAME_SIZE);
-        communication_rc_snapshot_ms = HAL_GetTick();
+        // 后续分片不延长 D1 的有效期。
+        communication_rc_snapshot_ms = communication_rc_assembly_start_ms;
         communication_rc_snapshot_ready = true;
         communication_rc_assembly_mask = 0U;
     }
@@ -110,7 +117,7 @@ static void Communication_RC_AcceptFragment(
 
 static int32_t Communication_CAN_RxIndex(uint16_t std_id)
 {
-    if ((std_id >= COMM_CAN_RX_ID_D1) && (std_id <= COMM_CAN_RX_ID_D6))
+    if ((std_id >= COMM_CAN_RX_ID_D1) && (std_id <= COMM_CAN_RX_ID_D7))
     {
         return (int32_t)(std_id - COMM_CAN_RX_ID_D1);
     }
@@ -124,7 +131,7 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
     CAN_FilterTypeDef filter = {0};
     HAL_StatusTypeDef status;
 
-    // CAN2 bank 14 接收 D1~D4，bank 16 接收 D5/D6。
+    // CAN2 bank 14 接收 D1~D4，bank 16 接收 D5~D7。
     filter.FilterBank = COMM_CAN_FILTER_BANK;
     filter.FilterMode = CAN_FILTERMODE_IDLIST;
     filter.FilterScale = CAN_FILTERSCALE_16BIT;
@@ -142,12 +149,12 @@ HAL_StatusTypeDef Communication_CAN_Init(void)
         return status;
     }
 
-    // bank 15 留给 Yaw 电机；bank 16 精确接收四轮转速和热量。
+    // bank 15 留给 Yaw 电机；bank 16 接收轮速、热量和弹速。
     filter.FilterBank = COMM_CAN_WHEEL_FILTER_BANK;
     filter.FilterIdHigh = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D5);
     filter.FilterIdLow = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D6);
-    filter.FilterMaskIdHigh = filter.FilterIdHigh;
-    filter.FilterMaskIdLow = filter.FilterIdLow;
+    filter.FilterMaskIdHigh = COMM_CAN_STD_ID_TO_FILTER(COMM_CAN_RX_ID_D7);
+    filter.FilterMaskIdLow = filter.FilterMaskIdHigh;
     status = HAL_CAN_ConfigFilter(&hcan2, &filter);
     if (status != HAL_OK) { return status; }
 
@@ -390,9 +397,19 @@ void Communication_Process(void)
     uint32_t now_ms;
     uint32_t saved_primask;
     bool frame_available;
+    bool frame_valid;
 
     saved_primask = __get_PRIMASK();
     __disable_irq();
+    now_ms = HAL_GetTick();
+    // 缺片期间也清理过期拼帧，保留仍在有效期内的新 D1。
+    if ((communication_rc_assembly_mask != 0U) &&
+        ((uint32_t)(now_ms - communication_rc_assembly_start_ms) >=
+         communication_config.timeout_ms))
+    {
+        communication_rc_assembly_mask = 0U;
+        communication_rc_assembly_error_count++;
+    }
     frame_available = communication_rc_snapshot_ready;
     if (frame_available)
     {
@@ -404,23 +421,22 @@ void Communication_Process(void)
 
     if (frame_available)
     {
-        if (Communication_RC_Parse(frame, &decoded))
+        frame_valid = Communication_RC_Parse(frame, &decoded);
+        saved_primask = __get_PRIMASK();
+        __disable_irq();
+        // 任务等待或解析期间过期的完整帧也不发布。
+        if ((uint32_t)(HAL_GetTick() - received_ms) <
+            communication_config.timeout_ms)
         {
-            saved_primask = __get_PRIMASK();
-            __disable_irq();
             communication_rc = decoded;
-            communication_rc_last_valid_ms = received_ms;
-            communication_rc_valid_count++;
-            communication_rc_online = true;
-            __set_PRIMASK(saved_primask);
+            if (frame_valid)
+            {
+                communication_rc_last_valid_ms = received_ms;
+                communication_rc_valid_count++;
+                communication_rc_online = true;
+            }
         }
-        else
-        {
-            saved_primask = __get_PRIMASK();
-            __disable_irq();
-            communication_rc = decoded;
-            __set_PRIMASK(saved_primask);
-        }
+        __set_PRIMASK(saved_primask);
     }
 
     now_ms = HAL_GetTick();
@@ -540,7 +556,24 @@ bool Communication_GetHeatSnapshot(Communication_HeatSnapshot_t *heat)
     return true;
 }
 
-// 绑定现有状态与函数，供外部通过模块结构体访问。
+// 按原样本年龄恢复测速时刻，供发射任务排除历史测速。
+bool Communication_GetShotSnapshot(Communication_ShotSnapshot_t *shot)
+{
+    Communication_CanRxFrame_t frame;
+    if (shot == NULL) { return false; }
+    memset(shot, 0, sizeof(*shot));
+    if (!Communication_CAN_GetLatest(COMM_CAN_RX_ID_D7, &frame)) { return false; }
+    shot->speed_m_s = (uint16_t)(frame.data[0] | ((uint16_t)frame.data[1] << 8)) * 0.01f;
+    shot->speed_limit_m_s = (uint16_t)(frame.data[2] | ((uint16_t)frame.data[3] << 8)) * 0.01f;
+    shot->sequence = (uint16_t)(frame.data[4] | ((uint16_t)frame.data[5] << 8));
+    shot->valid = (frame.data[6] & 1U) != 0U;
+    shot->speed_limit_valid = (frame.data[6] & 2U) != 0U;
+    shot->last_rx_ms = frame.last_rx_ms;
+    shot->sample_ms = frame.last_rx_ms - (uint32_t)frame.data[7] * 10U;
+    return true;
+}
+
+// 绑定当前状态和模块接口。
 const BoardLinkModule board_link =
 {
     .config = &communication_config,
@@ -565,6 +598,7 @@ const BoardLinkModule board_link =
     .can_get_chassis_yaw_rate_state = Communication_CAN_GetChassisYawRateState,
     .can_get_latest = Communication_CAN_GetLatest,
     .get_heat_snapshot = Communication_GetHeatSnapshot,
+    .get_shot_snapshot = Communication_GetShotSnapshot,
     .process = Communication_Process,
     .rc_get = Communication_RC_Get,
     .rc_is_online = Communication_RC_IsOnline,

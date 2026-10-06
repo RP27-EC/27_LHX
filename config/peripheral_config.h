@@ -49,7 +49,7 @@ void Motor4310Config_Init(void);
 
 typedef struct
 {
-    uint32_t timeout_ms; // D1~D3 有效遥控帧超过此时长未更新，即判断控。
+    uint32_t timeout_ms; // 从 D1 接收起计算拼帧和遥控数据有效期，超时断控。
     uint32_t yaw_rate_timeout_ms; // D4 底盘角速度帧的有效期。
 } CommunicationConfig;
 // 数据定义：bottom_driven/communication/board/communication.h。

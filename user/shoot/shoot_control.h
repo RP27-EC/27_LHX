@@ -8,6 +8,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 #include "remote_state.h"
+#include "shoot_speed.h"
 
 #define SHOOT_LEFT_FRIC_MOTOR_ID     1U
 #define SHOOT_RIGHT_FRIC_MOTOR_ID    2U
@@ -87,6 +88,7 @@ typedef struct
 typedef struct
 {
     ShootFricRecoveryState_t friction; // 摩擦轮堵转检测和电流脉冲。
+    ShootSpeedState speed; // 弹速反馈与摩擦轮自适应目标。
     ShootDialMotionState_t dial; // 拨盘位置目标与状态机。
     ShootDialRecoveryState_t recovery; // 堵转检测与恢复过程。
     ShootDialStopState_t stop; // 待机位置保持与失联零电流重发状态。
