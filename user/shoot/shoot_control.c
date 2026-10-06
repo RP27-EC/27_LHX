@@ -500,7 +500,8 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
         continuous_tracking = false;
         // 拨盘帧先入队，关摩擦轮时也不能让群组帧占掉最后一个邮箱。
         Shoot_DialIdleHold();
-        if (mode == REMOTE_SHOOT_OFF) { (void)Motor3508_Stop(); }
+        // 保险、断控和许可撤销都主动停轮，拨盘帧仍先入队。
+        if (mode == REMOTE_SHOOT_OFF) { (void)Motor3508_BrakeStop(); }
         // 待发时先给拨盘保活，再发摩擦轮 0x200，避免邮箱被占满。
         if (mode == REMOTE_SHOOT_READY)
         { Shoot_FricOutput(); }

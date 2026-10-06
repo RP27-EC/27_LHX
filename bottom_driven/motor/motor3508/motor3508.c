@@ -3,23 +3,30 @@
 #include "can.h"
 #include "peripheral_config.h"
 #include <string.h>
+#include <float.h>
 
 #define MOTOR3508_CAN_FILTER_BANK          1U
 #define MOTOR3508_CAN_SLAVE_START_BANK     14U
 #define MOTOR3508_STD_ID_TO_FILTER16(id)   ((uint32_t)(id) << 5U)
+#define MOTOR3508_CURRENT_RAW_MAX         16384 // C620 电流命令幅值范围。
 
 Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT]; // 两个摩擦轮电机反馈。
 PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT]; // 两个摩擦轮速度 PID。
+volatile Motor3508BrakeState motor3508_brake_state; // 主动停轮状态。
 
 static int16_t Motor3508_LimitCurrent(float value)
 {
-    if (value > (float)motor3508_config.current_limit)
+    int32_t limit = motor3508_config.current_limit;
+    if (limit < 0) { limit = 0; }
+    if (limit > MOTOR3508_CURRENT_RAW_MAX) { limit = MOTOR3508_CURRENT_RAW_MAX; }
+    if (value != value) { return 0; }
+    if (value > (float)limit)
     {
-        return (int16_t)motor3508_config.current_limit;
+        return (int16_t)limit;
     }
-    if (value < -(float)motor3508_config.current_limit)
+    if (value < -(float)limit)
     {
-        return (int16_t)-motor3508_config.current_limit;
+        return (int16_t)-limit;
     }
     return (int16_t)value;
 }
@@ -45,6 +52,7 @@ HAL_StatusTypeDef Motor3508_Init(void)
     uint32_t index;
 
     memset(motor3508_feedback, 0, sizeof(motor3508_feedback));
+    memset((void *)&motor3508_brake_state, 0, sizeof(motor3508_brake_state));
     for (index = 0U; index < MOTOR3508_COUNT; index++)
     {
         pid_algorithm.ops.init(&motor3508_speed_pid[index],
@@ -108,6 +116,7 @@ HAL_StatusTypeDef Motor3508_SpeedControl(int16_t target_speed_rpm)
     int16_t current[MOTOR3508_COUNT];
     uint32_t index;
 
+    memset((void *)&motor3508_brake_state, 0, sizeof(motor3508_brake_state));
     base_target = Motor3508_LimitSpeed((float)target_speed_rpm);
     target[0] = base_target * motor3508_config.left_direction;
     target[1] = base_target * motor3508_config.right_direction;
@@ -137,8 +146,43 @@ void Motor3508_ResetSpeedPID(void)
 
 HAL_StatusTypeDef Motor3508_Stop(void)
 {
+    memset((void *)&motor3508_brake_state, 0, sizeof(motor3508_brake_state));
     Motor3508_ResetSpeedPID();
     return Motor3508_SendCurrent(0, 0);
+}
+
+// 零速比例闭环；停轮时清积分，制动电流始终与当前轮速相反。
+HAL_StatusTypeDef Motor3508_BrakeStop(void)
+{
+    Motor3508BrakeConfig config = motor3508_config.brake;
+    Motor3508_Feedback_t feedback;
+    int16_t current[MOTOR3508_COUNT] = {0};
+    uint32_t index, now = HAL_GetTick();
+    Motor3508_ResetSpeedPID();
+    memset((void *)&motor3508_brake_state, 0, sizeof(motor3508_brake_state));
+    if (!(config.kp > 0.0f && config.kp <= FLT_MAX) ||
+        config.current_limit_raw <= 0 || config.stop_speed_rpm < 0 ||
+        config.stop_speed_rpm > 32767) { return Motor3508_Stop(); }
+    if (config.current_limit_raw > MOTOR3508_CURRENT_RAW_MAX)
+    { config.current_limit_raw = MOTOR3508_CURRENT_RAW_MAX; }
+    for (index = 0U; index < MOTOR3508_COUNT; index++)
+    {
+        float output;
+        if (!Motor3508_GetFeedback((uint8_t)(index + 1U), &feedback) ||
+            (uint32_t)(now - feedback.last_rx_ms) >= motor3508_config.offline_timeout_ms)
+        { continue; }
+        motor3508_brake_state.feedback_valid[index] = true;
+        if (feedback.speed_rpm <= config.stop_speed_rpm &&
+            feedback.speed_rpm >= -config.stop_speed_rpm) { continue; }
+        output = -config.kp * (float)feedback.speed_rpm;
+        if (output > config.current_limit_raw) { output = (float)config.current_limit_raw; }
+        if (output < -config.current_limit_raw) { output = -(float)config.current_limit_raw; }
+        current[index] = Motor3508_LimitCurrent(output);
+        motor3508_brake_state.active[index] = current[index] != 0;
+        motor3508_brake_state.current_raw[index] = current[index];
+    }
+    // 共用群组拼帧，保留升降电机槽位；入队失败由下一周期继续发送。
+    return Motor3508_SendCurrent(current[0], current[1]);
 }
 
 bool Motor3508_GetFeedback(uint8_t motor_id,
@@ -224,11 +268,13 @@ const Motor3508Module motor3508 =
     },
     .control = {
         .speed_pid = motor3508_speed_pid,
+        .brake = &motor3508_brake_state,
     },
     .init = Motor3508_Init,
     .send_current = Motor3508_SendCurrent,
     .speed_control = Motor3508_SpeedControl,
     .stop = Motor3508_Stop,
+    .brake_stop = Motor3508_BrakeStop,
     .reset_speed_pid = Motor3508_ResetSpeedPID,
     .get_feedback = Motor3508_GetFeedback,
     .online_check = Motor3508_OnlineCheck,

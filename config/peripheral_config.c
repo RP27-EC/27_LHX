@@ -86,7 +86,16 @@ void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config)
     config->output_limit = 16384.0f; // 速度环电流码输出限幅。
 }
 
-// 加载摩擦轮方向、转速、电流保护、在线超时及速度环默认值。
+// 加载主动停轮增益、电流上限和停止死区。
+void Motor3508BrakeConfig_Init(volatile Motor3508BrakeConfig *config)
+{
+    if (config == NULL) { return; }
+    config->kp = 5.0f; // 轮速越高，反向制动力矩越大。
+    config->current_limit_raw = 5000; // 限制刹车时的反向电流。
+    config->stop_speed_rpm = 20; // 接近停止后撤掉电流，避免来回反转。
+}
+
+// 加载摩擦轮方向、转速、电流保护、在线超时及闭环默认值。
 void Motor3508Config_Init(void)
 {
     motor3508_config.current_limit = 16384; // 摩擦轮电流命令限幅，原始码。
@@ -96,6 +105,7 @@ void Motor3508Config_Init(void)
     motor3508_config.offline_timeout_ms = 100U; // 摩擦轮反馈离线超时，ms。
     motor3508_config.pid_control_time_s = 0.004f; // 电机 PID 每次调用使用的控制周期，s。
     Motor3508SpeedPidConfig_Init(&motor3508_config.speed);
+    Motor3508BrakeConfig_Init(&motor3508_config.brake);
 }
 
 volatile Motor2006Config motor2006_config; // 升降电机速度环与命令保护参数。

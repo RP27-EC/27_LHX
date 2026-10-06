@@ -72,12 +72,20 @@ typedef struct
 
 typedef struct
 {
+    float kp; // 停轮速度误差到制动电流的比例增益。
+    int32_t current_limit_raw; // 主动制动电流幅值上限，C620 原始码。
+    int32_t stop_speed_rpm; // 进入此转速范围后撤掉制动电流。
+} Motor3508BrakeConfig;
+
+typedef struct
+{
     int32_t current_limit; // 发给 C620 的电流码绝对值上限。
     float max_speed_rpm; // 目标速度绝对值上限，rpm。
     float left_direction; // 左轮目标速度方向系数。
     float right_direction; // 右轮反转系数，和左轮等大反向。
     uint32_t offline_timeout_ms; // 设备反馈超过此时长未更新则判离线，ms。
     Motor3508SpeedPidConfig speed; // 速度环参数。
+    Motor3508BrakeConfig brake; // 目标零速的主动停轮参数。
     float pid_control_time_s; // 电机 PID 每次调用使用的控制周期，s。
 } Motor3508Config;
 // 反馈定义：bottom_driven/motor/motor3508/motor3508.h，Motor3508_Feedback_t。
@@ -175,6 +183,7 @@ void Motor4310YawHoldConfig_Init(volatile Motor4310_PidProfile_t *config);
 void Motor4310YawTurnConfig_Init(volatile Motor4310_PidProfile_t *config);
 void Motor4310PitchConfig_Init(volatile Motor4310_PidProfile_t *config);
 void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config);
+void Motor3508BrakeConfig_Init(volatile Motor3508BrakeConfig *config);
 void Motor2006SpeedPidConfig_Init(volatile Motor2006SpeedPidConfig *config);
 void DialPositionPidConfig_Init(volatile DialPositionPidConfig *config);
 void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config);

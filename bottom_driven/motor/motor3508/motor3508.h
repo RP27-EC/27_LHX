@@ -33,6 +33,14 @@ typedef struct
 extern Motor3508_Feedback_t motor3508_feedback[MOTOR3508_COUNT];
 extern PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT];
 
+typedef struct
+{
+    bool feedback_valid[MOTOR3508_COUNT]; // 各轮本次停轮反馈是否新鲜。
+    bool active[MOTOR3508_COUNT]; // 各轮是否处于主动制动范围。
+    int16_t current_raw[MOTOR3508_COUNT]; // 本次制动电流命令，C620 原始码。
+} Motor3508BrakeState;
+extern volatile Motor3508BrakeState motor3508_brake_state;
+
 // 配置两路摩擦轮反馈过滤器，并初始化两路速度 PID。
 HAL_StatusTypeDef Motor3508_Init(void);
 
@@ -42,7 +50,10 @@ HAL_StatusTypeDef Motor3508_SendCurrent(int16_t current_1,
 
 // 双摩擦轮等速反向控制；目标限速，调用周期与 PID 周期一致。
 HAL_StatusTypeDef Motor3508_SpeedControl(int16_t target_speed_rpm);
+// 清速度环并发送零电流，用于故障停机。
 HAL_StatusTypeDef Motor3508_Stop(void);
+// 目标零速，按新鲜反馈给反向电流；近零速及离线轮输出零电流。
+HAL_StatusTypeDef Motor3508_BrakeStop(void);
 void Motor3508_ResetSpeedPID(void);
 
 // motor_id 范围为 1~2。
@@ -68,6 +79,7 @@ typedef struct
 typedef struct
 {
     const PID_Controller_t *speed_pid; // 两路摩擦轮速度环状态。
+    const volatile Motor3508BrakeState *brake; // 主动停轮反馈有效性和电流命令。
 } Motor3508ModuleControlRefs;
 
 typedef struct
@@ -87,7 +99,8 @@ typedef struct
     // 控制与发送。
     HAL_StatusTypeDef (*send_current)(int16_t current_1, int16_t current_2); // 发送群组电流命令。
     HAL_StatusTypeDef (*speed_control)(int16_t target_speed_rpm); // 执行速度闭环。
-    HAL_StatusTypeDef (*stop)(void); // 发送停止命令。
+    HAL_StatusTypeDef (*stop)(void); // 清速度环并发送零电流。
+    HAL_StatusTypeDef (*brake_stop)(void); // 零速闭环主动停轮。
 
     // 状态维护。
     void (*reset_speed_pid)(void); // 清空速度环状态。

@@ -98,7 +98,7 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
     if (config == NULL) { return; }
     config->enabled = true; // 使用枪管测速调整摩擦轮。
     config->step_rpm = 400; // 单次转速调整步长。
-    config->max_speed_rpm = 6500; // 正常转速上限，还受驱动上限约束。
+    config->max_speed_rpm = 6000; // 正常转速上限，还受驱动上限约束。
     config->margin_m_s = 1.5f; // 预留弹速余量。
     config->deadband_m_s = 0.5f; // 小幅弹速波动保持当前转速。
     config->fallback_limit_m_s = 25.0f; // 无裁判弹速上限时的调试上限。
@@ -110,7 +110,7 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
 void FrictionConfig_Init(volatile FrictionConfig *config)
 {
     if (config == NULL) { return; }
-    config->target_speed_rpm = 6000; // 摩擦轮目标转速幅值，rpm。
+    config->target_speed_rpm = 8000; // 摩擦轮目标转速幅值，rpm。
     ShootSpeedConfig_Init(&config->adaptive);
     config->block_speed_rpm = 100; // 低于此转速才检查堵转。
     config->block_current_raw = 2000; // 排除低负载的慢速转动。
@@ -126,7 +126,7 @@ void FrictionConfig_Init(volatile FrictionConfig *config)
 void DialFeedConfig_Init(volatile DialFeedConfig *config)
 {
     if (config == NULL) { return; }
-    config->hold_encoder = 31000U; // 上线和停止供弹后统一回到该单圈位置。
+    config->hold_encoder = 20000U; // 上线和停止供弹后统一回到该单圈位置。
     config->feed_direction = 1LL; // 供弹方向系数，改变符号反转方向。
     config->arrived_error_counts = 150LL; // 单发拨盘到位允许的编码器误差，计数。
     config->single_move_timeout_ms = 500U; // 单发动作超时，ms。
