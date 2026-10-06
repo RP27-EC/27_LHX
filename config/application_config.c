@@ -7,6 +7,7 @@ volatile RemoteConfig remote_config; // 遥控解析与转发周期参数。
 void RemoteConfig_Init(void)
 {
     remote_config.heat_tx_period_ms = 20U; // 热量和有效标志转发间隔。
+    remote_config.shot_tx_period_ms = 20U; // 弹速、上限和样本年龄转发间隔。
     remote_config.task_period_ticks = 15U; // 遥控解析任务周期，tick。
     remote_config.period_ticks = 4U; // 遥控 CAN 分帧发送周期，tick。
 }

@@ -277,6 +277,34 @@ bool Referee_GetHeatSnapshot(RefereeHeatSnapshot_t *heat, uint32_t now_ms)
     return true;
 }
 
+// 读取主枪管测速；样本年龄随转发增长，避免重复帧刷新测速时间。
+bool Referee_GetShotSnapshot(RefereeShotSnapshot_t *shot, uint32_t now_ms)
+{
+    RefereeRobotStatus_t robot;
+    RefereeWire_shoot_data_t data;
+    RefereeMessageStatus_t status_meta, shot_meta;
+    uint32_t version = publish_version;
+    if (shot == NULL) { return false; }
+    memset(shot, 0, sizeof(*shot));
+    if ((version & 1U) ||
+        !snapshot(&robot, &referee_state.info.robot_status, sizeof(robot)) ||
+        !snapshot(&data, &referee_state.info.shoot_data, sizeof(data)) ||
+        !snapshot(&status_meta, &referee_state.message[REFEREE_MSG_robot_status], sizeof(status_meta)) ||
+        !snapshot(&shot_meta, &referee_state.message[REFEREE_MSG_shoot_data], sizeof(shot_meta)) ||
+        version != publish_version) { return false; }
+    shot->speed_m_s = data.initial_speed;
+    shot->speed_limit_m_s = robot.shooter_barrel_speed_limit;
+    shot->sequence = (uint16_t)shot_meta.rx_count;
+    shot->age_ms = (uint32_t)(now_ms - shot_meta.last_rx_ms);
+    shot->valid = shot_meta.valid && shot->age_ms < REFEREE_OFFLINE_TIMEOUT_MS &&
+        data.bullet_type == 1U && data.shooter_number == 1U &&
+        data.initial_speed > 0.0f && data.initial_speed < 655.0f;
+    shot->speed_limit_valid = status_meta.valid && robot.speed_limit_valid &&
+        (uint32_t)(now_ms - status_meta.last_rx_ms) < REFEREE_OFFLINE_TIMEOUT_MS &&
+        robot.shooter_barrel_speed_limit > 0.0f && robot.shooter_barrel_speed_limit < 655.0f;
+    return true;
+}
+
 // 绑定现有状态与函数，供外部通过模块结构体访问。
 const RefereeModule referee =
 {
@@ -292,6 +320,7 @@ const RefereeModule referee =
     .get_robot_status = Referee_GetRobotStatus,
     .get_power_heat = Referee_GetPowerHeat,
     .get_heat_snapshot = Referee_GetHeatSnapshot,
+    .get_shot_snapshot = Referee_GetShotSnapshot,
     .command_index = Referee_CommandIndex,
     .crc8 = Referee_Crc8,
     .crc16 = Referee_Crc16,

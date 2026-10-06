@@ -443,17 +443,24 @@ void up_down_communication(void *argument)
 static void RefereeTask(void *argument)
 {
   uint32_t last_heat_tx = 0U;
+  uint32_t last_shot_tx = 0U;
   (void)argument;
   for (;;)
   {
     uint32_t now = HAL_GetTick();
     RefereeHeatSnapshot_t heat;
+    RefereeShotSnapshot_t shot;
     referee_uart_driver.process(now);
     if ((uint32_t)(now - last_heat_tx) >= remote_config.heat_tx_period_ms &&
         referee.get_heat_snapshot(&heat, now) &&
         board_link.send_heat_state(heat.heat, heat.limit, heat.cooling,
             heat.valid, heat.output_allowed, heat.sequence) == HAL_OK)
     { last_heat_tx = now; }
+    if ((uint32_t)(now - last_shot_tx) >= remote_config.shot_tx_period_ms &&
+        referee.get_shot_snapshot(&shot, now) &&
+        board_link.send_shot_state(shot.speed_m_s, shot.speed_limit_m_s,
+            shot.valid, shot.speed_limit_valid, shot.sequence, shot.age_ms) == HAL_OK)
+    { last_shot_tx = now; }
     osDelay(2U);
   }
 }

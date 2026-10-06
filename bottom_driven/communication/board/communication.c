@@ -110,7 +110,7 @@ HAL_StatusTypeDef Communication_Send(uint32_t std_id,
 
     if ((data == NULL) ||
         (std_id < COMMUNICATION_TX_ID_D1) ||
-        (std_id > COMMUNICATION_TX_ID_D6))
+        (std_id > COMMUNICATION_TX_ID_D7))
     {
         return HAL_ERROR;
     }
@@ -345,7 +345,27 @@ HAL_StatusTypeDef Communication_SendHeatState(uint16_t heat, uint16_t limit,
     return Communication_Send(COMMUNICATION_TX_ID_D6, data);
 }
 
-// 绑定现有状态与函数，供外部通过模块结构体访问。
+// 保留原测速年龄，接收板可排除开轮或调速前产生的测速。
+HAL_StatusTypeDef Communication_SendShotState(float speed_m_s, float limit_m_s,
+    bool valid, bool limit_valid, uint16_t sequence, uint32_t age_ms)
+{
+    uint8_t data[COMMUNICATION_FRAME_SIZE] = {0};
+    uint16_t speed = 0U, limit = 0U;
+    uint32_t age = age_ms / 10U + (age_ms % 10U != 0U ? 1U : 0U);
+    if (speed_m_s > 0.0f && speed_m_s < 655.0f) { speed = (uint16_t)(speed_m_s * 100.0f + 0.5f); }
+    else { valid = false; }
+    if (limit_m_s > 0.0f && limit_m_s < 655.0f) { limit = (uint16_t)(limit_m_s * 100.0f + 0.5f); }
+    else { limit_valid = false; }
+    if (age > 255U) { age = 255U; valid = false; }
+    data[0] = (uint8_t)speed; data[1] = (uint8_t)(speed >> 8);
+    data[2] = (uint8_t)limit; data[3] = (uint8_t)(limit >> 8);
+    data[4] = (uint8_t)sequence; data[5] = (uint8_t)(sequence >> 8);
+    data[6] = (valid ? 1U : 0U) | (limit_valid ? 2U : 0U);
+    data[7] = (uint8_t)age;
+    return Communication_Send(COMMUNICATION_TX_ID_D7, data);
+}
+
+// 绑定当前状态和模块接口。
 const BoardLinkModule board_link =
 {
     .config = &communication_config,
@@ -372,5 +392,6 @@ const BoardLinkModule board_link =
     .send_chassis_yaw_rate_state = Communication_SendChassisYawRateState,
     .send_chassis_wheel_speeds = Communication_SendChassisWheelSpeeds,
     .send_heat_state = Communication_SendHeatState,
+    .send_shot_state = Communication_SendShotState,
     .fdcan_rx_fifo0_callback = Communication_FDCANRxFifo0Callback,
 };

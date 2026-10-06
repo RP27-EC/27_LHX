@@ -141,6 +141,13 @@ typedef struct {
     bool valid, output_allowed; // 两类消息均新鲜、发射电源许可。
 } RefereeHeatSnapshot_t;
 bool Referee_GetHeatSnapshot(RefereeHeatSnapshot_t *heat, uint32_t now_ms);
+typedef struct {
+    float speed_m_s, speed_limit_m_s; // 枪管实测弹速与裁判弹速上限。
+    uint16_t sequence; // 测速消息序号，重复转发不变。
+    uint32_t age_ms; // 测速样本距当前时刻的时间。
+    bool valid, speed_limit_valid; // 测速与弹速上限分别检查有效性。
+} RefereeShotSnapshot_t;
+bool Referee_GetShotSnapshot(RefereeShotSnapshot_t *shot, uint32_t now_ms);
 int Referee_CommandIndex(uint16_t cmd_id);
 uint8_t Referee_Crc8(const uint8_t *data, size_t length);
 uint16_t Referee_Crc16(const uint8_t *data, size_t length);
@@ -164,6 +171,7 @@ typedef struct
     bool (*get_robot_status)(RefereeRobotStatus_t *status, uint32_t now_ms); // 读取新鲜机器人状态。
     bool (*get_power_heat)(RefereeWire_power_heat_data_t *data, uint32_t now_ms); // 读取新鲜功率和热量数据。
     bool (*get_heat_snapshot)(RefereeHeatSnapshot_t *heat, uint32_t now_ms); // 复制热量与供弹许可快照。
+    bool (*get_shot_snapshot)(RefereeShotSnapshot_t *shot, uint32_t now_ms); // 复制枪管测速及样本年龄。
     int (*command_index)(uint16_t cmd_id); // 查找裁判命令对应的消息下标。
 
     // 状态维护。

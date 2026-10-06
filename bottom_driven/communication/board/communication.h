@@ -18,6 +18,7 @@
 #define COMMUNICATION_TX_ID_D5         0x0D5U // 四轮转子转速。
 
 #define COMMUNICATION_TX_ID_D6         0x0D6U // 裁判热量与发射许可。
+#define COMMUNICATION_TX_ID_D7         0x0D7U // 枪管测速、弹速上限和样本年龄。
 
 // 上板发送给下板的报文 ID，也是下板滤波器唯一放行的两个 ID。
 #define COMMUNICATION_RX_ID_C1         0x0C1U
@@ -44,7 +45,7 @@ HAL_StatusTypeDef Communication_Init(void);
 // 通信任务周期调用：CAN2 进入 Bus-Off 时限频重启，使硬件自动重发恢复工作。
 void Communication_Service(void);
 
-// 发送一帧到上板。std_id 只允许 D1~D6，data 必须指向 8 字节数据。
+// 发送一帧到上板。std_id 只允许 D1~D7，data 必须指向 8 字节数据。
 HAL_StatusTypeDef Communication_Send(uint32_t std_id,
                                      const uint8_t data[COMMUNICATION_FRAME_SIZE]);
 
@@ -69,6 +70,9 @@ HAL_StatusTypeDef Communication_SendChassisWheelSpeeds(const int16_t speed_rpm[4
 // D6：热量/上限/冷却量各 uint16 小端，许可标志、热量更新序号。
 HAL_StatusTypeDef Communication_SendHeatState(uint16_t heat, uint16_t limit,
     uint16_t cooling, bool valid, bool output_allowed, uint8_t sequence);
+// D7：两项弹速均为 0.01m/s，小端；序号、有效位及样本年龄。
+HAL_StatusTypeDef Communication_SendShotState(float speed_m_s, float limit_m_s,
+    bool valid, bool limit_valid, uint16_t sequence, uint32_t age_ms);
 
 // 由统一 HAL FDCAN FIFO0 回调调用，不应由任务代码直接调用。
 void Communication_FDCANRxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
@@ -115,6 +119,8 @@ typedef struct
     HAL_StatusTypeDef (*send_heat_state)(
         uint16_t heat, uint16_t limit, uint16_t cooling, bool valid, bool output_allowed,
         uint8_t sequence); // 发送裁判热量与供弹许可。
+    HAL_StatusTypeDef (*send_shot_state)(float speed_m_s, float limit_m_s,
+        bool valid, bool limit_valid, uint16_t sequence, uint32_t age_ms); // 发送主枪管测速快照。
 
     // 状态维护。
     void (*service)(void); // 周期维护模块通信状态。

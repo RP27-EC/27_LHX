@@ -9,6 +9,7 @@
 typedef struct
 {
     uint32_t heat_tx_period_ms; // D6 热量快照转发周期。
+    uint32_t shot_tx_period_ms; // D7 枪管测速快照转发周期。
     uint32_t task_period_ticks; // 对应任务的执行周期，tick。
     uint32_t period_ticks; // D1~D3 遥控分帧转发任务周期，tick。
 } RemoteConfig;
