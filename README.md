@@ -31,7 +31,7 @@
 | [电机驱动](文档/07_电机驱动.md) | 协议、反馈、PID、群组拼帧、在线与发送失败 |
 | [IMU与姿态](文档/08_IMU与姿态.md) | BMI088、启动零偏、EKF、姿态与角速度变量 |
 | [通信与总线](文档/09_通信与总线.md) | C1/C2/D1～D6、字节序、有效期、总线分发 |
-| [算法库](文档/10_算法库.md) | PID和四元数EKF原理、实例状态、复用范围 |
+| [算法库](文档/10_算法库.md) | PID、RLS和四元数EKF原理、实例状态、复用范围 |
 | [配置与调参](文档/11_配置与调参.md) | 应用/外设配置对象、完整字段表、单位及调参顺序 |
 | [模块接口与目录](文档/12_模块接口与目录.md) | 文件分组、配置位置、模块结构体、函数指针调用与移植 |
 | [任务耗时与优化检查](文档/13_任务耗时与优化检查.md) | 分任务耗时预算、状态模拟、总线负载、异常路径与优化建议 |
@@ -43,7 +43,7 @@ infantry _down/
 ├─ config/                           应用、驱动默认参数
 ├─ user/
 │  ├─ chassis/
-│  │  └─ power/                     功率模型与反馈控制
+│  │  └─ power/                     自适应模型、按轮分配与预算反馈
 │  └─ remote/                       遥控模式与操作事件
 ├─ bottom_driven/
 │  ├─ motor/motor3508/              底盘四轮
@@ -56,6 +56,7 @@ infantry _down/
 │  └─ referee/                      裁判串口与解析
 ├─ algorithms_library/
 │  ├─ pid/                          PID
+│  ├─ rls/                          两参数在线辨识
 │  └─ attitude_ekf/                 四元数 EKF
 ├─ Core/                            CubeMX 外设与 RTOS 入口
 ├─ 文档/                            模块说明与接口索引
@@ -71,7 +72,7 @@ infantry _down/
 
 ## 程序流程
 
-DBUS→遥控状态→安全与模式判定→麦轮目标→速度PID→单轮电流限幅→模型预测和实测功率共同限流→FDCAN1。裁判任务独立解析并发送D6热量，通信任务转发遥控并服务超电；底盘任务连续发送D4角速度。流程图见 [启动与任务](文档/01_启动与任务.md)。
+DBUS→遥控状态→安全与模式判定→麦轮目标→速度PID→单轮电流限幅→自适应模型预测、实测预算修正和按轮分配→FDCAN1。裁判任务独立解析并发送D6热量，通信任务转发遥控并服务超电；底盘任务连续发送D4角速度。流程图见 [启动与任务](文档/01_启动与任务.md)。
 
 ## 操作入口
 
@@ -93,7 +94,7 @@ DBUS→遥控状态→安全与模式判定→麦轮目标→速度PID→单轮�
 
 模块配置内部使用命名子结构体，按部件、模式和功能分类；每组有独立默认值初始化函数。类型、成员路径与初始化入口见 [配置与调参](文档/11_配置与调参.md)。
 
-- 功率预测：`chassis_power_state.predicted_request_w/predicted_output_w/model_scale`，模型系数在 `chassis_power_model_config`。
+- 功率预测：`chassis_power_state.predicted_request_w/predicted_output_w/wheel_scale`；辨识参数在 `chassis_power_model_state.loss`，学习次数在 `estimator.updates`，默认配置在 `chassis_power_model_config`。
 - 功率：`chassis_power_state.power_w/target_w/current_scale/power_feedback_valid`，斜杠表示分别查看这些成员。
 - 裁判：`referee_state.info.robot_status.chassis_power_limit`、`referee_state.message[6]`、`referee_uart_diagnostics`。
 - 底盘：`chassis_spin_block_reason`、`chassis_turnaround_pending`、`chassis_front_reversed`。

@@ -289,13 +289,13 @@ void motor3508_speed_control(void *argument)
     // 自旋由本板遥控档位和上板模式许可共同决定；Yaw 角仅用于平移坐标。
     spin_drive_enabled = remote.mode.chassis == REMOTE_MODE_SPIN &&
                          remote.safety.online && remote.safety.spin_enabled &&
-                         motor3508.online_check() && !turn_hold && !lift_hold &&
+                         !turn_hold && !lift_hold &&
                          !bottom_mode_blocked &&
                          spin_frame_valid && upper_spin_selected &&
                          spin_allowed && !spin_rearm_required;
     if (remote.mode.chassis != REMOTE_MODE_SPIN)
     { chassis_spin_block_reason = 0U; }
-    else if (!remote.safety.online || !motor3508.online_check() ||
+    else if (!remote.safety.online ||
              turn_hold || lift_hold)
     { chassis_spin_block_reason = 6U; }
     else if (!remote.safety.spin_enabled)
@@ -314,7 +314,8 @@ void motor3508_speed_control(void *argument)
     if (spin_was_driving && !spin_drive_enabled)
     { chassis_spin_stop_count++; }
     spin_was_driving = spin_drive_enabled;
-    if (remote.safety.online && motor3508.online_check() && !turn_hold && !lift_hold)
+    // 电机离线由驱动逐轮停机，其余车体联锁仍统一停车。
+    if (remote.safety.online && !turn_hold && !lift_hold)
     {
       if (remote.mode.chassis == REMOTE_MODE_MECHANICAL ||
           (bottom_mode_blocked &&

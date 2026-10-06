@@ -6,12 +6,31 @@
 #include "PID.h"
 #include <float.h>
 
+#define C620_CURRENT_RAW_MAX 16384 // C620 电流命令的协议上限。
+
 static Motor3508_Feedback motor_feedback[MOTOR3508_COUNT]; // 四个底盘电机反馈。
 static PID_Controller_t motor3508_speed_pid[MOTOR3508_COUNT]; // 四路速度环 PID。
 static PID_Controller_t motor3508_position_pid[MOTOR3508_COUNT]; // 四路位置外环 PID。
 static float integral_before[MOTOR3508_COUNT]; // 速度环本周期积分起点。
+static float requested_current_raw[MOTOR3508_COUNT]; // PID 加前馈后的本轮电流请求。
 static bool pid_pending; // 仅闭环计算后处理额外限流的积分饱和。
 static uint8_t control_mode = 0U; // 0 停止，1 速度，2 位置。
+
+// 读取单轮有效反馈，超时后停止该轮闭环计算。
+static bool get_online_feedback(uint8_t motor_id, Motor3508_Feedback *feedback)
+{
+    return Motor3508_GetFeedback(motor_id, feedback) &&
+        (uint32_t)(HAL_GetTick() - feedback->last_rx_ms) < motor3508_config.offline_timeout_ms;
+}
+
+// 清除单轮两级 PID 和积分回退记录。
+static void reset_motor_pid(uint32_t index)
+{
+    pid_algorithm.ops.reset(&motor3508_speed_pid[index]);
+    pid_algorithm.ops.reset(&motor3508_position_pid[index]);
+    integral_before[index] = 0.0f;
+    requested_current_raw[index] = 0.0f;
+}
 
 //模式切换清零积分
 static void select_control_mode(uint8_t mode)
@@ -21,8 +40,7 @@ static void select_control_mode(uint8_t mode)
     {
         for (i = 0U; i < MOTOR3508_COUNT; i++)
         {
-            pid_algorithm.ops.reset(&motor3508_speed_pid[i]);
-            pid_algorithm.ops.reset(&motor3508_position_pid[i]);
+            reset_motor_pid(i);
         }
         control_mode = mode;
     }
@@ -55,35 +73,71 @@ HAL_StatusTypeDef Motor3508_Init(void)
     uint32_t i;
 
     memset(motor_feedback, 0, sizeof(motor_feedback));
+    memset(integral_before, 0, sizeof(integral_before));
+    memset(requested_current_raw, 0, sizeof(requested_current_raw));
     control_mode = 0U;
     pid_pending = false;
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        pid_algorithm.ops.init(&motor3508_position_pid[i], motor3508_config.position.kp,
-                 motor3508_config.position.ki, motor3508_config.position.kd,
-                 motor3508_config.position.integral_limit,
-                 motor3508_config.position.output_limit, motor3508_config.pid_control_time_s);
+        pid_algorithm.ops.init(&motor3508_position_pid[i], motor3508_config.wheel[i].position.kp,
+                 motor3508_config.wheel[i].position.ki, motor3508_config.wheel[i].position.kd,
+                 motor3508_config.wheel[i].position.integral_limit,
+                 motor3508_config.wheel[i].position.output_limit, motor3508_config.pid_control_time_s);
     }
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
-        pid_algorithm.ops.init(&motor3508_speed_pid[i], motor3508_config.speed.kp,
-                 motor3508_config.speed.ki, motor3508_config.speed.kd,
-                 motor3508_config.speed.integral_limit,
-                 motor3508_config.speed.output_limit, motor3508_config.pid_control_time_s);
+        pid_algorithm.ops.init(&motor3508_speed_pid[i], motor3508_config.wheel[i].speed.kp,
+                 motor3508_config.wheel[i].speed.ki, motor3508_config.wheel[i].speed.kd,
+                 motor3508_config.wheel[i].speed.integral_limit,
+                 motor3508_config.wheel[i].speed.output_limit, motor3508_config.pid_control_time_s);
     }
     return HAL_OK;
 }
 
-//限幅
-static int16_t limit_current(int16_t value)
+// 配置限流始终落在 C620 可发送范围内。
+static int32_t current_limit_raw(void)
 {
-    if (value > motor3508_config.current_limit) { return motor3508_config.current_limit; }
-    if (value < -motor3508_config.current_limit) { return -motor3508_config.current_limit; }
-    return value;
+    int32_t limit = motor3508_config.current_limit;
+    if (limit < 0) { limit = 0; }
+    if (limit > C620_CURRENT_RAW_MAX) { limit = C620_CURRENT_RAW_MAX; }
+    return limit;
 }
 
-//4电机力矩控制
-HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,int16_t id3, int16_t id4)
+// 浮点请求先限幅，再转电流码，避免前馈叠加后溢出。
+static int16_t limit_current(float value)
+{
+    int32_t limit = current_limit_raw();
+    if (!(value >= -FLT_MAX && value <= FLT_MAX)) { return 0; }
+    if (value > (float)limit) { return (int16_t)limit; }
+    if (value < -(float)limit) { return (int16_t)-limit; }
+    return (int16_t)value;
+}
+
+// 固定扭矩按目标转向补偿，零速目标不主动施加前馈。
+static float torque_feedforward(uint32_t index, float target_rpm)
+{
+    Motor3508TorqueFeedforwardConfig config = motor3508_config.wheel[index].feedforward;
+    if (!(config.fixed_current_raw > 0.0f && config.fixed_current_raw <= FLT_MAX) ||
+        !(config.target_deadband_rpm >= 0.0f && config.target_deadband_rpm <= FLT_MAX))
+    { return 0.0f; }
+    if (target_rpm > config.target_deadband_rpm) { return config.fixed_current_raw; }
+    if (target_rpm < -config.target_deadband_rpm) { return -config.fixed_current_raw; }
+    return 0.0f;
+}
+
+// 两种闭环共用同一前馈和电流限幅出口。
+static int16_t calculate_speed_current(uint32_t index, float target_rpm, int16_t actual_rpm)
+{
+    integral_before[index] = motor3508_speed_pid[index].Integral;
+    requested_current_raw[index] = pid_algorithm.ops.calc(&motor3508_speed_pid[index], target_rpm,
+                                                         (float)actual_rpm) +
+                                   torque_feedforward(index, target_rpm);
+    return limit_current(requested_current_raw[index]);
+}
+
+// 四轮统一发送出口，闭环目标用于按轮分配功率。
+static HAL_StatusTypeDef send_current_with_targets(int16_t id1, int16_t id2, int16_t id3, int16_t id4,
+                                                    const float targets[4])
 {
     int16_t values[4] = {id1, id2, id3, id4};
     uint8_t data[8];
@@ -91,16 +145,23 @@ HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,int16_t id3, in
 
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     { values[i] = limit_current(values[i]); }
-    (void)ChassisPower_Apply(values);
+    (void)ChassisPower_ApplyWithTargets(values, targets);
+    // 直接电流命令也清除离线轮的旧闭环状态。
+    for (i = 0U; i < MOTOR3508_COUNT; i++)
+    {
+        if (!chassis_power_state.wheel_feedback_valid[i]) { reset_motor_pid(i); }
+    }
     if (pid_pending)
     {
         for (i = 0U; i < MOTOR3508_COUNT; i++)
         {
             PID_Controller_t *pid = &motor3508_speed_pid[i];
-            bool saturated = chassis_power_state.current_scale < 1.0f ||
-                pid->Output > (float)motor3508_config.current_limit ||
-                pid->Output < -(float)motor3508_config.current_limit;
-            if (saturated && (pid->Output - (float)values[i]) * pid->Ki * pid->Error > 0.0f)
+            float request = requested_current_raw[i];
+            float limit = (float)current_limit_raw();
+            if (!chassis_power_state.wheel_feedback_valid[i]) { continue; }
+            bool saturated = chassis_power_state.wheel_scale[i] < 1.0f ||
+                request > limit || request < -limit;
+            if (saturated && (request - (float)values[i]) * pid->Ki * pid->Error > 0.0f)
             { pid->Integral = integral_before[i]; }
         }
         pid_pending = false;
@@ -116,26 +177,33 @@ HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2,int16_t id3, in
     return ChassisCan_Send(MOTOR3508_COMMAND_ID, data);
 }
 
+// 直接电流命令没有速度目标，使用请求功率比例分配。
+HAL_StatusTypeDef Motor3508_SendCurrent(int16_t id1, int16_t id2, int16_t id3, int16_t id4)
+{ return send_current_with_targets(id1, id2, id3, id4, NULL); }
+
 //PID控速
 HAL_StatusTypeDef Motor_3508_speed_control(int16_t speed_1,int16_t speed_2,int16_t speed_3,int16_t speed_4){
     uint32_t i;
+    const float targets[MOTOR3508_COUNT] = {speed_1, speed_2, speed_3, speed_4};
+    int16_t currents[MOTOR3508_COUNT] = {0};
+    Motor3508_Feedback feedback;
     select_control_mode(1U);
     for (i = 0U; i < MOTOR3508_COUNT; i++)
     {
         pid_algorithm.ops.update_parameters(&motor3508_speed_pid[i],
-            motor3508_config.speed.kp, motor3508_config.speed.ki,
-            motor3508_config.speed.kd, motor3508_config.speed.integral_limit,
-            motor3508_config.speed.output_limit,
+            motor3508_config.wheel[i].speed.kp, motor3508_config.wheel[i].speed.ki,
+            motor3508_config.wheel[i].speed.kd, motor3508_config.wheel[i].speed.integral_limit,
+            motor3508_config.wheel[i].speed.output_limit,
             motor3508_config.pid_control_time_s);
     }
     for (i = 0U; i < MOTOR3508_COUNT; i++)
-    { integral_before[i] = motor3508_speed_pid[i].Integral; }
+    {
+        if (!get_online_feedback((uint8_t)(i + 1U), &feedback))
+        { reset_motor_pid(i); continue; }
+        currents[i] = calculate_speed_current(i, targets[i], feedback.speed_rpm);
+    }
     pid_pending = true;
-    int16_t id1 = pid_algorithm.ops.calc(&motor3508_speed_pid[0],speed_1,motor_feedback[0].speed_rpm);
-    int16_t id2 = pid_algorithm.ops.calc(&motor3508_speed_pid[1],speed_2,motor_feedback[1].speed_rpm);
-    int16_t id3 = pid_algorithm.ops.calc(&motor3508_speed_pid[2],speed_3,motor_feedback[2].speed_rpm);
-    int16_t id4 = pid_algorithm.ops.calc(&motor3508_speed_pid[3],speed_4,motor_feedback[3].speed_rpm);
-    return Motor3508_SendCurrent(id1,id2,id3,id4);
+    return send_current_with_targets(currents[0],currents[1],currents[2],currents[3], targets);
 }
 
 //4电机强制泄力
@@ -144,8 +212,7 @@ HAL_StatusTypeDef Motor3508_Stop(void)
     uint32_t i;
     control_mode = 0U;
     pid_pending = false;
-    for (i = 0U; i < MOTOR3508_COUNT; i++) { pid_algorithm.ops.reset(&motor3508_position_pid[i]); }
-    for (i = 0U; i < MOTOR3508_COUNT; i++) { pid_algorithm.ops.reset(&motor3508_speed_pid[i]); }
+    for (i = 0U; i < MOTOR3508_COUNT; i++) { reset_motor_pid(i); }
     return Motor3508_SendCurrent(0, 0, 0, 0);
 }
 
@@ -159,13 +226,12 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
     int16_t currents[MOTOR3508_COUNT] = {0, 0, 0, 0};
     uint32_t index;
     float target_speed;
-    float current;
+    float targets[MOTOR3508_COUNT] = {0};
 
     for (index = 0U; index < MOTOR3508_COUNT; ++index)
     {
         if (!(target_angles[index] >= -FLT_MAX &&
-              target_angles[index] <= FLT_MAX) ||
-            !Motor3508_GetFeedback((uint8_t)(index + 1U), &feedback[index]))
+              target_angles[index] <= FLT_MAX))
         {
             (void)Motor3508_Stop();
             return HAL_ERROR;
@@ -174,30 +240,27 @@ HAL_StatusTypeDef Motor3508_PositionControl(float angle_1_deg,float angle_2_deg,
 
     for (index = 0U; index < MOTOR3508_COUNT; ++index)
     {
+        if (!get_online_feedback((uint8_t)(index + 1U), &feedback[index]))
+        { reset_motor_pid(index); continue; }
         pid_algorithm.ops.update_parameters(&motor3508_position_pid[index],
-            motor3508_config.position.kp, motor3508_config.position.ki,
-            motor3508_config.position.kd,
-            motor3508_config.position.integral_limit,
-            motor3508_config.position.output_limit,
+            motor3508_config.wheel[index].position.kp, motor3508_config.wheel[index].position.ki,
+            motor3508_config.wheel[index].position.kd,
+            motor3508_config.wheel[index].position.integral_limit,
+            motor3508_config.wheel[index].position.output_limit,
             motor3508_config.pid_control_time_s);
         pid_algorithm.ops.update_parameters(&motor3508_speed_pid[index],
-            motor3508_config.speed.kp, motor3508_config.speed.ki,
-            motor3508_config.speed.kd, motor3508_config.speed.integral_limit,
-            motor3508_config.speed.output_limit,
+            motor3508_config.wheel[index].speed.kp, motor3508_config.wheel[index].speed.ki,
+            motor3508_config.wheel[index].speed.kd, motor3508_config.wheel[index].speed.integral_limit,
+            motor3508_config.wheel[index].speed.output_limit,
             motor3508_config.pid_control_time_s);
         target_speed = pid_algorithm.ops.calc(&motor3508_position_pid[index], target_angles[index],
                                 feedback[index].position_deg);
-        integral_before[index] = motor3508_speed_pid[index].Integral;
-        current = pid_algorithm.ops.calc(&motor3508_speed_pid[index], target_speed,
-                           (float)feedback[index].speed_rpm);
-
-        if (current > motor3508_config.current_limit) { current = motor3508_config.current_limit; }
-        if (current < -motor3508_config.current_limit) { current = -motor3508_config.current_limit; }
-        currents[index] = (int16_t)current;
+        targets[index] = target_speed;
+        currents[index] = calculate_speed_current(index, target_speed, feedback[index].speed_rpm);
     }
 
     pid_pending = true;
-    return Motor3508_SendCurrent(currents[0], currents[1],currents[2], currents[3]);
+    return send_current_with_targets(currents[0], currents[1], currents[2], currents[3], targets);
 }
 
 //反馈报文获取
@@ -218,19 +281,11 @@ bool Motor3508_GetFeedback(uint8_t motor_id, Motor3508_Feedback *feedback)
 
 bool Motor3508_OnlineCheck(void){
     Motor3508_Feedback feedback;
-    uint32_t now;
     uint8_t motor_id;
-
-    now = HAL_GetTick();
 
     for (motor_id = 1U; motor_id <= MOTOR3508_COUNT; motor_id++)
     {
-        if (!Motor3508_GetFeedback(motor_id, &feedback))
-        {
-            return false;
-        }
-        if ((uint32_t)(now - feedback.last_rx_ms) >=
-            motor3508_config.offline_timeout_ms)
+        if (!get_online_feedback(motor_id, &feedback))
         {
             return false;
         }
@@ -284,6 +339,7 @@ const Motor3508Module motor3508 =
     .control = {
         .position_pid = motor3508_position_pid,
         .speed_pid = motor3508_speed_pid,
+        .requested_current_raw = requested_current_raw,
     },
     .execute = Motor3508_control,
     .init = Motor3508_Init,

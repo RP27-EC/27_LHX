@@ -78,11 +78,11 @@ typedef struct
 extern volatile ChassisConfig chassis_config; // 底盘解算、跟随与自旋参数。
 void ChassisConfig_Init(void);
 
-extern volatile ChassisPowerModelConfig chassis_power_model_config; // 各轮功率模型系数。
+extern volatile ChassisPowerModelConfig chassis_power_model_config; // 力矩换算、损耗初值及在线辨识参数。
 void ChassisPowerConfig_Init(void);
 void ChassisPowerModelConfig_Init(void);
 void ChassisPowerControlConfig_Init(void);
-extern volatile ChassisPowerControlConfig chassis_power_control_config; // 超电实测功率闭环参数。
+extern volatile ChassisPowerControlConfig chassis_power_control_config; // 超电实测功率预算修正参数。
 
 // 分类默认值，可单独恢复某一组参数。
 void ChassisSpinConfig_Init(volatile ChassisSpinConfig *config);

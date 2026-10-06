@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_PWR_LDO_SUPPLY,USE_HAL_DRIVER,STM32H723xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library/attitude_ekf;../algorithms_library/pid;../bottom_driven/IMU;../bottom_driven/communication/board;../bottom_driven/communication/chassis_can;../bottom_driven/communication/power;../bottom_driven/motor/motor3508;../bottom_driven/referee;../bottom_driven/telecontrol;../config;../user/chassis;../user/chassis/power;../user/remote</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library/attitude_ekf;../algorithms_library/pid;../algorithms_library/rls;../bottom_driven/IMU;../bottom_driven/communication/board;../bottom_driven/communication/chassis_can;../bottom_driven/communication/power;../bottom_driven/motor/motor3508;../bottom_driven/referee;../bottom_driven/telecontrol;../config;../user/chassis;../user/chassis/power;../user/remote</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library/attitude_ekf;../algorithms_library/pid;../bottom_driven/IMU;../bottom_driven/communication/board;../bottom_driven/communication/chassis_can;../bottom_driven/communication/power;../bottom_driven/motor/motor3508;../bottom_driven/referee;../bottom_driven/telecontrol;../config;../user/chassis;../user/chassis/power;../user/remote</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/RTOS2/Include;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../algorithms_library/attitude_ekf;../algorithms_library/pid;../algorithms_library/rls;../bottom_driven/IMU;../bottom_driven/communication/board;../bottom_driven/communication/chassis_can;../bottom_driven/communication/power;../bottom_driven/motor/motor3508;../bottom_driven/referee;../bottom_driven/telecontrol;../config;../user/chassis;../user/chassis/power;../user/remote</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -1144,6 +1144,21 @@
               <FileName>remote_state.h</FileName>
               <FileType>5</FileType>
               <FilePath>../user/remote/remote_state.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>algorithms_library/rls</GroupName>
+          <Files>
+            <File>
+              <FileName>rls2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\algorithms_library\rls\rls2.c</FilePath>
+            </File>
+            <File>
+              <FileName>rls2.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\algorithms_library\rls\rls2.h</FilePath>
             </File>
           </Files>
         </Group>

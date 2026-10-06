@@ -39,7 +39,7 @@ void ImuConfig_Init(void);
 
 typedef struct
 {
-    float kp; // 计数误差到目标 rpm 的比例增益。
+    float kp; // 转子角度误差到目标 rpm 的比例增益。
     float ki; // 位置误差积分增益。
     float kd; // 位置误差微分增益；0 为关闭。
     float integral_limit; // 位置环积分项绝对值上限。
@@ -52,15 +52,29 @@ typedef struct
     float ki; // rpm 误差积分增益。
     float kd; // rpm 误差微分增益；0 为关闭。
     float integral_limit; // 速度环积分项绝对值上限。
-    float output_limit; // PID 电流码输出上限，另受 CURRENT_LIMIT 约束。
+    float output_limit; // PID 电流码输出上限，叠加前馈后受 current_limit 约束。
 } Motor3508SpeedPidConfig;
 
 typedef struct
 {
+    float fixed_current_raw; // 固定扭矩前馈幅值，C620 电流码；非正值关闭。
+    float target_deadband_rpm; // 目标转速在此范围内不加前馈，rpm。
+} Motor3508TorqueFeedforwardConfig;
+
+typedef struct
+{
+    Motor3508PositionPidConfig position; // 本轮位置外环。
+    Motor3508SpeedPidConfig speed; // 本轮速度内环。
+    Motor3508TorqueFeedforwardConfig feedforward; // 按目标转向补偿固定扭矩。
+} Motor3508WheelConfig;
+
+#define MOTOR3508_WHEEL_COUNT 4U // C620 群组中的底盘电机数。
+
+typedef struct
+{
     int32_t current_limit; // C620 四电机电流命令原始码的绝对值上限。
-    uint32_t offline_timeout_ms; // 任一底盘电机反馈超时即停车。
-    Motor3508PositionPidConfig position; // 位置环参数。
-    Motor3508SpeedPidConfig speed; // 速度环参数。
+    uint32_t offline_timeout_ms; // 反馈超时只停止对应电机。
+    Motor3508WheelConfig wheel[MOTOR3508_WHEEL_COUNT]; // 下标按 CAN 电机 ID 减一排列。
     float pid_control_time_s; // 电机 PID 每次调用使用的控制周期，s。
 } Motor3508Config;
 // 反馈定义：bottom_driven/motor/motor3508/motor3508.h，Motor3508_Feedback。
@@ -68,7 +82,7 @@ typedef struct
 // encoder 为单圈原值，encoder_total / position_deg 为相对首帧的累计转子位置。
 // speed_rpm 为转子转速，current_raw 为电调反馈电流码。
 // CAN 总线诊断：bottom_driven/communication/chassis_can/chassis_can.h，ChassisCanState；Watch 为 chassis_can_state。
-// 模块入口：motor3508；参数用 .config，状态用 .data，操作用 .ops。
+// 模块入口：motor3508；参数用 .config，反馈用 .data，PID 状态用 .control。
 extern volatile Motor3508Config motor3508_config; // 电机速度、位置闭环参数。
 void Motor3508Config_Init(void);
 
@@ -117,8 +131,7 @@ void PowerCommunicationConfig_Init(void);
 
 // 分类默认值，可单独恢复某一组参数。
 void ChassisAttitudeEkfConfig_Init(volatile QuaternionEkfConfig *config);
-void Motor3508PositionPidConfig_Init(volatile Motor3508PositionPidConfig *config);
-void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config);
+void Motor3508WheelConfig_Init(uint8_t motor_id); // 恢复指定 ID 的两环 PID 和前馈参数。
 
 void LowerPeripheralConfig_InitAll(void);
 

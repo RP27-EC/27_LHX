@@ -39,36 +39,52 @@ void ImuConfig_Init(void)
 
 volatile Motor3508Config motor3508_config; // 电机速度、位置闭环参数。
 
-// 加载底盘电机位置外环 PID 和目标转速限幅。
-void Motor3508PositionPidConfig_Init(volatile Motor3508PositionPidConfig *config)
+// 按电机 ID 恢复本轮参数；各轮默认值在这里分别调整。
+void Motor3508WheelConfig_Init(uint8_t motor_id)
 {
-    if (config == NULL) { return; }
-    config->kp = 2.5f; // 底盘电机位置环比例增益。
-    config->ki = 2.0f; // 底盘电机位置环积分增益。
-    config->kd = 0.0f; // 底盘电机位置环微分增益。
-    config->integral_limit = 500.0f; // 位置环积分项限幅。
-    config->output_limit = 3500.0f; // 位置环目标轮速限幅，rpm。
+    static const Motor3508WheelConfig defaults[MOTOR3508_WHEEL_COUNT] = {
+        { // ID1，反馈帧 0x201。
+            .position = {.kp = 2.5f, .ki = 2.0f, .kd = 0.0f,
+                         .integral_limit = 500.0f, .output_limit = 3500.0f},
+            .speed = {.kp = 12.0f, .ki = 3.0f, .kd = 0.0f,
+                      .integral_limit = 2000.0f, .output_limit = 15000.0f},
+            .feedforward = {.fixed_current_raw = 0.0f, .target_deadband_rpm = 1.0f},
+        },
+        { // ID2，反馈帧 0x202。
+            .position = {.kp = 2.5f, .ki = 2.0f, .kd = 0.0f,
+                         .integral_limit = 500.0f, .output_limit = 3500.0f},
+            .speed = {.kp = 12.0f, .ki = 3.0f, .kd = 0.0f,
+                      .integral_limit = 2000.0f, .output_limit = 15000.0f},
+            .feedforward = {.fixed_current_raw = 0.0f, .target_deadband_rpm = 100.0f},
+        },
+        { // ID3，反馈帧 0x203。
+            .position = {.kp = 2.5f, .ki = 2.0f, .kd = 0.0f,
+                         .integral_limit = 500.0f, .output_limit = 3500.0f},
+            .speed = {.kp = 12.0f, .ki = 3.0f, .kd = 0.0f,
+                      .integral_limit = 2000.0f, .output_limit = 15000.0f},
+            .feedforward = {.fixed_current_raw = 0.0f, .target_deadband_rpm = 1.0f},
+        },
+        { // ID4，反馈帧 0x204。
+            .position = {.kp = 2.5f, .ki = 2.0f, .kd = 0.0f,
+                         .integral_limit = 500.0f, .output_limit = 3500.0f},
+            .speed = {.kp = 12.0f, .ki = 3.0f, .kd = 0.0f,
+                      .integral_limit = 2000.0f, .output_limit = 15000.0f},
+            .feedforward = {.fixed_current_raw = 0.0f, .target_deadband_rpm = 1.0f},
+        },
+    };
+    if (motor_id < 1U || motor_id > MOTOR3508_WHEEL_COUNT) { return; }
+    motor3508_config.wheel[motor_id - 1U] = defaults[motor_id - 1U];
 }
 
-// 加载底盘电机速度内环 PID 和电流输出限幅。
-void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config)
-{
-    if (config == NULL) { return; }
-    config->kp = 8.0f; // 底盘电机速度环比例增益。
-    config->ki = 2.0f; // 底盘电机速度环积分增益。
-    config->kd = 0.0f; // 底盘电机速度环微分增益。
-    config->integral_limit = 1000.0f; // 速度环积分项限幅。
-    config->output_limit = 10000.0f; // 速度环电流码输出限幅。
-}
-
-// 加载底盘电机电流保护、在线超时、控制周期及两环 PID 默认值。
+// 加载共用保护参数，再分别初始化四轮 PID 和固定扭矩前馈。
 void Motor3508Config_Init(void)
 {
+    uint8_t motor_id;
     motor3508_config.current_limit = 16384; // 底盘电机电流命令限幅，原始码。
     motor3508_config.offline_timeout_ms = 100U; // 底盘电机反馈离线超时，ms。
     motor3508_config.pid_control_time_s = 0.004f; // 电机 PID 每次调用使用的控制周期，s。
-    Motor3508PositionPidConfig_Init(&motor3508_config.position);
-    Motor3508SpeedPidConfig_Init(&motor3508_config.speed);
+    for (motor_id = 1U; motor_id <= MOTOR3508_WHEEL_COUNT; ++motor_id)
+    { Motor3508WheelConfig_Init(motor_id); }
 }
 
 volatile CommunicationConfig communication_config; // 板间通信重试和超时参数。

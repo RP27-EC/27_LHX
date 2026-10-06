@@ -54,11 +54,11 @@ void ChassisFollowConfig_Init(volatile ChassisFollowConfig *config)
 {
     if (config == NULL) { return; }
     config->deadband_deg = 1.0f; // 底盘跟随的位置死区，区内不输出角度纠偏，度。
-    config->kp_rpm_per_deg = 320.0f; // 死区外角度误差到旋转轮速的比例，rpm/度。
+    config->kp_rpm_per_deg = 250.0f; // 死区外角度误差到旋转轮速的比例，rpm/度。
     config->rc_deadband = 15.0f; // Yaw 遥控通道前馈死区。
-    config->ff_rpm_per_rc = 1.5f; // 死区外遥控旋转输入到轮速前馈的比例，rpm/通道值。
+    config->ff_rpm_per_rc = 1.4f; // 死区外遥控旋转输入到轮速前馈的比例，rpm/通道值。
     config->max_rotate_rpm = 5000.0f; // 跟随旋转分量上限，rpm。
-    config->slew_rpm_per_tick = 400.0f; // 每个底盘控制周期允许的跟随轮速变化量，rpm。
+    config->slew_rpm_per_tick = 300.0f; // 每个底盘控制周期允许的跟随轮速变化量，rpm。
     config->rotate_sign = 1.0f; // 跟随旋转方向系数。
 }
 
@@ -87,30 +87,32 @@ void ChassisConfig_Init(void)
 volatile ChassisPowerModelConfig chassis_power_model_config;
 volatile ChassisPowerControlConfig chassis_power_control_config;
 
-// 加载功率余量、实测反馈 PI、恢复速度及失联降级参数。
+// 加载功率预算修正和失联降级参数。
 void ChassisPowerControlConfig_Init(void)
 {
-    chassis_power_control_config.enabled = true; // 开启模型预测与实测反馈限流。
-    chassis_power_control_config.offline_limit_w = 80.0f; // 未接裁判时的调试上限
-    chassis_power_control_config.reserve_w = 5.0f; // 从上限中扣除的功率余量。
-    chassis_power_control_config.deadband_w = 1.0f; // 目标附近停止积分的误差范围。
-    chassis_power_control_config.kp = 0.4f; // 相对功率误差的比例增益。
-    chassis_power_control_config.ki_per_s = 2.0f; // 电流比例积分的每秒增益。
-    chassis_power_control_config.recovery_per_s = 1.0f; // 电流比例恢复的每秒上升限幅。
-    chassis_power_control_config.initial_scale = 0.3f; // 上电和反馈恢复时的初始电流比例。
-    chassis_power_control_config.offline_current_limit = 1000; // 功率反馈失效时的单轮原始电流限幅。
+    chassis_power_control_config.enabled = true; // 开启自适应预测和按轮分配。
+    chassis_power_control_config.offline_limit_w = 80.0f; // 裁判失联时的备用上限。
+    chassis_power_control_config.reserve_w = 5.0f; // 从功率上限扣除的余量。
+    chassis_power_control_config.deadband_w = 1.0f; // 实测功率误差死区。
+    chassis_power_control_config.kp = 0.4f; // 相对功率误差到预算比例的比例增益。
+    chassis_power_control_config.ki_per_s = 2.0f; // 预算比例积分的每秒增益。
+    chassis_power_control_config.recovery_per_s = 1.0f; // 预算恢复的每秒上升限幅。
+    chassis_power_control_config.offline_current_limit = 1000; // 超电失联时的单轮电流原值上限。
 }
 
-// 加载各轮电流与转速的功率模型系数，供发送电流前预测功率。
+// 加载电流力矩换算、损耗初值、在线辨识和分配参数。
 void ChassisPowerModelConfig_Init(void)
 {
-    // 各轮依次对应电机 ID，项顺序为常数、电流、转速、交叉、电流平方、转速平方。
-    const ChassisPowerModelConfig model = {{
-        {1.426816374f, 0.00044888211f, 8.49260410e-05f, 1.78188222e-06f, 1.37697922e-07f, 3.54823528e-07f},
-        {1.316759451f, -0.00038599261f, -0.00015057505f, 1.56183427e-06f, 1.63447186e-07f, 4.45074719e-07f},
-        {1.373260522f, -0.00055127187f, 0.00016888118f, 1.62672879e-06f, 1.53561305e-07f, 3.99971127e-07f},
-        {1.373260522f, -0.00055127187f, 0.00016888118f, 1.62672879e-06f, 1.53561305e-07f, 3.99971127e-07f},
-    }};
+    const ChassisPowerModelConfig model = {
+        .motor = {.torque_nm_per_raw = 0.3f * 20.0f / 16384.0f,
+                  .reduction_ratio = 3591.0f / 187.0f},
+        .initial = {.k1 = 0.22f, .k2 = 1.2f, .static_loss_w = 2.78f},
+        .learning = {.enabled = true, .forgetting = 0.99999f, .initial_covariance = 100.0f,
+                     .minimum_power_w = 5.0f, .maximum_innovation_w = 150.0f,
+                     .alignment_window_ms = 30U,
+                     .k1_min = 0.005f, .k1_max = 5.0f, .k2_min = 0.01f, .k2_max = 10.0f},
+        .allocation = {.error_blend_low_rad_s = 15.0f, .error_blend_high_rad_s = 20.0f},
+    };
     chassis_power_model_config = model;
 }
 

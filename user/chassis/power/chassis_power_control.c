@@ -15,11 +15,10 @@ bool ChassisPowerControl_ConfigValid(const ChassisPowerControlConfig *config)
         nonnegative(config->kp) && config->kp <= 1000.0f &&
         nonnegative(config->ki_per_s) && config->ki_per_s <= 1000.0f &&
         nonnegative(config->recovery_per_s) && config->recovery_per_s <= 1000.0f &&
-        nonnegative(config->initial_scale) && config->initial_scale <= 1.0f &&
         config->offline_current_limit >= 0 && config->offline_current_limit <= 16384;
 }
 
-// 将初始电流比例限幅后写入积分项与输出，建立功率 PI 控制起点。
+// 将初始功率预算比例限幅后写入积分项与输出，建立功率 PI 控制起点。
 void ChassisPowerControl_Init(ChassisPowerController *controller, float initial_scale)
 {
     if (controller == NULL) { return; }
