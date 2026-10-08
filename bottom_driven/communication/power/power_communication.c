@@ -2,8 +2,9 @@
 #include "chassis_can.h"
 #include "peripheral_config.h"
 #include "chassis_power.h"
+#include "referee.h"
 
-#define CAP_CONTROL_BUFFER 0U // 未启用缓冲能量字段。
+#define CAP_BUFFER_MAX 250U // 超电接收端允许的缓冲能量上限，J。
 #define CAP_DISCHARGE_LIMIT (-300) // 放电功率字段，符号按超电协议。
 #define CAP_CHARGE_LIMIT 300U // 正常充电功率字段。
 
@@ -35,12 +36,18 @@ static void write_u16_le(uint8_t *data, uint16_t value)
 static void PowerCommunication_SendControl(uint32_t now)
 {
     uint8_t data[8] = {0};
+    RefereeWire_power_heat_data_t power_heat;
     uint32_t i;
     bool output_allowed;
     uint16_t limit = ChassisPower_GetLimit(now, &output_allowed);
 
     // 逐字节构造控制帧，避免结构体对齐影响协议。
-    data[0] = CAP_CONTROL_BUFFER;
+    // 读取本次发送时的裁判缓冲；未收到或过期时保持保守回退。
+    if (referee.get_power_heat(&power_heat, now))
+    {
+        data[0] = (uint8_t)(power_heat.buffer_energy > CAP_BUFFER_MAX ?
+                           CAP_BUFFER_MAX : power_heat.buffer_energy);
+    }
     write_u16_le(&data[1], limit);
     write_u16_le(&data[3], (uint16_t)CAP_DISCHARGE_LIMIT);
     // 预充模式下清零充电功率字段。

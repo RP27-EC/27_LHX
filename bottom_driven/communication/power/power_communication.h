@@ -47,7 +47,7 @@ typedef struct
     WirelessChargeStatus wireless; // 0x212 无线充状态。
     struct
     {
-        uint8_t raw[8]; // 最近一次成功入队的 0x222 数据。
+        uint8_t raw[8]; // 最近成功入队的 0x222 数据；raw[0] 为发送的裁判缓冲能量，J。
         uint32_t last_tx_ms; // 最近一次成功入队时间，ms。
         uint32_t tx_count; // 成功入队次数。
         uint32_t tx_error_count; // 发送入队失败次数。
