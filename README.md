@@ -22,6 +22,7 @@
 
 | 模块 | 内容 |
 | --- | --- |
+| [观察变量速查](文档/00_观察变量速查.md) | 常用 Watch 完整路径、单位、数组下标和故障排查顺序 |
 | [启动与任务](文档/01_启动与任务.md) | 初始化顺序、任务节拍、程序流程、超期或停车原因 |
 | [遥控与模式](文档/02_遥控与模式.md) | 拨杆/拨轮/键鼠映射、边沿事件、布防与断控 |
 | [底盘与麦轮](文档/03_底盘与麦轮.md) | 坐标变换、四轮解算、跟随/自旋、调头停车 |
@@ -90,17 +91,26 @@ DBUS→遥控状态→安全与模式判定→麦轮目标→速度PID→单轮�
 
 ## 参数与观察变量
 
-默认配置在 `config/application_config.c` 和 `config/peripheral_config.c`。运行时修改只在本次上电有效，验证后回填源码。
+默认值集中在 `config/application_config.c` 和 `config/peripheral_config.c`，运行时状态位于各模块结构体。参数按部件、模式和功能分组；运行时修改确认后回填对应初始化函数。
 
-模块配置内部使用命名子结构体，按部件、模式和功能分类；每组有独立默认值初始化函数。类型、成员路径与初始化入口见 [配置与调参](文档/11_配置与调参.md)。
+先打开 [观察变量速查](文档/00_观察变量速查.md)，按模块进入完整 Watch 表。各表分别列出变量路径、单位、含义、数组下标和有效条件。
 
-- 功率预测：`chassis_power_state.predicted_request_w/predicted_output_w/wheel_scale`；辨识参数在 `chassis_power_model_state.loss`，学习次数在 `estimator.updates`，默认配置在 `chassis_power_model_config`。
-- 功率：`chassis_power_state.power_w/target_w/current_scale/power_feedback_valid`，斜杠表示分别查看这些成员。
-- 裁判：`referee_state.info.robot_status.chassis_power_limit`、`referee_state.message[6]`、`referee_uart_diagnostics`。
-- 底盘：`chassis_spin_block_reason`、`chassis_turnaround_pending`、`chassis_front_reversed`。
-- 设备：`chassis_imu`、`power_communication_state`、`chassis_can_state`。
+| 模块 | 首先观察 | 含义 |
+| --- | --- | --- |
+| [启动与任务](文档/01_启动与任务.md#常用观察变量) | `rc_task_frame_count` | 遥控任务解析成功次数 |
+| [遥控与模式](文档/02_遥控与模式.md#常用观察变量) | `rc_ctrl.rc.ch[3]` | 前后摇杆原始输入 |
+| [底盘与麦轮](文档/03_底盘与麦轮.md#常用观察变量) | `chassis_spin_block_reason` | 小陀螺拦截原因 |
+| [功率控制](文档/04_功率控制.md#常用观察变量) | `chassis_power_state.predicted_output_w` | 限流后预测功率，W |
+| [在线辨识](文档/04_功率控制.md#常用观察变量) | `chassis_power_model_state.estimator.updates` | RLS 成功更新次数 |
+| [裁判系统](文档/05_裁判系统.md#常用观察变量) | `referee_state.diagnostics.parsed_frame_count` | 裁判内容解析成功次数 |
+| [缓冲能量](文档/05_裁判系统.md#常用观察变量) | `referee_state.info.power_heat_data.buffer_energy` | 裁判报告的缓冲能量，J |
+| [超电与无线充](文档/06_超电与无线充.md#常用观察变量) | `power_communication_state.capacitor.chassis_power_raw` | 超电反馈底盘输出功率，W |
+| [电机驱动](文档/07_电机驱动.md#常用观察变量) | `motor3508.data.feedback[0].speed_rpm` | ID1 实际转子速度，rpm |
+| [IMU 与姿态](文档/08_IMU与姿态.md#常用观察变量) | `chassis_imu.yaw_rate_deg_s` | 底盘实际角速度，deg/s |
+| [通信与总线](文档/09_通信与总线.md#常用观察变量) | `chassis_can_state.tx_error_count` | 底盘总线发送失败次数 |
+| [算法库](文档/10_算法库.md#常用观察变量) | `motor3508.control.speed_pid[0].Output` | ID1 速度环输出电流码 |
 
-完整参数和单位见 [配置与调参](文档/11_配置与调参.md)。
+配置完整字段与初始化函数见 [配置与调参](文档/11_配置与调参.md)。
 
 ## 编译与验证
 
