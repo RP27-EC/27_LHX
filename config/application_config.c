@@ -99,7 +99,7 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
     config->enabled = true; // 使用枪管测速调整摩擦轮。
     config->step_rpm = 400; // 单次转速调整步长。
     config->max_speed_rpm = 6000; // 正常转速上限，还受驱动上限约束。
-    config->margin_m_s = 1.5f; // 预留弹速余量。
+    config->margin_m_s = 1.0f; // 预留弹速余量。
     config->deadband_m_s = 0.5f; // 小幅弹速波动保持当前转速。
     config->fallback_limit_m_s = 25.0f; // 无裁判弹速上限时的调试上限。
     config->feedback_timeout_ms = 100U; // 板间测速帧有效期。
@@ -203,12 +203,12 @@ void YawMechanicalRateConfig_Init(volatile YawMechanicalRateConfig *config)
 void YawMechanicalConfig_Init(volatile YawMechanicalConfig *config)
 {
     if (config == NULL) { return; }
-    config->deadzone_deg = 0.4f; // 连续位置死区，内部保留速度环制动。
-    config->brake_speed_at_1deg_raw = 60.0f; // 单位角度误差对应的回正速度码上限，按误差平方根缩小；零关闭。
+    config->deadzone_deg = 0.5f; // 连续位置死区，内部保留速度环制动。
+    config->brake_speed_at_1deg_raw = 65.0f; // 单位角度误差对应的回正速度码上限，按误差平方根缩小；零关闭。
     config->command_deg_s_per_raw = 1.0f; // 位置环速度原始码到目标角速度的换算系数，度/s/码。
     config->gyro_direction = 1.0f; // 与现有惯性 Yaw 使用同一 IMU 正方向。
     config->chassis_rate_ff_gain = 1.0f; // 跟随底盘转速的前馈增益，符号按两板 IMU 方向设置。
-    config->chassis_rate_ff_limit_deg_s = 50.0f; // 叠加到速度目标的前馈限幅，度/s。
+    config->chassis_rate_ff_limit_deg_s = 100.0f; // 叠加到速度目标的前馈限幅，度/s。
     YawMechanicalRateConfig_Init(&config->rate);
 }
 
@@ -218,10 +218,10 @@ void YawTurnConfig_Init(volatile YawTurnConfig *config)
     if (config == NULL) { return; }
     config->wheel_trigger_raw = 200; // 拨轮负向达到此阈值时触发调头，遥控原始值。
     config->wheel_rearm_raw = 50; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
-    config->duration_s = 0.80f; // 调头时间，越短目标变化越快。
-    config->tolerance_deg = 2.0f; // 调头目标角的到位误差，度。
+    config->duration_s = 0.72f; // 调头时间，越短目标变化越快。
+    config->tolerance_deg = 1.5f; // 调头目标角的到位误差，度。
     config->speed_raw_max = 25; // 调头到位允许的反馈速度绝对值，电机原始码。
-    config->stable_cycles = 5U; // 调头位置与速度需连续合格的控制周期数。
+    config->stable_cycles = 4U; // 调头位置与速度需连续合格的控制周期数。
 }
 
 // 加载 Yaw 输入方向与机械零点，并组合加载各模式默认值。
@@ -281,7 +281,7 @@ void PitchConfig_Init(volatile PitchConfig *config)
 {
     if (config == NULL) { return; }
     config->imu_direction = 1.0f; // IMU Pitch 与电机正方向的对应系数，符号决定方向。
-    config->rate_filter_alpha = 0.45f; // Pitch 角速度低通的新样本权重，越大响应越快、滤波越弱。
+    config->rate_filter_alpha = 0.5f; // Pitch 角速度低通的新样本权重，越大响应越快、滤波越弱。
     config->command_rate_deg_s = 150.0f; // Pitch 满杆位置目标变化率，度/s。
     config->home_rad = 2.59309077f; // Pitch 机械归中时的电机单圈角，rad。
     config->min_deg = (-8.5f); // Pitch 相对机械零点的下限，度。
@@ -337,8 +337,8 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
     shoot_heat_config.low_remaining = 70.0f; // 低射频档剩余量上界。
     shoot_heat_config.high_remaining = 120.0f; // 高射频档剩余量下界。
-    shoot_heat_config.low_rate_hz = 9.0f; // 低余量档射频。
-    shoot_heat_config.middle_rate_hz = 14.0f; // 中余量档射频。
+    shoot_heat_config.low_rate_hz = 5.0f; // 低余量档射频。
+    shoot_heat_config.middle_rate_hz = 12.0f; // 中余量档射频。
     shoot_heat_config.high_rate_hz = 18.0f; // 高余量档射频。
     shoot_heat_config.offline_heat_limit = 100.0f; // 离线调试尚无裁判数据时的上限。
     shoot_heat_config.offline_cooling_per_s = 10.0f; // 离线调试备用冷却速率。

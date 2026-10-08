@@ -222,6 +222,8 @@ static bool cloud_at_home(const Motor4310_Data_t *feedback, int32_t target,
            feedback->speed <= cloud_config.home.speed_raw_max;
 }
 
+static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool force_home);
+
 static bool cloud_home_step(void)
 {
     Motor4310_Data_t pitch, yaw;
@@ -241,6 +243,12 @@ static bool cloud_home_step(void)
             cloud_nearest_home(cloud_config.yaw.home_rad, yaw.total_angle);
         Motor4310_ResetControl(MOTOR4310_PITCH);
         Motor4310_ResetControl(MOTOR4310_YAW);
+        // 开机只回物理车头，后续机械控制沿用同一目标和闭环状态。
+        cloud_front_reversed = false;
+        yaw_mechanical_target = home_target[MOTOR4310_YAW];
+        yaw_mechanical_mode = true;
+        cloud_yaw_mechanical_gyro_online = false;
+        pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
         home_stable_cycles = 0U;
         cloud_terrace_home_state = CLOUD_TERRACE_HOME_MOVING;
     }
@@ -248,8 +256,8 @@ static bool cloud_home_step(void)
     pitch_status = Motor4310_PositionControlWithFeedforward(
         MOTOR4310_PITCH, home_target[MOTOR4310_PITCH],
         cloud_pitch_gravity(&pitch));
-    yaw_status = Motor4310_PositionControlWithProfile(
-        MOTOR4310_YAW, home_target[MOTOR4310_YAW], 0, NULL, false);
+    // 与机械保持共用位置环、陀螺仪内环、软死区、回正限速和底盘前馈。
+    yaw_status = cloud_control_yaw_mechanical(true, true);
     if (pitch_status != HAL_OK || yaw_status != HAL_OK)
     {
         home_stable_cycles = 0U;
@@ -465,7 +473,7 @@ static void cloud_control_yaw(int16_t input)
                                       cloud_yaw_torque_raw);
 }
 
-static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
+static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
 {
     Motor4310_Data_t yaw;
     GimbalImu_Data_t imu;
@@ -480,7 +488,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
         if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
         {
             cloud_yaw_torque_raw = 0;
-            return;
+            return HAL_ERROR;
         }
 
         // 前/后方向只改变目标，不重新定义开机校准的机械零点。
@@ -501,7 +509,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
 
     cloud_yaw_rate_target_deg_s = 0.0f;
     cloud_yaw_torque_raw = 0;
-    if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw)) { return; }
+    if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw)) { return HAL_ERROR; }
     if (!GimbalImu_Get(&imu))
     {
         // 陀螺仪不可用就停闭环；保留机械目标，恢复后继续回正。
@@ -509,7 +517,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
         Motor4310_ResetControl(MOTOR4310_YAW);
         pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
         (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
-        return;
+        return HAL_ERROR;
     }
     gyro_recovered = !cloud_yaw_mechanical_gyro_online;
     cloud_yaw_mechanical_gyro_online = true;
@@ -570,7 +578,7 @@ static void cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
     torque = pid_algorithm.ops.calc(&yaw_mechanical_rate_pid, cloud_yaw_rate_target_deg_s,
                      cloud_yaw_rate_deg_s);
     cloud_yaw_torque_raw = (int16_t)torque;
-    (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, cloud_yaw_torque_raw);
+    return Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, cloud_yaw_torque_raw);
 }
 
 static void cloud_send_yaw_angle(bool allow_turn, bool allow_spin,

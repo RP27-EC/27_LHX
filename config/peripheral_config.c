@@ -7,14 +7,14 @@ volatile Motor4310Config motor4310_config; // 云台电机闭环与通信参数�
 void Motor4310YawHoldConfig_Init(volatile Motor4310_PidProfile_t *config)
 {
     if (config == NULL) { return; }
-    config->speed.kp = 1.4f; // Yaw 机械保持速度环比例增益。
-    config->speed.ki = 0.2f; // 4310 速度环积分增益。
-    config->speed.kd = 0.0f; // 4310 速度环微分增益。
+    config->speed.kp = 1.3f; // Yaw 机械保持速度环比例增益。
+    config->speed.ki = 0.4f; // 4310 速度环积分增益。
+    config->speed.kd = 0.0005f; // 4310 速度环微分增益。
     config->speed.integral_limit = 350.0f; // 速度环积分项限幅。
     config->speed.output_limit = 2047.0f; // 速度环转矩码输出限幅。
     config->position.kp = 0.4f; // Yaw 机械保持位置环比例增益。
-    config->position.ki = 0.15f; // 4310 位置环积分增益。
-    config->position.kd = 0.001f; // 4310 位置环微分增益。
+    config->position.ki = 1.0f; // 4310 位置环积分增益。
+    config->position.kd = 0.01f; // 4310 位置环微分增益。
     config->position.integral_limit = 150.0f; // 位置环积分项限幅。
     config->position.output_limit = 400.0f; // 位置环目标速度限幅。
 }
@@ -23,14 +23,14 @@ void Motor4310YawHoldConfig_Init(volatile Motor4310_PidProfile_t *config)
 void Motor4310YawTurnConfig_Init(volatile Motor4310_PidProfile_t *config)
 {
     if (config == NULL) { return; }
-    config->position.kp = 0.8f; // 调头独立位置环比例增益。
-    config->position.ki = 0.0f; // 调头独立位置环积分增益。
+    config->position.kp = 0.4f; // 调头独立位置环比例增益。
+    config->position.ki = 0.6f; // 调头独立位置环积分增益。
     config->position.kd = 0.0001f; // 调头独立位置环微分增益。
     config->position.integral_limit = 0.0f; // 调头独立位置环积分项限幅。
-    config->position.output_limit = 1500.0f; // 调头独立位置环目标速度限幅，原始码。
-    config->speed.kp = 1.8f; // 调头独立速度环比例增益。
-    config->speed.ki = 0.1f; // 调头独立速度环积分增益。
-    config->speed.kd = 0.0f; // 调头独立速度环微分增益。
+    config->position.output_limit = 3000.0f; // 调头独立位置环目标速度限幅，原始码。
+    config->speed.kp = 2.0f; // 调头独立速度环比例增益。
+    config->speed.ki = 0.2f; // 调头独立速度环积分增益。
+    config->speed.kd = 0.002f; // 调头独立速度环微分增益。
     config->speed.integral_limit = 0.0f; // 调头独立速度环积分项限幅。
     config->speed.output_limit = 2047.0f; // 调头独立速度环转矩输出限幅，原始码。
 }
@@ -99,7 +99,7 @@ void Motor3508BrakeConfig_Init(volatile Motor3508BrakeConfig *config)
 void Motor3508Config_Init(void)
 {
     motor3508_config.current_limit = 16384; // 摩擦轮电流命令限幅，原始码。
-    motor3508_config.max_speed_rpm = 8000.0f; // 摩擦轮目标转速上限，rpm。
+    motor3508_config.max_speed_rpm = 9000.0f; // 摩擦轮目标转速上限，rpm。
     motor3508_config.left_direction = 1.0f; // 左摩擦轮转向系数。
     motor3508_config.right_direction = (-1.0f); // 右摩擦轮转向系数。
     motor3508_config.offline_timeout_ms = 100U; // 摩擦轮反馈离线超时，ms。
@@ -142,16 +142,16 @@ void DialPositionPidConfig_Init(volatile DialPositionPidConfig *config)
     config->ki = 0.05f; // 拨盘位置环积分增益。
     config->kd = 0.0f; // 拨盘位置环微分增益。
     config->integral_limit = 0.0f; // 位置环积分项限幅。
-    config->speed_limit_dps = 2500.0f; // 位置环目标速度限幅，度/s。
+    config->speed_limit_dps = 2000.0f; // 位置环目标速度限幅，度/s。
 }
 
 // 加载拨盘单发速度内环 PID 及单发、连发共用的积分与电流限幅。
 void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.07f; // 单发速度环比例增益。
-    config->ki = 0.03f; // 单发速度环积分增益。
-    config->kd = 0.0f; // 单发速度环微分增益。
+    config->kp = 0.1f; // 单发速度环比例增益。
+    config->ki = 0.08f; // 单发速度环积分增益。
+    config->kd = 0.0001f; // 单发速度环微分增益。
     config->integral_limit = 500.0f; // 速度环积分项限幅。
     config->output_limit = 1600.0f; // 速度环电流码输出限幅。
 }
@@ -160,9 +160,9 @@ void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 void DialContinuousSpeedPidConfig_Init(volatile DialContinuousSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.12f; // 连发速度环比例增益。
-    config->ki = 0.5f; // 连发速度环积分增益。
-    config->kd = 0.0f; // 连发速度环微分增益。
+    config->kp = 0.15f; // 连发速度环比例增益。
+    config->ki = 0.8f; // 连发速度环积分增益。
+    config->kd = 0.0005f; // 连发速度环微分增益。
 }
 
 // 加载拨盘电流保护、通信间隔、控制周期及位置、速度闭环默认值。
