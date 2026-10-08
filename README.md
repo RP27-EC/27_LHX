@@ -22,6 +22,7 @@
 
 | 模块 | 内容 |
 | --- | --- |
+| [观察变量速查](文档/00_观察变量速查.md) | 常用 Watch 完整路径、单位、数组下标和故障排查顺序 |
 | [启动与任务](文档/01_启动与任务.md) | 初始化顺序、任务节拍、程序流程、超期或停车原因 |
 | [遥控与模式](文档/02_遥控与模式.md) | 拨杆/拨轮/键鼠映射、边沿事件、布防与断控 |
 | [云台与调头](文档/03_云台与调头.md) | 机械/惯性闭环、底盘前馈、Pitch重力补偿、五次调头 |
@@ -90,17 +91,28 @@ infantry_up/
 
 ## 参数与观察变量
 
-默认配置在 `config/application_config.c` 和 `config/peripheral_config.c`。运行时修改只在本次上电有效，验证后回填源码。
+默认值集中在 `config/application_config.c` 和 `config/peripheral_config.c`，运行时状态位于各模块结构体。参数按部件、模式和功能分组；运行时修改确认后回填对应初始化函数。
 
-模块配置内部使用命名子结构体，按部件、模式和功能分类；每组有独立默认值初始化函数。类型、成员路径与初始化入口见 [配置与调参](文档/10_配置与调参.md)。
+先打开 [观察变量速查](文档/00_观察变量速查.md)，按模块进入完整 Watch 表。各表分别列出变量路径、单位、含义、数组下标和有效条件。
 
-- 云台：`cloud_yaw_rate_target_deg_s`、`cloud_yaw_rate_deg_s`、`cloud_yaw_torque_raw`、`cloud_yaw_chassis_rate_ff_deg_s`。
-- 升降：`lift_control_state`、`lift_wait_reason`、`lift_safety_state`。
-- 热量：`shoot_heat_config`、`shoot_heat_state`；默认裁判热量失联禁止供弹。
-- 发射：`upper_shoot_block_reason`、`shoot_control_state`、`dial_motor_tx_diagnostics`。
-- 时序：`upper_task_timing`；IMU：`gimbal_imu`。
+| 模块 | 首先观察 | 含义 |
+| --- | --- | --- |
+| [启动与任务](文档/01_启动与任务.md#常用观察变量) | `upper_task_timing.gimbal_overruns` | 控制任务超期次数 |
+| [遥控与模式](文档/02_遥控与模式.md#常用观察变量) | `communication_rc_online` | 上板遥控链路有效 |
+| [云台与调头](文档/03_云台与调头.md#常用观察变量) | `cloud_yaw_mechanical_error_deg` | 机械 Yaw 位置误差，deg |
+| [升降与联锁](文档/04_升降与安全联锁.md#常用观察变量) | `lift_safety_state.shoot_allowed` | 升降侧发射许可 |
+| [发射机构](文档/05_发射机构.md#常用观察变量) | `upper_shoot_block_reason` | 发射任务拦截原因 |
+| [弹速自适应](文档/05_发射机构.md#常用观察变量) | `shoot_control_state.speed.target_speed_rpm` | 当前摩擦轮目标转速，rpm |
+| [热量控制](文档/11_热量控制.md#常用观察变量) | `shoot_heat_state.remaining` | 当前可用热量余量 |
+| [4310 电机](文档/06_电机驱动.md#常用观察变量) | `motor4310_data[MOTOR4310_YAW].online` | Yaw 电机在线 |
+| [摩擦轮电机](文档/06_电机驱动.md#常用观察变量) | `motor3508_feedback[0].speed_rpm` | 左轮实际转速，rpm |
+| [升降电机](文档/06_电机驱动.md#常用观察变量) | `motor2006_feedback.encoder_total` | 升降累计转子位置 |
+| [拨盘电机](文档/06_电机驱动.md#常用观察变量) | `dial_motor_feedback.encoder` | 拨盘单圈位置 |
+| [IMU 与姿态](文档/07_IMU与姿态.md#常用观察变量) | `gimbal_imu.yaw_rate_deg_s` | 云台实际角速度，deg/s |
+| [板间通信](文档/08_通信与总线.md#常用观察变量) | `communication_rc_assembly_error_count` | 遥控拼帧错误次数 |
+| [算法库](文档/09_算法库.md#常用观察变量) | `motor4310_position_pids[MOTOR4310_YAW].Output` | 机械位置环目标速度码 |
 
-完整参数和单位见 [配置与调参](文档/10_配置与调参.md)。
+配置完整字段与初始化函数见 [配置与调参](文档/10_配置与调参.md)。
 
 ## 编译与验证
 
