@@ -203,12 +203,12 @@ void YawMechanicalRateConfig_Init(volatile YawMechanicalRateConfig *config)
 void YawMechanicalConfig_Init(volatile YawMechanicalConfig *config)
 {
     if (config == NULL) { return; }
-    config->deadzone_deg = 0.5f; // 连续位置死区，内部保留速度环制动。
-    config->brake_speed_at_1deg_raw = 65.0f; // 单位角度误差对应的回正速度码上限，按误差平方根缩小；零关闭。
+    config->deadzone_deg = 0.4f; // 连续位置死区，内部保留速度环制动。
+    config->brake_speed_at_1deg_raw = 60.0f; // 单位角度误差对应的回正速度码上限，按误差平方根缩小；零关闭。
     config->command_deg_s_per_raw = 1.0f; // 位置环速度原始码到目标角速度的换算系数，度/s/码。
     config->gyro_direction = 1.0f; // 与现有惯性 Yaw 使用同一 IMU 正方向。
     config->chassis_rate_ff_gain = 1.0f; // 跟随底盘转速的前馈增益，符号按两板 IMU 方向设置。
-    config->chassis_rate_ff_limit_deg_s = 100.0f; // 叠加到速度目标的前馈限幅，度/s。
+    config->chassis_rate_ff_limit_deg_s = 60.0f; // 叠加到速度目标的前馈限幅，度/s。
     YawMechanicalRateConfig_Init(&config->rate);
 }
 
