@@ -110,7 +110,7 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
 void FrictionConfig_Init(volatile FrictionConfig *config)
 {
     if (config == NULL) { return; }
-    config->target_speed_rpm = 8000; // 摩擦轮目标转速幅值，rpm。
+    config->target_speed_rpm = 9000; // 摩擦轮目标转速幅值，rpm。
     ShootSpeedConfig_Init(&config->adaptive);
     config->block_speed_rpm = 100; // 低于此转速才检查堵转。
     config->block_current_raw = 2000; // 排除低负载的慢速转动。

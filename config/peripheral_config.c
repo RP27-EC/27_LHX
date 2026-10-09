@@ -79,10 +79,10 @@ volatile Motor3508Config motor3508_config; // 电机闭环与命令保护参数�
 void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 5.0f; // 摩擦轮速度环比例增益。
-    config->ki = 2.0f; // 摩擦轮速度环积分增益。
+    config->kp = 6.0f; // 摩擦轮速度环比例增益。
+    config->ki = 3.0f; // 摩擦轮速度环积分增益。
     config->kd = 0.0f; // 摩擦轮速度环微分增益。
-    config->integral_limit = 500.0f; // 速度环积分项限幅。
+    config->integral_limit = 2000.0f; // 速度环积分项限幅。
     config->output_limit = 16384.0f; // 速度环电流码输出限幅。
 }
 
