@@ -9,12 +9,12 @@ void Motor4310YawHoldConfig_Init(volatile Motor4310_PidProfile_t *config)
     if (config == NULL) { return; }
     config->speed.kp = 1.4f; // Yaw 机械保持速度环比例增益。
     config->speed.ki = 0.4f; // 4310 速度环积分增益。
-    config->speed.kd = 0.05f; // 4310 速度环微分增益。
+    config->speed.kd = 0.002f; // 4310 速度环微分增益。
     config->speed.integral_limit = 350.0f; // 速度环积分项限幅。
     config->speed.output_limit = 2047.0f; // 速度环转矩码输出限幅。
-    config->position.kp = 0.5f; // Yaw 机械保持位置环比例增益。
-    config->position.ki = 0.2f; // 4310 位置环积分增益。
-    config->position.kd = 0.0005f; // 4310 位置环微分增益。
+    config->position.kp = 0.18f; // Yaw 机械保持位置环比例增益。
+    config->position.ki = 0.1f; // 4310 位置环积分增益。
+    config->position.kd = 0.001f; // 4310 位置环微分增益。
     config->position.integral_limit = 50.0f; // 位置环积分项限幅。
     config->position.output_limit = 300.0f; // 位置环目标速度限幅。
 }
