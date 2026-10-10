@@ -160,9 +160,9 @@ void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 void DialContinuousSpeedPidConfig_Init(volatile DialContinuousSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.15f; // 连发速度环比例增益。
-    config->ki = 0.8f; // 连发速度环积分增益。
-    config->kd = 0.0005f; // 连发速度环微分增益。
+    config->kp = 0.10f; // 连发速度环比例增益。
+    config->ki = 0.1f; // 连发速度环积分增益。
+    config->kd = 0.0001f; // 连发速度环微分增益。
 }
 
 // 加载拨盘电流保护、通信间隔、控制周期及位置、速度闭环默认值。

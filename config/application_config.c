@@ -97,10 +97,10 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
 {
     if (config == NULL) { return; }
     config->enabled = true; // 使用枪管测速调整摩擦轮。
-    config->step_rpm = 400; // 单次转速调整步长。
-    config->max_speed_rpm = 6000; // 正常转速上限，还受驱动上限约束。
-    config->margin_m_s = 1.0f; // 预留弹速余量。
-    config->deadband_m_s = 0.5f; // 小幅弹速波动保持当前转速。
+    config->step_rpm = 100; // 单次转速调整步长。
+    config->max_speed_rpm = 6500; // 正常转速上限，还受驱动上限约束。
+    config->margin_m_s = 2.0f; // 预留弹速余量。
+    config->deadband_m_s = 0.8f; // 小幅弹速波动保持当前转速。
     config->fallback_limit_m_s = 25.0f; // 无裁判弹速上限时的调试上限。
     config->feedback_timeout_ms = 100U; // 板间测速帧有效期。
     config->settle_time_ms = 200U; // 调速后等待轮速稳定。
@@ -336,9 +336,9 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.heat_per_shot = 20.0f; // 每次新供弹预留的热量。
     shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
     shoot_heat_config.low_remaining = 70.0f; // 低射频档剩余量上界。
-    shoot_heat_config.high_remaining = 120.0f; // 高射频档剩余量下界。
-    shoot_heat_config.low_rate_hz = 5.0f; // 低余量档射频。
-    shoot_heat_config.middle_rate_hz = 12.0f; // 中余量档射频。
+    shoot_heat_config.high_remaining = 125.0f; // 高射频档剩余量下界。
+    shoot_heat_config.low_rate_hz = 8.0f; // 低余量档射频。
+    shoot_heat_config.middle_rate_hz = 15.0f; // 中余量档射频。
     shoot_heat_config.high_rate_hz = 18.0f; // 高余量档射频。
     shoot_heat_config.offline_heat_limit = 100.0f; // 离线调试尚无裁判数据时的上限。
     shoot_heat_config.offline_cooling_per_s = 10.0f; // 离线调试备用冷却速率。

@@ -583,7 +583,7 @@ static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool fo
 }
 
 static void cloud_send_yaw_angle(bool allow_turn, bool allow_spin,
-                                 bool spin_selected, bool bottom_mode_blocked)
+                                 bool spin_selected, bool mechanical_required)
 {
     float relative_deg = 0.0f;
     bool angle_valid = cloud_terrace_home_state == CLOUD_TERRACE_HOME_DONE &&
@@ -595,7 +595,7 @@ static void cloud_send_yaw_angle(bool allow_turn, bool allow_spin,
     (void)Communication_CAN_SendYawState(relative_deg,
                                          cloud_turnaround_active, allow_turn,
                                          allow_spin, spin_selected,
-                                         angle_valid, bottom_mode_blocked);
+                                         angle_valid, mechanical_required);
 }
 
 // 外环使用融合姿态；内环使用陀螺仪换算的俯仰角导数，单位均为度。
@@ -757,6 +757,7 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
     bool mode_permitted;
     bool spin_permitted;
     bool bottom_mode_blocked;
+    bool mechanical_required; // 顶部区外、下降或安全状态无效时强制机械控制。
     bool yaw_home_required;
     bool safety_valid;
     bool pitch_use_imu;
@@ -768,6 +769,8 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
     mode_permitted = safety_valid && safety.special_allowed;
     bottom_mode_blocked = safety.bottom_mode_blocked;
     yaw_home_required = safety.yaw_home_required;
+    mechanical_required = !lift_calibrated || !safety_valid || !safety.position_valid ||
+        !safety.upper_zone || safety.descending || bottom_mode_blocked || yaw_home_required;
     if (remote.mode.chassis != REMOTE_MODE_FOLLOW &&
         remote.mode.chassis != REMOTE_MODE_MECHANICAL &&
         remote.mode.chassis != REMOTE_MODE_SPIN)
@@ -777,7 +780,7 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
         turn_requested = false;
         turn_wheel_armed = false;
         cloud_front_reversed = false;
-        cloud_send_yaw_angle(false, false, false, bottom_mode_blocked);
+        cloud_send_yaw_angle(false, false, false, mechanical_required);
         (void)Motor4310_DisableMotor(MOTOR4310_PITCH);
         (void)Motor4310_DisableMotor(MOTOR4310_YAW);
         return;
@@ -815,14 +818,14 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
         { (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0); }
         cloud_send_yaw_angle(false, false,
                              remote.mode.chassis == REMOTE_MODE_SPIN,
-                             bottom_mode_blocked);
+                             mechanical_required);
         return;
     }
     if (!cloud_home_step())
     {
         cloud_send_yaw_angle(false, false,
                              remote.mode.chassis == REMOTE_MODE_SPIN,
-                             bottom_mode_blocked);
+                             mechanical_required);
         return;
     }
     if (!targets_initialized)
@@ -831,7 +834,7 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
         targets_initialized = true;
     }
 
-    pitch_use_imu = lift_calibrated && !bottom_mode_blocked && !yaw_home_required &&
+    pitch_use_imu = !mechanical_required &&
         (remote.mode.chassis == REMOTE_MODE_FOLLOW || remote.mode.chassis == REMOTE_MODE_SPIN);
     if (turn_requested && !cloud_turnaround_active && !turn_blocked)
     { (void)cloud_turn_start(); }
@@ -842,18 +845,16 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
         cloud_control_pitch(remote.input.channel[1], pitch_use_imu);
         cloud_send_yaw_angle(!turn_blocked, false,
                              remote.mode.chassis == REMOTE_MODE_SPIN,
-                             bottom_mode_blocked);
+                             mechanical_required);
         return;
     }
 
-    if (!lift_calibrated || bottom_mode_blocked || yaw_home_required ||
+    if (mechanical_required ||
         remote.mode.chassis == REMOTE_MODE_MECHANICAL)
     {
-        // 升降指令或低位联锁强制回机械正方向，再由升降任务确认稳定。
+        // 区域联锁接管机械控制，低位和下降过程回物理正方向。
         cloud_control_yaw_mechanical(
-            bottom_mode_blocked || yaw_home_required ||
-                remote.mode.chassis == REMOTE_MODE_MECHANICAL,
-            bottom_mode_blocked || yaw_home_required);
+            true, bottom_mode_blocked || yaw_home_required || safety.descending);
     }
     else
     {
@@ -863,5 +864,5 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
     cloud_control_pitch(remote.input.channel[1], pitch_use_imu);
     cloud_send_yaw_angle(!turn_blocked, spin_permitted,
                          remote.mode.chassis == REMOTE_MODE_SPIN,
-                         bottom_mode_blocked);
+                         mechanical_required);
 }

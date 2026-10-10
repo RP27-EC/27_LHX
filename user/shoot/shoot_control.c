@@ -324,11 +324,8 @@ static void Shoot_DialUpdate(bool single_rising, bool continuous)
         }
         else
         {
-            // 本发已计热，完成这一圈后停在供弹终点。
-            shoot_control_state.dial.target = continuous_origin +
-                shoot_config.dial.feed_direction * (int64_t)continuous_reserved *
-                SHOOT_DIAL_ONE_BULLET_COUNTS;
-            (void)DialMotor_PositionControlLimited(shoot_control_state.dial.target,
+            // 完成已计热的末发，仍走速度环；到供弹终点再切保持。
+            (void)DialMotor_SpeedControl((float)shoot_config.dial.feed_direction *
                 360.0f * config.low_rate_hz);
         }
         if (Shoot_DialBlockCheck(&feedback, true))

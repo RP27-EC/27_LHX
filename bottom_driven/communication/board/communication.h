@@ -104,7 +104,7 @@ HAL_StatusTypeDef Communication_CAN_SendLiftLock(bool hold, uint8_t sequence);
 // C1: Yaw 角(0.01°)及调头标志；D4: 底盘角速度(0.01°/s)；D5: 四轮 rpm。
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg);
 // C1 byte[2] bit0=Yaw角有效，bit1=调头中，bit2=允许调头，
-// bit3=允许自旋，bit4=上板已选小陀螺，bit5=低位禁止云台模式；模式位与角度有效位独立。
+// bit3=允许自旋，bit4=上板已选小陀螺，bit5=升降强制机械模式；模式位与角度有效位独立。
 HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
                                                   bool allow_turn,
                                                   bool allow_spin,
