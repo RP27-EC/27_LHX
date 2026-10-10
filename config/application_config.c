@@ -107,7 +107,7 @@ void ChassisPowerModelConfig_Init(void)
     const ChassisPowerModelConfig model = {
         .motor = {.torque_nm_per_raw = 0.3f * 20.0f / 16384.0f,
                   .reduction_ratio = 3591.0f / 187.0f},
-        .initial = {.k1 = 0.22f, .k2 = 1.2f, .static_loss_w = 2.78f},
+        .initial = {.k1 = 0.22f, .k2 = 1.2f, .static_loss_w = 5.0f},
         .learning = {.enabled = true, .forgetting = 0.99999f, .initial_covariance = 100.0f,
                      .minimum_power_w = 5.0f, .maximum_innovation_w = 150.0f,
                      .alignment_window_ms = 30U,

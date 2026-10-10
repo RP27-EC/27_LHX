@@ -59,7 +59,7 @@ bool Communication_GetYawAngle(float *angle_deg);
 bool Communication_GetYawState(float *angle_deg, bool *turning,
                                bool *turn_allowed);
 bool Communication_GetSpinState(bool *upper_selected, bool *spin_allowed);
-// C1 bit5：上板确认升降接近低位；帧超时则返回 false。
+// C1 bit5：升降强制机械模式，含顶部区外和下降；沿用原接口名，帧超时返回 false。
 bool Communication_GetBottomModeBlocked(void);
 bool Communication_GetLiftLock(uint8_t *sequence);
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
@@ -108,7 +108,7 @@ typedef struct
     bool (*get_yaw_angle)(float *angle_deg); // 读取云台机械角。
     bool (*get_yaw_state)(float *angle_deg, bool *turning, bool *turn_allowed); // 读取云台机械角及调头状态。
     bool (*get_spin_state)(bool *upper_selected, bool *spin_allowed); // 读取小陀螺选择与许可。
-    bool (*get_bottom_mode_blocked)(void); // 读取低位云台模式限制。
+    bool (*get_bottom_mode_blocked)(void); // 读取升降强制机械模式联锁。
     bool (*get_lift_lock)(uint8_t *sequence); // 读取升降锁车请求与序号。
 
     // 控制与发送。
