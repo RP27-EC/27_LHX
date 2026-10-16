@@ -82,7 +82,7 @@ void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config)
     config->kp = 6.0f; // 摩擦轮速度环比例增益。
     config->ki = 3.0f; // 摩擦轮速度环积分增益。
     config->kd = 0.0f; // 摩擦轮速度环微分增益。
-    config->integral_limit = 2000.0f; // 速度环积分项限幅。
+    config->integral_limit = 3000.0f; // 速度环积分项限幅。
     config->output_limit = 16384.0f; // 速度环电流码输出限幅。
 }
 
@@ -99,7 +99,7 @@ void Motor3508BrakeConfig_Init(volatile Motor3508BrakeConfig *config)
 void Motor3508Config_Init(void)
 {
     motor3508_config.current_limit = 16384; // 摩擦轮电流命令限幅，原始码。
-    motor3508_config.max_speed_rpm = 9000.0f; // 摩擦轮目标转速上限，rpm。
+    motor3508_config.max_speed_rpm = 12000.0f; // 摩擦轮目标转速上限，rpm。
     motor3508_config.left_direction = 1.0f; // 左摩擦轮转向系数。
     motor3508_config.right_direction = (-1.0f); // 右摩擦轮转向系数。
     motor3508_config.offline_timeout_ms = 100U; // 摩擦轮反馈离线超时，ms。
@@ -118,7 +118,7 @@ void Motor2006SpeedPidConfig_Init(volatile Motor2006SpeedPidConfig *config)
     config->ki = 5.0f; // 升降电机速度环积分增益。
     config->kd = 0.0f; // 升降电机速度环微分增益。
     config->integral_limit = 0.0f; // 速度环积分项限幅。
-    config->output_limit = 1000.0f; // 速度环转矩输出限幅。
+    config->output_limit = 5000.0f; // 速度环转矩输出限幅。
 }
 
 // 加载升降电机电流保护、命令超时、转矩换算及速度环默认值。
@@ -160,9 +160,9 @@ void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 void DialContinuousSpeedPidConfig_Init(volatile DialContinuousSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.9f; // 连发速度环比例增益。
-    config->ki = 0.1f; // 连发速度环积分增益。
-    config->kd = 0.00005f; // 连发速度环微分增益。
+    config->kp = 0.75f; // 连发速度环比例增益。
+    config->ki = 0.05f; // 连发速度环积分增益。
+    config->kd = 0.0001f; // 连发速度环微分增益。
 }
 
 // 加载拨盘电流保护、通信间隔、控制周期及位置、速度闭环默认值。

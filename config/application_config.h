@@ -19,6 +19,8 @@ typedef struct
     float down_direction; // 下降方向系数，符号决定编码器增减方向。
     float down_speed_rad_s; // 下降转子目标速度，rad/s。
     float up_speed_rad_s; // 上升转子目标速度，rad/s。
+    float up_duration_s; // 单次上升的五次轨迹时间，动作开始时锁定。
+    float down_duration_s; // 单次下降的五次轨迹时间，动作开始时锁定。
     float max_rotor_turns; // 上电零点起，正负方向各允许的最大转子圈数。
     int32_t limit_stop_margin_counts; // 靠近行程边界的停机余量，编码器计数。
     uint32_t stop_retry_ms; // 停机帧重发间隔。
@@ -67,7 +69,7 @@ typedef struct
 typedef struct
 {
     float position_kp_rad_s_per_turn; // 每圈位置误差对应的转子目标速度。
-    float position_min_speed_rad_s; // 主动升降克服静摩擦的最小目标速度，保持时不用。
+    float position_min_speed_rad_s; // 轨迹结束后追赶终点的最小速度，曲线与保持时不用。
     float hold_speed_rad_s; // 位置保持被外力推开后的最大回位速度。
     int32_t position_tolerance_counts; // 结束主动升降的误差范围，范围内仍做位置保持。
     int32_t top_arrival_tolerance_counts; // 顶部结束主动升降的容差，不清除位置保持误差。

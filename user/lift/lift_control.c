@@ -6,8 +6,14 @@
 #include "imu.h"
 #include "application_config.h"
 #include "stm32f4xx_hal.h"
+#include <math.h>
 
 #define LIFT_ENCODER_COUNTS_PER_TURN 8192.0f // 升降电机转子每圈编码器计数。
+#define LIFT_TWO_PI 6.283185307f // 转子圈数换算为弧度。
+#define LIFT_TRAJECTORY_STEP_MAX_MS 20U // 调度延迟时限制单次轨迹推进。
+#define LIFT_QUINTIC_PEAK_SPEED 1.875f // 标准五次曲线的归一化峰值速度。
+
+volatile LiftTrajectoryState_t lift_trajectory; // 升降位置轨迹与速度前馈。
 
 volatile LiftControl_State_t lift_control_state; // 升降当前动作状态。
 volatile LiftControl_WaitReason_t lift_wait_reason; // 当前等待或停机原因。
@@ -41,6 +47,7 @@ static bool stall_timing; // 高电流低速判据正在计时。
 static uint32_t stall_start_ms; // 本次高电流低速判据的起点。
 static bool progress_timing; // 位移进度检查窗口有效。
 static uint32_t progress_start_ms; // 当前位移检查窗口起点。
+static int32_t progress_start_target; // 位移窗口起点的轨迹目标。
 static int32_t progress_start_counts; // 位移检查窗口起始位置。
 static bool progress_high_current_all; // 检查窗口内是否持续为高电流。
 static bool motor_stopped; // 停机命令是否已成功入队。
@@ -151,6 +158,8 @@ static void LiftControl_Stop(void)
                          lift_control_state == LIFT_AT_LIMIT) ?
                         lift_config.motion.fault_stop_retry_ms : lift_config.motion.stop_retry_ms;
 
+    lift_trajectory.active = false;
+    lift_trajectory.speed_ff_rad_s = 0.0f;
     if ((!motor_stopped ||
          (uint32_t)(now - last_stop_ms) >= retry_ms) &&
         Motor2006_Stop() == HAL_OK)
@@ -160,11 +169,11 @@ static void LiftControl_Stop(void)
     }
 }
 
-static void LiftControl_RunSpeed(float speed_rad_s)
+static HAL_StatusTypeDef LiftControl_RunSpeed(float speed_rad_s)
 {
     motor_stopped = false;
     offline_release_timing = false;
-    (void)Motor2006_SpeedControl(speed_rad_s);
+    return Motor2006_SpeedControl(speed_rad_s);
 }
 
 static void LiftControl_SendChassisHold(bool hold, uint32_t now)
@@ -330,6 +339,7 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
         progress_timing = true;
         progress_start_ms = now;
         progress_start_counts = feedback->encoder_total;
+        progress_start_target = lift_trajectory.target_encoder_total;
         progress_high_current_all = high_current;
     }
     else if (!high_current)
@@ -347,6 +357,11 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
         (uint32_t)(now - progress_start_ms) >= duration &&
         LiftControl_Abs(feedback->encoder_total - progress_start_counts) <
             lift_config.stall.stall_progress_counts;
+    // 曲线两端位移很小；轨迹本身未要求足够位移时不判无进度。
+    if (lift_trajectory.active && lift_trajectory.progress < 1.0f &&
+        LiftControl_Abs(lift_trajectory.target_encoder_total - progress_start_target) <
+            lift_config.stall.stall_progress_counts)
+    { no_progress = false; }
     if (current_stall || no_progress)
     {
         *top_contact = current_stall ||
@@ -359,6 +374,7 @@ static bool LiftControl_StallCheck(const Motor2006_Feedback_t *feedback,
     {
         progress_start_ms = now;
         progress_start_counts = feedback->encoder_total;
+        progress_start_target = lift_trajectory.target_encoder_total;
         progress_high_current_all = high_current;
     }
     return false;
@@ -382,24 +398,82 @@ static LiftControl_State_t LiftControl_DirectionTo(int32_t error)
         LIFT_DESCENDING : LIFT_ASCENDING;
 }
 
-static void LiftControl_PositionDrive(const Motor2006_Feedback_t *feedback,
+static HAL_StatusTypeDef LiftControl_PositionDrive(const Motor2006_Feedback_t *feedback,
                                        int32_t target, float speed_limit,
-                                       bool active_move)
+                                       bool active_move, float speed_ff)
 {
     float speed = (float)(target - feedback->encoder_total) /
                   LIFT_ENCODER_COUNTS_PER_TURN *
-                  lift_config.hold.position_kp_rad_s_per_turn;
+                  lift_config.hold.position_kp_rad_s_per_turn + speed_ff;
 
     if (speed > speed_limit) { speed = speed_limit; }
     else if (speed < -speed_limit) { speed = -speed_limit; }
-    // 最小速度只用于主动升降，保持时让纠偏速度随误差减小。
+    // 最小速度只用于轨迹结束后的追赶，避免破坏起步和收尾。
     if (active_move && speed > 0.0f && speed < lift_config.hold.position_min_speed_rad_s)
     { speed = lift_config.hold.position_min_speed_rad_s; }
     else if (active_move && speed < 0.0f && speed > -lift_config.hold.position_min_speed_rad_s)
     { speed = -lift_config.hold.position_min_speed_rad_s; }
     if (speed > speed_limit) { speed = speed_limit; }
     else if (speed < -speed_limit) { speed = -speed_limit; }
-    LiftControl_RunSpeed(speed);
+    return LiftControl_RunSpeed(speed);
+}
+
+// 起点取实测位置；运行中改时间留到下一次动作，换向重新规划。
+static bool LiftControl_TrajectoryStart(const Motor2006_Feedback_t *feedback,
+                                        int32_t target, float speed_limit,
+                                        uint32_t now)
+{
+    float duration = requested_direction == LIFT_ASCENDING ?
+        lift_config.motion.up_duration_s : lift_config.motion.down_duration_s;
+    float distance = fabsf((float)((int64_t)target - feedback->encoder_total)) *
+        LIFT_TWO_PI / LIFT_ENCODER_COUNTS_PER_TURN;
+    float minimum_duration;
+    if (!(duration >= 0.004f && duration <= 120.0f) ||
+        !(speed_limit > 0.0f) || !isfinite(speed_limit)) { return false; }
+    minimum_duration = LIFT_QUINTIC_PEAK_SPEED * distance / speed_limit;
+    if (!isfinite(minimum_duration) || minimum_duration > 120.0f) { return false; }
+    if (duration < minimum_duration) { duration = minimum_duration; }
+    lift_trajectory.start_encoder_total = feedback->encoder_total;
+    lift_trajectory.end_encoder_total = target;
+    lift_trajectory.target_encoder_total = feedback->encoder_total;
+    lift_trajectory.speed_ff_rad_s = 0.0f;
+    lift_trajectory.duration_s = duration;
+    lift_trajectory.elapsed_s = 0.0f;
+    lift_trajectory.progress = 0.0f;
+    lift_trajectory.last_update_ms = now;
+    lift_trajectory.active = true;
+    LiftControl_ResetStallCheck();
+    return true;
+}
+
+// 五次位置曲线加导数前馈，位置误差补偿负载和跟踪滞后。
+static void LiftControl_TrajectoryDrive(const Motor2006_Feedback_t *feedback,
+                                        float speed_limit, uint32_t now)
+{
+    uint32_t step_ms = now - lift_trajectory.last_update_ms;
+    float elapsed, u, fraction, derivative, distance, speed_ff;
+    int32_t target;
+    lift_trajectory.last_update_ms = now;
+    if (step_ms > LIFT_TRAJECTORY_STEP_MAX_MS) { step_ms = LIFT_TRAJECTORY_STEP_MAX_MS; }
+    elapsed = lift_trajectory.elapsed_s + (float)step_ms * 0.001f;
+    if (elapsed > lift_trajectory.duration_s) { elapsed = lift_trajectory.duration_s; }
+    u = elapsed / lift_trajectory.duration_s;
+    fraction = u*u*u*(10.0f + u*(-15.0f + 6.0f*u));
+    fraction = fmaxf(0.0f, fminf(1.0f, fraction));
+    derivative = 30.0f*u*u*(1.0f-u)*(1.0f-u);
+    distance = (float)((int64_t)lift_trajectory.end_encoder_total -
+                       lift_trajectory.start_encoder_total);
+    target = u >= 1.0f ? lift_trajectory.end_encoder_total :
+        lift_trajectory.start_encoder_total + (int32_t)(distance*fraction);
+    speed_ff = distance * LIFT_TWO_PI / LIFT_ENCODER_COUNTS_PER_TURN *
+        derivative / lift_trajectory.duration_s;
+    // 入队失败保留上一轨迹时间；重试时也不累积整段等待时间。
+    if (LiftControl_PositionDrive(feedback, target, speed_limit,
+                                  u >= 1.0f, speed_ff) != HAL_OK) { return; }
+    lift_trajectory.elapsed_s = elapsed;
+    lift_trajectory.progress = u;
+    lift_trajectory.target_encoder_total = target;
+    lift_trajectory.speed_ff_rad_s = speed_ff;
 }
 
 static void LiftControl_CalibrationFail(LiftControl_State_t reason)
@@ -482,6 +556,7 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
 // 清空升降目标、堵转计时和联锁状态，进入等待遥控的未校准状态。
 void LiftControl_Init(void)
 {
+    lift_trajectory = (LiftTrajectoryState_t){0};
     lift_command_pending = false;
     operation_snapshot_valid = false;
     lift_control_state = LIFT_STOPPED;
@@ -602,6 +677,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     {
         // 到位先撤销运动请求，云台当周期即可接管。
         if (requested_direction != LIFT_STOPPED &&
+            (!lift_trajectory.active || lift_trajectory.progress >= 1.0f) &&
             LiftControl_PositionArrived(&feedback, lift_hold_target_encoder_total))
         { requested_direction = LIFT_STOPPED; }
         if (remote != NULL &&
@@ -953,17 +1029,35 @@ void LiftControl_Update(const RemoteState_t *remote)
         LiftControl_StopAndRelease(now);
         return;
     }
-    if (LiftControl_PositionArrived(&feedback, target))
+    if ((!lift_trajectory.active || lift_trajectory.progress >= 1.0f) &&
+        LiftControl_PositionArrived(&feedback, target))
     {
         LiftControl_ResetStallCheck();
         lift_control_state = LIFT_READY;
         requested_direction = LIFT_STOPPED;
+        lift_trajectory.active = false;
+        lift_trajectory.speed_ff_rad_s = 0.0f;
         // 到位容差只结束主动动作，容差内仍持续做位置保持。
         LiftControl_PositionDrive(&feedback, target,
-                                  lift_config.hold.hold_speed_rad_s, false);
+                                  lift_config.hold.hold_speed_rad_s, false, 0.0f);
         return;
     }
     direction = LiftControl_DirectionTo(error);
+    speed_limit = requested_direction == LIFT_STOPPED ?
+        lift_config.hold.hold_speed_rad_s : requested_direction == LIFT_ASCENDING ?
+        lift_config.motion.up_speed_rad_s : lift_config.motion.down_speed_rad_s;
+    if (requested_direction == LIFT_STOPPED)
+    { lift_trajectory.active = false; lift_trajectory.speed_ff_rad_s = 0.0f; }
+    else if ((!lift_trajectory.active || lift_trajectory.end_encoder_total != target) &&
+             !LiftControl_TrajectoryStart(&feedback, target, speed_limit, now))
+    {
+        requested_direction = LIFT_STOPPED;
+        lift_hold_target_encoder_total = feedback.encoder_total;
+        lift_control_state = LIFT_STOPPED;
+        lift_wait_reason = LIFT_WAIT_TRAJECTORY_CONFIG;
+        LiftControl_StopAndRelease(now);
+        return;
+    }
     if (LiftControl_PowerOnLimit(&feedback, direction))
     {
         requested_direction = LIFT_STOPPED;
@@ -999,6 +1093,8 @@ void LiftControl_Update(const RemoteState_t *remote)
             requested_direction = LIFT_STOPPED;
             lift_control_state = LIFT_READY;
             stall_snapshot.valid = false;
+            lift_trajectory.active = false;
+            lift_trajectory.speed_ff_rad_s = 0.0f;
             LiftControl_RunSpeed(0.0f);
             return;
         }
@@ -1008,10 +1104,9 @@ void LiftControl_Update(const RemoteState_t *remote)
         LiftControl_StopAndRelease(now);
         return;
     }
-    speed_limit = requested_direction == LIFT_STOPPED ?
-        lift_config.hold.hold_speed_rad_s : direction == LIFT_ASCENDING ?
-        lift_config.motion.up_speed_rad_s : lift_config.motion.down_speed_rad_s;
     lift_control_state = direction;
-    LiftControl_PositionDrive(&feedback, target, speed_limit,
-                              requested_direction != LIFT_STOPPED);
+    if (requested_direction != LIFT_STOPPED)
+    { LiftControl_TrajectoryDrive(&feedback, speed_limit, now); }
+    else
+    { LiftControl_PositionDrive(&feedback, target, speed_limit, false, 0.0f); }
 }

@@ -25,7 +25,8 @@ typedef enum
     LIFT_WAIT_CHASSIS_LOCK,
     LIFT_WAIT_FAULT,
     LIFT_WAIT_PITCH,
-    LIFT_WAIT_SAFETY_STATE
+    LIFT_WAIT_SAFETY_STATE,
+    LIFT_WAIT_TRAJECTORY_CONFIG // 轨迹时间或速度参数无效，取消本次动作。
 } LiftControl_WaitReason_t;
 
 typedef struct
@@ -57,6 +58,20 @@ typedef struct
     bool shoot_allowed; // 发射位置许可；仍需单独的手动布防。
     uint32_t update_ms; // 本快照生成时间。
 } LiftSafetyState_t;
+
+typedef struct
+{
+    bool active; // 正在执行轨迹或等待终点到位。
+    int32_t start_encoder_total; // 本次轨迹的实测起点。
+    int32_t end_encoder_total; // 本次轨迹的最终位置。
+    int32_t target_encoder_total; // 当前五次曲线位置目标。
+    float speed_ff_rad_s; // 曲线导数换算的转子速度前馈。
+    float duration_s; // 本次采用的轨迹时间，含速度上限约束。
+    float elapsed_s; // 已成功发送的轨迹时间。
+    float progress; // 已执行时间占本次时长的比例。
+    uint32_t last_update_ms; // 上次轨迹尝试发送时间。
+} LiftTrajectoryState_t;
+extern volatile LiftTrajectoryState_t lift_trajectory; // 升降五次轨迹观察量。
 
 extern volatile LiftControl_State_t lift_control_state; // 升降当前动作状态。
 extern volatile LiftControl_WaitReason_t lift_wait_reason; // 当前等待或停机原因。

@@ -16,8 +16,10 @@ void LiftMotionConfig_Init(volatile LiftMotionConfig *config)
 {
     if (config == NULL) { return; }
     config->down_direction = -1.0f; // 编码器计数减小表示下降。
-    config->down_speed_rad_s = 1200.0f; // 正常下降的转子速度上限，rad/s。
-    config->up_speed_rad_s = 1200.0f; // 正常上升的转子速度上限，rad/s。
+    config->down_speed_rad_s = 2500.0f; // 正常下降的转子速度上限，rad/s。
+    config->up_speed_rad_s = 2500.0f; // 正常上升的转子速度上限，rad/s。
+    config->up_duration_s = 2.0f; // 上升轨迹时间，s。
+    config->down_duration_s = 2.0f; // 下降轨迹时间，s。
     config->max_rotor_turns = 330.0f; // 上电后正、反向累计转数限制，圈。
     config->limit_stop_margin_counts = 200; // 行程边界前的停机余量，编码器计数。
     config->stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
@@ -74,8 +76,8 @@ void LiftHoldConfig_Init(volatile LiftHoldConfig *config)
 {
     if (config == NULL) { return; }
     config->position_kp_rad_s_per_turn = 5.7f; // 每圈位置误差对应的目标速度，rad/s。
-    config->position_min_speed_rad_s = 8.0f; // 主动升降克服静摩擦的最小目标速度，保持时不用，rad/s。
-    config->hold_speed_rad_s = 15.0f; // 外力偏离目标后回位的速度上限，rad/s。
+    config->position_min_speed_rad_s = 8.0f; // 轨迹结束后追赶终点的最小速度，曲线与保持时不用，rad/s。
+    config->hold_speed_rad_s = 20.0f; // 外力偏离目标后回位的速度上限，rad/s。
     config->position_tolerance_counts = 200; // 结束主动升降的误差范围，范围内仍做位置保持，编码器计数。
     config->top_arrival_tolerance_counts = 20000; // 顶部结束主动升降的容差，不清除位置保持误差，编码器计数。
 }
@@ -135,11 +137,11 @@ void DialFeedConfig_Init(volatile DialFeedConfig *config)
     config->feed_direction = 1LL; // 供弹方向系数，改变符号反转方向。
     config->arrived_error_counts = 150LL; // 单发拨盘到位允许的编码器误差，计数。
     config->single_move_timeout_ms = 500U; // 单发动作超时，ms。
-    config->block_current_threshold = 600; // 拨盘堵转电流阈值，原始码。
+    config->block_current_threshold = 700; // 拨盘堵转电流阈值，原始码。
     config->block_speed_threshold_dps = 10; // 拨盘堵转低速阈值，度/s。
     config->block_confirm_ticks = 50U; // 堵转判据需连续满足的控制周期数。
-    config->stuck_reverse_timeout_ms = 200U; // 堵转反向退让超时，ms。
-    config->stuck_reverse_speed_dps = 720.0f; // 按供弹反方向做速度退让。
+    config->stuck_reverse_timeout_ms = 300U; // 堵转反向退让超时，ms。
+    config->stuck_reverse_speed_dps = 1200.0f; // 按供弹反方向做速度退让。
     config->recovery_max_attempts = 3U; // 恢复耗尽后等待释放发射请求。
     config->stuck_reload_timeout_ms = 200U; // 退让后重新上弹超时，ms。
     config->safe_stop_retry_ms = 20U; // 失联零电流帧重发间隔，ms。
@@ -355,7 +357,7 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
     shoot_heat_config.low_remaining = 70.0f; // 低射频档剩余量上界。
     shoot_heat_config.high_remaining = 125.0f; // 高射频档剩余量下界。
-    shoot_heat_config.low_rate_hz = 8.0f; // 低余量档射频。
+    shoot_heat_config.low_rate_hz = 12.0f; // 低余量档射频。
     shoot_heat_config.middle_rate_hz = 15.0f; // 中余量档射频。
     shoot_heat_config.high_rate_hz = 18.0f; // 高余量档射频。
     shoot_heat_config.offline_heat_limit = 100.0f; // 离线调试尚无裁判数据时的上限。

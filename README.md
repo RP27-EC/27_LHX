@@ -123,6 +123,8 @@ infantry_up/
 
 配置完整字段与初始化函数见 [配置与调参](文档/10_配置与调参.md)。
 
+正常升降已加入五次S曲线，上升、下降时间分别在 `lift_config.motion.up_duration_s`、`down_duration_s` 设置，轨迹及观察量见 [升降S曲线](文档/04_升降与安全联锁.md#五次s曲线升降)。
+
 ## 编译与验证
 
 打开 `MDK-ARM/infantry_up.uvprojx`，使用工程指定的ARM Compiler 5配置。源码改动后编译并查看错误/警告；编译通过不能代替电机方向、机械行程和实车安全验证。
