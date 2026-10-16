@@ -16,8 +16,8 @@ void LiftMotionConfig_Init(volatile LiftMotionConfig *config)
 {
     if (config == NULL) { return; }
     config->down_direction = -1.0f; // 编码器计数减小表示下降。
-    config->down_speed_rad_s = 2500.0f; // 正常下降的转子速度上限，rad/s。
-    config->up_speed_rad_s = 2500.0f; // 正常上升的转子速度上限，rad/s。
+    config->down_speed_rad_s = 2000.0f; // 正常下降的转子速度上限，rad/s。
+    config->up_speed_rad_s = 2000.0f; // 正常上升的转子速度上限，rad/s。
     config->up_duration_s = 2.0f; // 上升轨迹时间，s。
     config->down_duration_s = 2.0f; // 下降轨迹时间，s。
     config->max_rotor_turns = 330.0f; // 上电后正、反向累计转数限制，圈。
@@ -66,7 +66,7 @@ void LiftCalibrationConfig_Init(volatile LiftCalibrationConfig *config)
     if (config == NULL) { return; }
     config->up_speed_rad_s = 500.0f; // 自动找顶部的转子速度，rad/s。
     config->timeout_ms = 900000U; // 向上找顶部的最长时间，ms。
-    config->travel_turns = 295.0f; // 碰顶基准到低位目标的转子行程，圈。
+    config->travel_turns = 300.0f; // 碰顶基准到低位目标的转子行程，圈。
     config->top_hold_offset_turns = 5.0f; // 正常上升留出机械顶端余量，校准碰顶不受影响。
     config->top_contact_window_turns = 10.0f; // 原顶部附近允许重新确认碰顶的范围，转子圈。
 }
