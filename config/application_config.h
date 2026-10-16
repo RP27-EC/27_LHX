@@ -72,7 +72,7 @@ typedef struct
     uint32_t task_period_ticks; // 对应任务的执行周期，tick。
     ChassisFollowConfig follow; // 跟随模式参数。
     uint32_t yaw_rate_tx_period_ms; // 所有模式向上板发送 D4 实测底盘角速度的最短间隔。
-    float front_switch_deg; // 机械平移失联降级方向的判断门槛，跟随旋转不使用，度。
+    float front_switch_deg; // 最近车头的切换门槛，同时用于机械平移失联降级，度。
     ChassisTurnConfig turn; // 调头参数。
 } ChassisConfig;
 extern volatile ChassisConfig chassis_config; // 底盘解算、跟随与自旋参数。

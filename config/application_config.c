@@ -76,7 +76,7 @@ void ChassisConfig_Init(void)
     chassis_config.wheel_speed_tx_period_ms = 10U; // 四轮反馈转速发送周期，ms。
     chassis_config.task_period_ticks = 4U; // 底盘控制任务周期，tick。
     chassis_config.yaw_rate_tx_period_ms = 4U; // 所有模式持续上报底盘角速度，ms。
-    chassis_config.front_switch_deg = 90.0f; // 机械平移失联降级方向的判断门槛，跟随旋转不使用，度。
+    chassis_config.front_switch_deg = 90.0f; // 最近车头的切换门槛，同时用于机械平移失联降级，度。
     ChassisSpinConfig_Init(&chassis_config.spin);
     ChassisMotionConfig_Init(&chassis_config.motion);
     ChassisFollowConfig_Init(&chassis_config.follow);

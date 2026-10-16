@@ -9,7 +9,7 @@
 
 static float chassis_follow_cycle_rpm; // 跟随模式当前旋转分量，带斜坡变化。
 static float chassis_spin_cycle_rpm; // 小陀螺模式当前自旋分量，带斜坡变化。
-volatile bool chassis_front_reversed; // 云台更靠近车尾时置位，用作机械平移失联降级方向。
+volatile bool chassis_front_reversed; // 最近车头为车尾，同时用于机械平移失联降级。
 volatile bool chassis_turnaround_pending; // 本地拨轮已触发，等待上板完成 Yaw 调头。
 static bool chassis_turnaround_seen_active; // 已收到上板正在调头的 C1 标志。
 static uint32_t chassis_turnaround_request_ms; // 本次调头请求发起时间。
@@ -223,8 +223,10 @@ void Chassis_FollowUpdate(float front, float left, float yaw_input)
     }
 
     Chassis_SelectNearestFront(angle_deg);
-    // 跟随只追物理车头，不因相对角超过换头门槛而改追车尾。
+    // 相对角越过门槛后跟随车尾，旋转只追最近的车头。
     error_deg = angle_deg;
+    if (chassis_front_reversed)
+    { error_deg += angle_deg >= 0.0f ? -180.0f : 180.0f; }
     Chassis_GimbalToBase(angle_deg, &front, &left);
 
     // 连续软死区内不追，越过边界时从零速平滑起步。
