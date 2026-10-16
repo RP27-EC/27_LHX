@@ -61,6 +61,7 @@ bool Communication_GetYawState(float *angle_deg, bool *turning,
 bool Communication_GetSpinState(bool *upper_selected, bool *spin_allowed);
 // C1 bit5：升降强制机械模式，含顶部区外和下降；沿用原接口名，帧超时返回 false。
 bool Communication_GetBottomModeBlocked(void);
+bool Communication_GetControlState(bool *lift_busy, uint8_t *reset_phase, uint8_t *reset_sequence);
 bool Communication_GetLiftLock(uint8_t *sequence);
 HAL_StatusTypeDef Communication_SendChassisYawRate(float rate_deg_s);
 HAL_StatusTypeDef Communication_SendChassisYawRateState(float rate_deg_s, bool valid);

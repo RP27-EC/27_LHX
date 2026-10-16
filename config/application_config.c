@@ -31,8 +31,6 @@ volatile ChassisConfig chassis_config; // 底盘解算、跟随与自旋参数�
 void ChassisSpinConfig_Init(volatile ChassisSpinConfig *config)
 {
     if (config == NULL) { return; }
-    config->wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
-    config->wheel_rearm_raw = 50; // 拨轮切换小陀螺的复位阈值。
     config->rotate_rpm = 4000.0f; // 小陀螺自旋目标轮速分量，rpm。
     config->rotate_sign = 1.0f; // 自旋方向系数，改变符号反转方向。
     config->slew_rpm_per_tick = 80.0f; // 每个底盘控制周期允许的自旋轮速变化量，rpm。
@@ -67,7 +65,7 @@ void ChassisFollowConfig_Init(volatile ChassisFollowConfig *config)
 void ChassisTurnConfig_Init(volatile ChassisTurnConfig *config)
 {
     if (config == NULL) { return; }
-    config->wheel_trigger_raw = 200; // 拨轮负向达到此阈值时触发调头，遥控原始值。
+    config->wheel_trigger_raw = 200; // 原始拨轮上拨超过此幅值时触发调头。
     config->wheel_rearm_raw = 50; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
     config->ack_timeout_ms = 300U; // 等待上板开始调头的最长时间，超时解除预锁车，ms。
 }
@@ -78,7 +76,7 @@ void ChassisConfig_Init(void)
     chassis_config.wheel_speed_tx_period_ms = 10U; // 四轮反馈转速发送周期，ms。
     chassis_config.task_period_ticks = 4U; // 底盘控制任务周期，tick。
     chassis_config.yaw_rate_tx_period_ms = 4U; // 所有模式持续上报底盘角速度，ms。
-    chassis_config.front_switch_deg = 90.0f; // 用于选择更接近云台指向的车头或车尾，度。
+    chassis_config.front_switch_deg = 90.0f; // 机械平移失联降级方向的判断门槛，跟随旋转不使用，度。
     ChassisSpinConfig_Init(&chassis_config.spin);
     ChassisMotionConfig_Init(&chassis_config.motion);
     ChassisFollowConfig_Init(&chassis_config.follow);
@@ -127,8 +125,22 @@ void ChassisPowerConfig_Init(void)
 // 启动时统一加载下板应用默认参数，供底盘与遥控任务使用。
 void LowerApplicationConfig_InitAll(void)
 {
+    InputControlConfig_Init();
     RemoteConfig_Init();
     KeyboardSensitivityConfig_Init();
     ChassisConfig_Init();
     ChassisPowerConfig_Init();
+}
+
+volatile InputControlConfig input_control_config;
+// 加载控制来源去噪和复位组合保持时间。
+void InputControlConfig_Init(void)
+{
+    input_control_config.wheel.trigger_raw = 200; // 下拨发射或复位的幅值门槛，使用原始拨轮负方向。
+    input_control_config.wheel.rearm_raw = 50; // 下拨动作释放门槛，回中后允许下一次触发。
+    input_control_config.wheel.continuous_ms = 200U; // 拨轮发射持续超过此时间后转连发，ms。
+    input_control_config.reset_hold_ms = 500U; // 复位组合连续保持门槛，超过后触发，ms。
+    input_control_config.takeover_raw = 60; // 摇杆或拨轮接管的幅值门槛，需同时满足变化门槛。
+    input_control_config.change_raw = 30; // 相对最近有效操作基准的变化门槛，慢拨可累计。
+    input_control_config.mouse_raw = 2; // 鼠标单次位移超过此幅值时接管键鼠。
 }

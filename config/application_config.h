@@ -1,6 +1,7 @@
 #ifndef DOWN_APPLICATION_CONFIG_H
 #define DOWN_APPLICATION_CONFIG_H
 
+#include "control_input.h"
 #include <stdint.h>
 #include "chassis_power_model.h"
 #include "chassis_power_control.h"
@@ -30,8 +31,6 @@ void KeyboardSensitivityConfig_Init(void);
 
 typedef struct
 {
-    int32_t wheel_trigger_raw; // 拨轮正向越过此值切换小陀螺。
-    int32_t wheel_rearm_raw; // 拨轮回中位后才能再次切换。
     float rotate_rpm; // 小陀螺底盘旋转分量目标幅值，轮速 rpm。
     float rotate_sign; // 自旋方向系数，改变符号反转方向。
     float slew_rpm_per_tick; // 每个底盘控制周期允许的自旋轮速变化量，rpm。
@@ -60,7 +59,7 @@ typedef struct
 
 typedef struct
 {
-    int32_t wheel_trigger_raw; // 拨轮负向达到此阈值时触发调头，遥控原始值。
+    int32_t wheel_trigger_raw; // 原始拨轮上拨超过此幅值时触发调头。
     int32_t wheel_rearm_raw; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
     uint32_t ack_timeout_ms; // 等待上板开始调头的最长时间，超时解除预锁车，ms。
 } ChassisTurnConfig;
@@ -73,7 +72,7 @@ typedef struct
     uint32_t task_period_ticks; // 对应任务的执行周期，tick。
     ChassisFollowConfig follow; // 跟随模式参数。
     uint32_t yaw_rate_tx_period_ms; // 所有模式向上板发送 D4 实测底盘角速度的最短间隔。
-    float front_switch_deg; // 用于选择更接近云台指向的车头或车尾，度。
+    float front_switch_deg; // 机械平移失联降级方向的判断门槛，跟随旋转不使用，度。
     ChassisTurnConfig turn; // 调头参数。
 } ChassisConfig;
 extern volatile ChassisConfig chassis_config; // 底盘解算、跟随与自旋参数。

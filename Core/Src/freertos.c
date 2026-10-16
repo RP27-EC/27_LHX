@@ -42,7 +42,9 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-uint8_t rc_task_frame[RC_FRAME_LEN]; // DBUS 帧副本。
+uint8_t rc_task_frame[RC_FRAME_LEN]; // DBUS 接收帧副本。
+static uint8_t rc_forward_frame[RC_FRAME_LEN]; // 已通过校验、可转发的完整帧。
+static uint8_t rc_forward_flags; // 与当前遥控输入对应的来源和模式。
 volatile uint32_t rc_task_frame_count = 0; // 有效帧计数。
 /* USER CODE END PTD */
 
@@ -168,18 +170,31 @@ void StartRcTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+      bool new_valid_frame = false;
       if (telecontrol.take_frame(rc_task_frame, &received_ms))
     {
-        rc_task_frame_count++;
-
         if (telecontrol.parse_frame(rc_task_frame, &rc_ctrl))
         {
             telecontrol.mark_valid_frame(received_ms);
+            new_valid_frame = true;
         }
 
     }
 
       RemoteState_Update(&rc_ctrl, telecontrol.check_online(HAL_GetTick()));
+      {
+        RemoteState_t selected;
+        RemoteState_Get(&selected);
+        taskENTER_CRITICAL();
+        if (new_valid_frame)
+        {
+          memcpy(rc_forward_frame, rc_task_frame, RC_FRAME_LEN);
+          rc_task_frame_count++;
+        }
+        rc_forward_flags = (selected.input.keyboard_active ? 1U : 0U) |
+            ((uint8_t)selected.mode.chassis << 1) | (selected.safety.spin_enabled ? 8U : 0U);
+        taskEXIT_CRITICAL();
+      }
 
         // 按配置周期解析遥控并检测在线状态。
       next_tick += remote_config.task_period_ticks;
@@ -247,12 +262,23 @@ void motor3508_speed_control(void *argument)
     spin_frame_valid = board_link.get_spin_state(&upper_spin_selected,
                                                   &spin_allowed);
     bottom_mode_blocked = board_link.get_bottom_mode_blocked();
+    if (!remote.safety.online)
+    { Chassis_TurnaroundReset(remote.event.turnaround_request_count); }
+    else
+    {
+      turn_hold = Chassis_TurnaroundUpdate(
+          remote.event.turnaround_request_count,
+          !(remote.input.keyboard_active && remote.mode.chassis == REMOTE_MODE_SPIN &&
+            remote.safety.spin_enabled) && !lift_hold);
+    }
     if (remote.mode.chassis != REMOTE_MODE_SPIN)
     {
       spin_rearm_required = false;
       spin_session_started = false;
       spin_fault_timing = false;
     }
+    else if (turn_hold)
+    { spin_fault_timing = false; } // 主动调头暂停自旋，不计入许可故障。
     else if (!remote.safety.spin_enabled)
     {
       spin_rearm_required = false;
@@ -276,15 +302,6 @@ void motor3508_speed_control(void *argument)
       else if ((uint32_t)(HAL_GetTick() - spin_fault_start_ms) >=
                     chassis_config.spin.fault_rearm_ms)
       { spin_rearm_required = true; }
-    }
-    if (!remote.safety.online)
-    { Chassis_TurnaroundReset(remote.event.turnaround_request_count); }
-    else
-    {
-      turn_hold = Chassis_TurnaroundUpdate(
-          remote.event.turnaround_request_count,
-          !(remote.mode.chassis == REMOTE_MODE_SPIN &&
-            remote.safety.spin_enabled) && !lift_hold);
     }
     // 自旋由本板遥控档位和上板模式许可共同决定；Yaw 角仅用于平移坐标。
     spin_drive_enabled = remote.mode.chassis == REMOTE_MODE_SPIN &&
@@ -396,6 +413,7 @@ void up_down_communication(void *argument)
   uint32_t next_tick;
   uint32_t frame_count_snapshot;
   uint8_t raw_frame[RC_FRAME_LEN];
+  uint8_t control_flags;
   uint8_t tx_d1[COMMUNICATION_FRAME_SIZE];
   uint8_t tx_d2[COMMUNICATION_FRAME_SIZE];
   uint8_t tx_d3[COMMUNICATION_FRAME_SIZE] = {0};
@@ -409,12 +427,23 @@ void up_down_communication(void *argument)
     // 转发遥控数据。
     board_link.service();
     power_link.service();
+    {
+      bool busy = false;
+      uint8_t phase = 0U, sequence = 0U;
+      (void)Communication_GetControlState(&busy, &phase, &sequence);
+      RemoteState_SetOperationLock(busy);
+      RemoteState_ServiceControl(phase, sequence);
+      if (control_reset_state.phase == 3U &&
+          (uint32_t)(HAL_GetTick() - control_reset_state.since_ms) >= 100U)
+      { NVIC_SystemReset(); }
+    }
     taskENTER_CRITICAL();
     frame_count_snapshot = rc_task_frame_count;
     if (frame_count_snapshot > 0U)
     {
-      memcpy(raw_frame, rc_task_frame, RC_FRAME_LEN);
+      memcpy(raw_frame, rc_forward_frame, RC_FRAME_LEN);
     }
+    control_flags = rc_forward_flags;
     taskEXIT_CRITICAL();
 
     if (frame_count_snapshot > 0U && telecontrol.online_return())
@@ -423,6 +452,12 @@ void up_down_communication(void *argument)
       memcpy(tx_d2, &raw_frame[8], COMMUNICATION_FRAME_SIZE);
       memset(tx_d3, 0, sizeof(tx_d3));
       memcpy(tx_d3, &raw_frame[16], RC_FRAME_LEN - 16U);
+      {
+        tx_d3[2] = RP_INPUT_METADATA_MAGIC;
+        tx_d3[3] = control_flags;
+        tx_d3[4] = control_reset_state.phase;
+        tx_d3[5] = control_reset_state.sequence;
+      }
 
       (void)board_link.send(COMMUNICATION_TX_ID_D1, tx_d1);
       (void)board_link.send(COMMUNICATION_TX_ID_D2, tx_d2);

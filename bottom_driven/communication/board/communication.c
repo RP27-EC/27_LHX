@@ -212,6 +212,18 @@ bool Communication_GetSpinState(bool *upper_selected, bool *spin_allowed)
     return true;
 }
 
+// C1 扩展字段沿用原报文 ID，旧版报文保持原模式许可解析。
+bool Communication_GetControlState(bool *busy, uint8_t *phase, uint8_t *sequence)
+{
+    Communication_RxFrame frame;
+    if (busy == NULL || phase == NULL || sequence == NULL ||
+        !Communication_GetRxFrame(COMMUNICATION_RX_ID_C1, &frame) ||
+        (uint32_t)(HAL_GetTick() - frame.last_rx_ms) >= communication_config.spin_state_timeout_ms ||
+        frame.data[5] != 0xA7U) { return false; }
+    *busy = (frame.data[2] & 0x40U) != 0U; *phase = frame.data[3]; *sequence = frame.data[4];
+    return true;
+}
+
 bool Communication_GetBottomModeBlocked(void)
 {
     Communication_RxFrame frame;

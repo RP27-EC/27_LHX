@@ -4,10 +4,10 @@
 #include "telecontrol.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include "control_input.h"
 
 #define CHASSIS_MECHANICAL_SWITCH_POSITION 3U
 #define CHASSIS_MECHANICAL_DOWN_POSITION   2U
-#define CHASSIS_SPIN_SWITCH_1_POSITION     1U
 
 // 下板依据遥控拨杆运行的有限状态机。
 typedef enum
@@ -26,13 +26,14 @@ typedef struct
 typedef struct
 {
     int16_t channel[5]; // 与模式同步的五路输入通道。
-    bool keyboard_active; // V 键选择键鼠输入。
+    bool keyboard_active; // 最近一次有效操作选定键鼠输入。
 } RemoteInputState_t;
 
 typedef struct
 {
     bool online; // 遥控器当前是否在线。
-    bool spin_enabled; // 右拨杆换档或键鼠 G 使能自旋。
+    bool reset_active; // 两板复位握手期间停止执行器。
+    bool spin_enabled; // 右上档或键鼠 G 选中自旋。
 } RemoteSafetyState_t;
 
 typedef struct
@@ -50,6 +51,8 @@ typedef struct
 
 // 由遥控解析任务写入，底盘任务读取。
 void RemoteState_Init(void);
+void RemoteState_SetOperationLock(bool locked); // 升降执行期间忽略模式和来源切换。
+void RemoteState_ServiceControl(uint8_t phase, uint8_t sequence); // 周期维护双板复位握手。
 void RemoteState_Update(const RC_ctrl_t *control, bool online);
 void RemoteState_Get(RemoteState_t *state);
 
