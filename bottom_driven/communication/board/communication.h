@@ -80,6 +80,9 @@ typedef struct
         bool right; // 鼠标右键。
     } mouse;
     uint16_t key; // DBUS 键盘按下位图。
+    bool control_valid; // D3 含下板统一仲裁结果。
+    uint8_t control_flags; // bit0键鼠，bit1~2模式，bit3自旋使能。
+    uint8_t reset_phase, reset_sequence; // 下板复位阶段及事件序号。
 } Communication_RcControl_t;
 
 // 遥控链路状态；任务通过 Communication_RC_Get 读取。
@@ -102,6 +105,7 @@ HAL_StatusTypeDef Communication_CAN_SendC2(
 // C2: [0]=标识，[1] bit0=锁车，[2]=请求序号。
 HAL_StatusTypeDef Communication_CAN_SendLiftLock(bool hold, uint8_t sequence);
 // C1: Yaw 角(0.01°)及调头标志；D4: 底盘角速度(0.01°/s)；D5: 四轮 rpm。
+void Communication_CAN_SetControlState(bool lift_busy, uint8_t reset_phase, uint8_t reset_sequence);
 HAL_StatusTypeDef Communication_CAN_SendYawAngle(float angle_deg);
 // C1 byte[2] bit0=Yaw角有效，bit1=调头中，bit2=允许调头，
 // bit3=允许自旋，bit4=上板已选小陀螺，bit5=升降强制机械模式；模式位与角度有效位独立。

@@ -20,9 +20,27 @@ extern volatile CloudTerrace_HomeState_t cloud_terrace_home_state;
 extern volatile bool cloud_turnaround_active; // 正在执行 Yaw 调头，C1 通知底盘停车。
 extern volatile bool cloud_front_reversed; // 当前逻辑正方向是否为物理车尾。
 
+typedef enum
+{
+    CLOUD_YAW_CENTER_READY = 0, // 尚无手动Yaw回正请求。
+    CLOUD_YAW_CENTER_ACTIVE, // Yaw正在回到最近车头。
+    CLOUD_YAW_CENTER_DONE, // 本次已回正，保持惯性目标直到新的手动操作。
+    CLOUD_YAW_CENTER_MANUAL // 正在接收Yaw输入，松杆后再判断是否就近回正。
+} CloudYawCenterPhase;
+
+typedef struct
+{
+    CloudYawCenterPhase phase; // 松杆回正的当前阶段。
+    int32_t target_counts; // 本周期最近等效圈的回正目标。
+    uint32_t stable_cycles; // 位置、速度及发送连续合格计数。
+} CloudYawFollowCenterState;
+extern volatile CloudYawFollowCenterState cloud_yaw_follow_center; // 惯性跟随松杆回正状态。
+
 // Yaw 串级控制状态。
 extern volatile bool cloud_yaw_imu_online; // 上板 IMU 在线状态。
 extern volatile float cloud_yaw_target_deg; // Yaw 累计目标角，单位度。
+extern volatile float cloud_yaw_error_deg; // 惯性 Yaw 的最短角误差，度。
+extern volatile uint8_t cloud_yaw_control_status; // 1运行、2 IMU无效、3数值异常、4发送失败；仅惯性分支更新。
 extern volatile float cloud_yaw_angle_deg; // Yaw 累计实际角，单位度。
 extern volatile float cloud_yaw_rate_deg_s; // Yaw 实际角速度，单位度每秒。
 extern volatile float cloud_yaw_rate_target_deg_s; // Yaw 角速度环目标值。

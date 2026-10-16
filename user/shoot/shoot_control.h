@@ -37,6 +37,9 @@ typedef struct
     int64_t feed_target; // 退让前保存的供弹目标。
     int8_t motion_direction; // 堵转前方向，取值为 -1 或 1。
     bool continuous; // 堵转前处于连发模式。
+    bool fault; // 恢复耗尽，释放发射后解除。
+    uint32_t attempts; // 当前发射请求内已使用的解堵次数。
+    int64_t reverse_start; // 本次反转的起始位置，用于限制退让量。
 } ShootDialRecoveryState_t;
 
 typedef struct
@@ -50,6 +53,7 @@ typedef struct
 {
     bool last_right_up; // 上周期右拨杆上档状态。
     RemoteShoot_t last_mode; // 上周期发射模式枚举。
+    bool single_pending; // 单发等待摩擦轮就绪，开始前保留请求。
 } ShootRemoteEdgeState_t;
 
 typedef struct
@@ -87,7 +91,21 @@ typedef struct
 
 typedef struct
 {
+    bool ready; // 双轮已持续达到目标转速。
+    bool timing; // 正在累计就绪稳定时间。
+    bool sampled; // 已记录上一周期轮速。
+    uint32_t stable_start_ms; // 本次稳定计时起点。
+    int32_t target_rpm; // 判稳时使用的转速目标。
+    int32_t previous_rpm[2]; // 前一周期的两轮反馈。
+    float error_rpm[2]; // 各轮相对带方向目标的误差。
+    bool paused; // 供弹因掉速暂停，保持当前拨盘位置。
+    int64_t pause_target; // 暂停瞬间的累计位置。
+} ShootReadyState_t;
+
+typedef struct
+{
     ShootFricRecoveryState_t friction; // 摩擦轮堵转检测和电流脉冲。
+    ShootReadyState_t ready; // 轮速就绪判定及供弹暂停。
     ShootSpeedState speed; // 弹速反馈与摩擦轮自适应目标。
     ShootDialMotionState_t dial; // 拨盘位置目标与状态机。
     ShootDialRecoveryState_t recovery; // 堵转检测与恢复过程。

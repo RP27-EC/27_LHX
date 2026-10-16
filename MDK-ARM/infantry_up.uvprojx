@@ -730,6 +730,11 @@
               <FileType>5</FileType>
               <FilePath>../user/remote/remote_state.h</FilePath>
             </File>
+            <File>
+              <FileName>control_input.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../user/remote/control_input.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

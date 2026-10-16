@@ -62,6 +62,8 @@ static PID_Controller_t yaw_rate_pid; // Yaw 角速度内环 PID。
 
 volatile bool cloud_yaw_imu_online; // 上板 IMU 是否已标定且在线。
 volatile float cloud_yaw_target_deg; // Yaw 位控累计目标角，单位度。
+volatile float cloud_yaw_error_deg; // 惯性控制使用的最短角误差。
+volatile uint8_t cloud_yaw_control_status; // 惯性闭环状态，便于定位转矩归零。
 volatile float cloud_yaw_angle_deg; // 当前 IMU 累计 Yaw 角，单位度。
 volatile float cloud_yaw_rate_deg_s; // 当前 IMU Yaw 角速度，单位度每秒。
 volatile float cloud_yaw_rate_target_deg_s; // 角度外环给出的角速度目标。
@@ -98,6 +100,12 @@ static PID_Controller_t yaw_mechanical_rate_pid; // 机械 Yaw 陀螺仪速度�
 
 volatile bool cloud_turnaround_active; // Yaw 正在转向另一个车头方向。
 volatile bool cloud_front_reversed; // 逻辑正方向是否为物理车尾。
+volatile CloudYawFollowCenterState cloud_yaw_follow_center; // 松杆回正状态与目标。
+
+static void cloud_follow_center_reset(void)
+{
+    cloud_yaw_follow_center = (CloudYawFollowCenterState){0};
+}
 
 volatile bool cloud_pitch_imu_online; // Pitch 惯性控制所用的 IMU 是否有效。
 volatile float cloud_pitch_target_deg; // Pitch 惯性位置目标，度。
@@ -121,6 +129,7 @@ static void cloud_reset_pitch_imu(void)
 
 static void cloud_reset_home(void)
 {
+    cloud_follow_center_reset();
     if (cloud_turnaround_active) { turn_requested = true; }
     cloud_turnaround_active = false;
     yaw_turn_stable_cycles = 0U;
@@ -154,6 +163,8 @@ static void cloud_reset_home(void)
 // 按配置初始化惯性闭环和机械 Yaw 速度环，清理前馈并复位开机归中状态。
 void CloudTerrace_Init(void)
 {
+    cloud_yaw_error_deg = 0.0f;
+    cloud_yaw_control_status = 0U;
     cloud_clear_chassis_rate_ff();
     pid_algorithm.ops.init(&yaw_angle_pid, cloud_config.yaw.inertial.angle.kp, cloud_config.yaw.inertial.angle.ki,
              cloud_config.yaw.inertial.angle.kd, cloud_config.yaw.inertial.angle.integral_limit,
@@ -349,6 +360,7 @@ static bool cloud_turn_start(void)
     yaw_turn_stable_cycles = 0U;
     turn_requested = false;
     cloud_turnaround_active = true;
+    cloud_follow_center_reset();
     yaw_mechanical_mode = false;
 
     cloud_yaw_mechanical_gyro_online = false;
@@ -413,7 +425,7 @@ static void cloud_turn_step(void)
 static void cloud_control_yaw(int16_t input)
 {
     GimbalImu_Data_t imu;
-    float torque;
+    float torque, lead;
 
     if (yaw_mechanical_mode)
     {
@@ -431,9 +443,19 @@ static void cloud_control_yaw(int16_t input)
     { input = 0; }
     if (!GimbalImu_Get(&imu))
     {
+        cloud_yaw_control_status = 2U;
         cloud_yaw_imu_online = false;
         pid_algorithm.ops.reset(&yaw_angle_pid);
         pid_algorithm.ops.reset(&yaw_rate_pid);
+        cloud_yaw_torque_raw = 0;
+        (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
+        return;
+    }
+
+    if (!isfinite(imu.yaw_total_deg) || !isfinite(imu.yaw_rate_deg_s))
+    {
+        cloud_yaw_control_status = 3U;
+        cloud_yaw_imu_online = false;
         cloud_yaw_torque_raw = 0;
         (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, 0);
         return;
@@ -453,6 +475,15 @@ static void cloud_control_yaw(int16_t input)
     cloud_yaw_target_deg += cloud_config.yaw.rc_direction *
         (float)input / CLOUD_RC_MAX_VALUE * cloud_config.yaw.command_rate_deg_s *
         motor4310_config.control_period_s;
+    // 保持按最短角误差回原目标，手动输入时才限制目标超前积累。
+    cloud_yaw_error_deg = remainderf(cloud_yaw_target_deg - imu.yaw_total_deg, 360.0f);
+    lead = cloud_config.yaw.inertial.target_lead_deg;
+    if (!(lead > 0.0f && lead < 180.0f)) { lead = 60.0f; }
+    if (input != 0)
+    {
+        cloud_yaw_error_deg = fmaxf(-lead, fminf(lead, cloud_yaw_error_deg));
+        cloud_yaw_target_deg = imu.yaw_total_deg + cloud_yaw_error_deg;
+    }
     pid_algorithm.ops.update_parameters(&yaw_angle_pid,
         cloud_config.yaw.inertial.angle.kp, cloud_config.yaw.inertial.angle.ki,
         cloud_config.yaw.inertial.angle.kd, cloud_config.yaw.inertial.angle.integral_limit,
@@ -464,40 +495,31 @@ static void cloud_control_yaw(int16_t input)
         cloud_config.yaw.inertial.rate.output_limit,
         motor4310_config.control_period_s);
     cloud_yaw_rate_target_deg_s = pid_algorithm.ops.calc(
-        &yaw_angle_pid, cloud_yaw_target_deg, imu.yaw_total_deg);
+        &yaw_angle_pid, cloud_yaw_error_deg, 0.0f);
     torque = pid_algorithm.ops.calc(&yaw_rate_pid, cloud_yaw_rate_target_deg_s,
                       imu.yaw_rate_deg_s);
     // 跟随和小陀螺的 IMU 稳向控制不叠加固定前馈。
     cloud_yaw_torque_raw = (int16_t)torque;
-    (void)Motor4310_SetTorqueRawMotor(MOTOR4310_YAW,
-                                      cloud_yaw_torque_raw);
+    cloud_yaw_control_status = Motor4310_SetTorqueRawMotor(MOTOR4310_YAW,
+        cloud_yaw_torque_raw) == HAL_OK ? 1U : 4U;
 }
 
-static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
+// 共用编码器位置外环和陀螺仪速度内环，调用方选择相对位置目标。
+static HAL_StatusTypeDef cloud_control_yaw_target(const Motor4310_Data_t *yaw,
+    bool use_deadzone, bool reversed, int32_t target)
 {
-    Motor4310_Data_t yaw;
     GimbalImu_Data_t imu;
     PID_Controller_t *position_pid = &motor4310_position_pids[MOTOR4310_YAW];
-    bool gyro_recovered, reversed;
-    int32_t error, deadzone_counts, control_target, nearest_target;
+    bool gyro_recovered;
+    int32_t error, deadzone_counts, control_target;
     float remaining_deg, brake_limit, brake_gain, speed_limit, speed_command;
     float command_scale, direction, torque;
 
-    if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
-    {
-        cloud_yaw_torque_raw = 0;
-        return HAL_ERROR;
-    }
-    // 每周期选最近车头和最近一圈；强制回零只选物理车头。
-    reversed = !force_home && fabsf(cloud_wrap_yaw_deg(
-        (float)(yaw.total_angle - home_target[MOTOR4310_YAW]) *
-        360.0f / MOTOR4310_ECD_PER_ROUND)) >= cloud_config.yaw.front_switch_deg;
-    nearest_target = cloud_nearest_front_target(reversed, yaw.total_angle);
     if (!yaw_mechanical_mode || reversed != cloud_front_reversed ||
-        nearest_target != yaw_mechanical_target)
+        target != yaw_mechanical_target)
     {
         cloud_front_reversed = reversed;
-        yaw_mechanical_target = nearest_target;
+        yaw_mechanical_target = target;
         // 目标切换时复位闭环，避免旧积分和位置微分冲击。
         pid_algorithm.ops.reset(&yaw_angle_pid);
         pid_algorithm.ops.reset(&yaw_rate_pid);
@@ -511,7 +533,7 @@ static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool fo
 
     cloud_yaw_rate_target_deg_s = 0.0f;
     cloud_yaw_torque_raw = 0;
-    if (!GimbalImu_Get(&imu))
+    if (!GimbalImu_Get(&imu) || !isfinite(imu.yaw_rate_deg_s))
     {
         // 陀螺仪不可用就停闭环；保留机械目标，恢复后继续回正。
         cloud_yaw_mechanical_gyro_online = false;
@@ -522,7 +544,7 @@ static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool fo
     }
     gyro_recovered = !cloud_yaw_mechanical_gyro_online;
     cloud_yaw_mechanical_gyro_online = true;
-    error = yaw_mechanical_target - yaw.total_angle;
+    error = yaw_mechanical_target - yaw->total_angle;
     cloud_yaw_mechanical_error_deg = (float)error * 360.0f / MOTOR4310_ECD_PER_ROUND;
     control_target = yaw_mechanical_target;
     if (use_deadzone)
@@ -533,14 +555,14 @@ static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool fo
         // 连续软死区：边界外只纠正超出死区的误差；内部速度环继续制动。
         if (error > deadzone_counts) { control_target -= deadzone_counts; }
         else if (error < -deadzone_counts) { control_target += deadzone_counts; }
-        else { control_target = yaw.total_angle; }
+        else { control_target = yaw->total_angle; }
     }
     // 编码器位置环生成目标速度码，换算为 °/s 后送入陀螺仪速度环。
     speed_limit = fabsf(motor4310_config.yaw_hold.position.output_limit);
     brake_gain = cloud_config.yaw.mechanical.brake_speed_at_1deg_raw;
     if (brake_gain > 0.0f)
     {
-        remaining_deg = fabsf((float)(control_target - yaw.total_angle)) *
+        remaining_deg = fabsf((float)(control_target - yaw->total_angle)) *
             360.0f / MOTOR4310_ECD_PER_ROUND;
         brake_limit = brake_gain * sqrtf(remaining_deg);
         if (speed_limit > brake_limit) { speed_limit = brake_limit; }
@@ -554,10 +576,10 @@ static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool fo
     {
         // 恢复时避免位置微分把当前误差当成突变。
         pid_algorithm.ops.reset(position_pid);
-        position_pid->LastError = (float)(control_target - yaw.total_angle);
+        position_pid->LastError = (float)(control_target - yaw->total_angle);
         pid_algorithm.ops.reset(&yaw_mechanical_rate_pid);
     }
-    speed_command = pid_algorithm.ops.calc(position_pid, (float)control_target, (float)yaw.total_angle);
+    speed_command = pid_algorithm.ops.calc(position_pid, (float)control_target, (float)yaw->total_angle);
     command_scale = cloud_config.yaw.mechanical.command_deg_s_per_raw;
     if (!(command_scale > 0.0f && command_scale <= 100.0f)) { command_scale = 1.0f; }
     direction = cloud_config.yaw.mechanical.gyro_direction < 0.0f ? -1.0f : 1.0f;
@@ -580,6 +602,71 @@ static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool fo
                      cloud_yaw_rate_deg_s);
     cloud_yaw_torque_raw = (int16_t)torque;
     return Motor4310_SetTorqueRawMotor(MOTOR4310_YAW, cloud_yaw_torque_raw);
+}
+
+static HAL_StatusTypeDef cloud_control_yaw_mechanical(bool use_deadzone, bool force_home)
+{
+    Motor4310_Data_t yaw;
+    bool reversed;
+    int32_t target;
+    if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
+    { cloud_yaw_torque_raw = 0; return HAL_ERROR; }
+    // 每周期选最近车头和最近一圈；强制回零只选物理车头。
+    reversed = !force_home && fabsf(cloud_wrap_yaw_deg(
+        (float)(yaw.total_angle - home_target[MOTOR4310_YAW]) *
+        360.0f / MOTOR4310_ECD_PER_ROUND)) >= cloud_config.yaw.front_switch_deg;
+    target = cloud_nearest_front_target(reversed, yaw.total_angle);
+    return cloud_control_yaw_target(&yaw, use_deadzone, reversed, target);
+}
+
+// 只处理手动Yaw输入后的松杆，外力偏转继续交给惯性保持。
+static bool cloud_control_yaw_follow_center(int16_t input)
+{
+    Motor4310_Data_t yaw;
+    YawFollowCenterConfig config = cloud_config.yaw.follow_center;
+    float relative_deg, error_deg;
+    float threshold = cloud_config.yaw.front_switch_deg;
+    bool reversed;
+    int32_t target;
+    HAL_StatusTypeDef status;
+    if (!config.enabled ||
+        !(threshold > 0.0f && threshold < 180.0f) ||
+        !(config.tolerance_deg > 0.0f && config.tolerance_deg <= 10.0f) ||
+        config.speed_raw_max < 0 || config.stable_cycles == 0U)
+    { cloud_follow_center_reset(); return false; }
+    if (input < -cloud_config.rc_speed_enter || input > cloud_config.rc_speed_enter)
+    {
+        cloud_follow_center_reset();
+        cloud_yaw_follow_center.phase = CLOUD_YAW_CENTER_MANUAL;
+        return false;
+    }
+    if (cloud_yaw_follow_center.phase != CLOUD_YAW_CENTER_MANUAL &&
+        cloud_yaw_follow_center.phase != CLOUD_YAW_CENTER_ACTIVE)
+    { return false; }
+    if (!Motor4310_GetFeedback(MOTOR4310_YAW, &yaw))
+    { cloud_follow_center_reset(); return false; }
+    relative_deg = cloud_wrap_yaw_deg((float)(yaw.total_angle-home_target[MOTOR4310_YAW]) *
+        360.0f / MOTOR4310_ECD_PER_ROUND);
+    reversed = fabsf(relative_deg) >= threshold;
+    target = cloud_nearest_front_target(reversed, yaw.total_angle);
+    error_deg = (float)(target-yaw.total_angle)*360.0f/MOTOR4310_ECD_PER_ROUND;
+    if (cloud_yaw_follow_center.phase == CLOUD_YAW_CENTER_MANUAL)
+    {
+        if (fabsf(relative_deg) <= threshold)
+        { cloud_follow_center_reset(); return false; }
+        cloud_yaw_follow_center.phase = CLOUD_YAW_CENTER_ACTIVE;
+    }
+    // Yaw按相对角选择最近车头，累计编码器只追最近等效圈。
+    cloud_yaw_follow_center.target_counts = target;
+    status = cloud_control_yaw_target(&yaw, true, reversed, target);
+    if (status == HAL_OK && fabsf(error_deg) <= config.tolerance_deg &&
+        yaw.speed >= -config.speed_raw_max && yaw.speed <= config.speed_raw_max)
+    {
+        if (++cloud_yaw_follow_center.stable_cycles >= config.stable_cycles)
+        { cloud_yaw_follow_center.phase = CLOUD_YAW_CENTER_DONE; }
+    }
+    else { cloud_yaw_follow_center.stable_cycles = 0U; }
+    return true;
 }
 
 static void cloud_send_yaw_angle(bool allow_turn, bool allow_spin,
@@ -771,9 +858,13 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
     yaw_home_required = safety.yaw_home_required;
     mechanical_required = !lift_calibrated || !safety_valid || !safety.position_valid ||
         !safety.upper_zone || safety.descending || bottom_mode_blocked || yaw_home_required;
-    if (remote.mode.chassis != REMOTE_MODE_FOLLOW &&
+    if (!remote.safety.online || remote.mode.chassis != REMOTE_MODE_FOLLOW ||
+        mechanical_required || !mode_permitted || cloud_turnaround_active)
+    { cloud_follow_center_reset(); }
+    if (!remote.safety.online ||
+        (remote.mode.chassis != REMOTE_MODE_FOLLOW &&
         remote.mode.chassis != REMOTE_MODE_MECHANICAL &&
-        remote.mode.chassis != REMOTE_MODE_SPIN)
+        remote.mode.chassis != REMOTE_MODE_SPIN))
     {
         // 遥控断联或档位无效：取消调头并让两轴失能。
         cloud_reset_home();
@@ -791,7 +882,7 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
                      safety.spin_allowed && !spin_rearm_required &&
                      !cloud_turnaround_active && !yaw_home_required;
     if (spin_permitted) { spin_session_started = true; }
-    turn_blocked = (remote.mode.chassis == REMOTE_MODE_SPIN &&
+    turn_blocked = (remote.input.keyboard_active && remote.mode.chassis == REMOTE_MODE_SPIN &&
                     remote.safety.spin_enabled) ||
                    !mode_permitted || yaw_home_required;
     if (turn_blocked && cloud_turnaround_active)
@@ -859,7 +950,9 @@ void CloudTerrace_Update(const RemoteState_t *remote_snapshot)
     else
     {
         // 跟随及小陀螺模式使用惯性系 Yaw 控制。
-        cloud_control_yaw(-remote.input.channel[0]);
+        if (remote.mode.chassis != REMOTE_MODE_FOLLOW || !mode_permitted ||
+            !cloud_control_yaw_follow_center(remote.input.channel[0]))
+        { cloud_control_yaw(-remote.input.channel[0]); }
     }
     cloud_control_pitch(remote.input.channel[1], pitch_use_imu);
     cloud_send_yaw_angle(!turn_blocked, spin_permitted,

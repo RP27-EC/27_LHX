@@ -6,6 +6,7 @@
 #include "dial_motor.h"
 #include "peripheral_config.h"
 #include <float.h>
+#include "control_input.h"
 #include <string.h>
 
 #define COMM_CAN_FILTER_BANK        14U
@@ -24,6 +25,19 @@ static volatile uint32_t communication_rc_assembly_start_ms; // 本轮 D1 接收
 static uint8_t communication_rc_snapshot[COMM_RC_FRAME_SIZE]; // 提交给任务解析的完整遥控快照。
 static volatile bool communication_rc_snapshot_ready; // 是否有完整遥控帧等待任务解析。
 static volatile uint32_t communication_rc_snapshot_ms; // 完整遥控帧对应的 D1 接收时间。
+
+static volatile uint8_t communication_rc_meta[4]; // 与完整 D1~D3 快照同时提交。
+static volatile uint8_t communication_tx_lift_busy, communication_tx_reset_phase, communication_tx_reset_sequence;
+
+void Communication_CAN_SetControlState(bool busy, uint8_t phase, uint8_t sequence)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    communication_tx_lift_busy = busy;
+    communication_tx_reset_phase = phase;
+    communication_tx_reset_sequence = sequence;
+    __set_PRIMASK(primask);
+}
 
 Communication_RcControl_t communication_rc; // 当前已解析的遥控器数据。
 volatile bool communication_rc_online = false; // 遥控链路当前是否在线。
@@ -49,6 +63,8 @@ static bool Communication_RC_D3PaddingIsZero(
 {
     uint32_t index;
 
+    if (data[2] == RP_INPUT_METADATA_MAGIC)
+    { return (data[3] & 0xF0U) == 0U && data[4] <= 4U && data[6] == 0U && data[7] == 0U; }
     for (index = 2U; index < COMM_CAN_FRAME_SIZE; index++)
     {
         if (data[index] != 0U)
@@ -107,6 +123,7 @@ static void Communication_RC_AcceptFragment(
         memcpy(communication_rc_snapshot, communication_rc_assembly,
                COMM_RC_FRAME_SIZE);
         // 后续分片不延长 D1 的有效期。
+        memcpy((void *)communication_rc_meta, data + 2U, 4U);
         communication_rc_snapshot_ms = communication_rc_assembly_start_ms;
         communication_rc_snapshot_ready = true;
         communication_rc_assembly_mask = 0U;
@@ -271,7 +288,10 @@ HAL_StatusTypeDef Communication_CAN_SendYawState(float angle_deg, bool turning,
               (allow_turn ? 0x04U : 0U) |
               (allow_spin ? 0x08U : 0U) |
               (spin_selected ? 0x10U : 0U) |
-              (bottom_mode_blocked ? 0x20U : 0U);
+              (bottom_mode_blocked ? 0x20U : 0U) | (communication_tx_lift_busy ? 0x40U : 0U);
+    data[3] = communication_tx_reset_phase;
+    data[4] = communication_tx_reset_sequence;
+    data[5] = RP_INPUT_METADATA_MAGIC;
     return Communication_CAN_SendC1(data);
 }
 
@@ -391,6 +411,7 @@ static bool Communication_RC_Parse(
 
 void Communication_Process(void)
 {
+    uint8_t meta[4] = {0};
     uint8_t frame[COMM_RC_FRAME_SIZE];
     Communication_RcControl_t decoded;
     uint32_t received_ms = 0U;
@@ -414,6 +435,7 @@ void Communication_Process(void)
     if (frame_available)
     {
         memcpy(frame, communication_rc_snapshot, COMM_RC_FRAME_SIZE);
+        memcpy(meta, (const void *)communication_rc_meta, sizeof(meta));
         received_ms = communication_rc_snapshot_ms;
         communication_rc_snapshot_ready = false;
     }
@@ -422,6 +444,8 @@ void Communication_Process(void)
     if (frame_available)
     {
         frame_valid = Communication_RC_Parse(frame, &decoded);
+        decoded.control_valid = meta[0] == RP_INPUT_METADATA_MAGIC;
+        decoded.control_flags = meta[1]; decoded.reset_phase = meta[2]; decoded.reset_sequence = meta[3];
         saved_primask = __get_PRIMASK();
         __disable_irq();
         // 任务等待或解析期间过期的完整帧也不发布。

@@ -19,10 +19,12 @@ volatile bool lift_pitch_nonnegative_required; // 是否要求 Pitch 抬至机�
 volatile LiftSafetyState_t lift_safety_state; // 云台、发射和底盘共用的安全快照。
 
 static LiftControl_StallSnapshot_t stall_snapshot; // 最近一次堵转反馈。
-static bool right_switch_seen; // 已记录升降档内的首次拨杆位置。
-static uint8_t previous_right_switch; // 上次处理的升降拨杆档位。
+static uint32_t physical_lift_seen; // 已执行或忽略的遥控升降方向序号。
 static uint32_t keyboard_lift_seen; // 已消费的键鼠升降事件序号。
 static bool keyboard_lift_pending; // 等待归零后执行的键鼠升降请求。
+static bool lift_command_pending; // 物理拨杆的新请求正在等云台回零。
+static bool operation_snapshot_valid;
+static RemoteState_t operation_snapshot; // 当前升降操作的来源和请求。
 static LiftControl_State_t requested_direction; // 主动升降方向；保持纠偏不改变此项。
 static bool calibration_active; // 正在自动寻找顶部。
 static bool calibration_armed; // 允许开始一次顶部校准。
@@ -56,6 +58,46 @@ static bool down_motion_timing; // 实测持续下行正在计时。
 static uint32_t down_motion_start_ms; // 本次实测下行计时起点。
 static bool descent_release_timing; // 下降结束后的稳定计时有效。
 static uint32_t descent_release_start_ms; // 本次下降联锁释放计时起点。
+
+bool LiftControl_CommandBusy(void)
+{
+    return lift_control_state != LIFT_STALLED && lift_control_state != LIFT_AT_LIMIT &&
+        (calibration_active || keyboard_lift_pending || lift_command_pending || requested_direction != LIFT_STOPPED);
+}
+
+void LiftControl_FilterRemote(RemoteState_t *remote)
+{
+    if (!remote->safety.online || remote->mode.chassis == REMOTE_MODE_DISABLED)
+    { operation_snapshot_valid = false; lift_command_pending = false; return; }
+    if (LiftControl_CommandBusy())
+    {
+        if (!operation_snapshot_valid) { operation_snapshot = *remote; operation_snapshot_valid = true; }
+        if (remote->input.keyboard_active == operation_snapshot.input.keyboard_active)
+        {
+            if (remote->input.keyboard_active)
+            { operation_snapshot.event.lift_toggle_request_count = remote->event.lift_toggle_request_count; }
+            else if (remote->safety.lift_enabled &&
+                (remote->input.lift_right_switch == COMM_RC_SW_UP || remote->input.lift_right_switch == COMM_RC_SW_DOWN))
+            {
+                operation_snapshot.input.lift_right_switch = remote->input.lift_right_switch;
+                operation_snapshot.event.lift_motion_request_count = remote->event.lift_motion_request_count;
+            }
+        }
+        remote->mode.chassis = REMOTE_MODE_MECHANICAL;
+        remote->safety.lift_enabled = true;
+        remote->input.keyboard_active = operation_snapshot.input.keyboard_active;
+        remote->input.lift_right_switch = operation_snapshot.input.lift_right_switch;
+        remote->event.lift_toggle_request_count = operation_snapshot.event.lift_toggle_request_count;
+        remote->event.lift_motion_request_count = operation_snapshot.event.lift_motion_request_count;
+        remote->input.channel[0] = 0; remote->input.channel[1] = 0; remote->input.channel[4] = 0;
+    }
+    else if (operation_snapshot_valid)
+    {
+        operation_snapshot_valid = false;
+        keyboard_lift_seen = remote->event.lift_toggle_request_count;
+        physical_lift_seen = remote->event.lift_motion_request_count;
+    }
+}
 
 static int32_t LiftControl_Abs(int32_t value)
 {
@@ -427,7 +469,6 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
         lift_hold_target_valid = true;
         calibration_active = false;
         lift_calibrated = true;
-        right_switch_seen = false;
         requested_direction = LIFT_STOPPED;
         lift_control_state = LIFT_READY;
         LiftControl_StopAndRelease(now);
@@ -441,6 +482,8 @@ static void LiftControl_Calibrate(const Motor2006_Feedback_t *feedback,
 // 清空升降目标、堵转计时和联锁状态，进入等待遥控的未校准状态。
 void LiftControl_Init(void)
 {
+    lift_command_pending = false;
+    operation_snapshot_valid = false;
     lift_control_state = LIFT_STOPPED;
     lift_wait_reason = LIFT_WAIT_REMOTE;
     lift_calibrated = false;
@@ -449,10 +492,9 @@ void LiftControl_Init(void)
     lift_bottom_encoder_total = 0;
     lift_pitch_nonnegative_required = false;
     stall_snapshot.valid = false;
-    right_switch_seen = false;
     keyboard_lift_seen = 0U;
+    physical_lift_seen = 0U;
     keyboard_lift_pending = false;
-    previous_right_switch = 0U;
     requested_direction = LIFT_STOPPED;
     calibration_active = false;
     calibration_armed = true;
@@ -565,7 +607,7 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
         if (remote != NULL &&
             (!remote->safety.online || !remote->safety.lift_enabled ||
              (!remote->input.keyboard_active &&
-              remote->input.lift_right_switch == COMM_RC_SW_UP)))
+              remote->input.lift_right_switch == COMM_RC_SW_MID)))
         {
             if (requested_direction != LIFT_STOPPED &&
                 !(requested_direction == LIFT_ASCENDING && next.upper_zone))
@@ -573,7 +615,6 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
             // 离开升降档或回停机档不保留回零联锁；顶部目标仍可低速保持。
             requested_direction = LIFT_STOPPED;
             keyboard_lift_pending = false;
-            right_switch_seen = false;
         }
         holding_position = next.upper_zone && requested_direction == LIFT_STOPPED;
     }
@@ -609,22 +650,21 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
                 LiftControl_Abs(lift_hold_target_encoder_total -
                                 lift_bottom_encoder_total);
         }
-        else if (right_switch_seen &&
-            remote->input.lift_right_switch != previous_right_switch)
+        else if (remote->event.lift_motion_request_count != physical_lift_seen)
         {
             pending_lift_command =
                 remote->input.lift_right_switch == COMM_RC_SW_DOWN ||
-                remote->input.lift_right_switch == COMM_RC_SW_MID;
+                remote->input.lift_right_switch == COMM_RC_SW_UP;
             pending_descent =
                 remote->input.lift_right_switch == COMM_RC_SW_DOWN;
         }
     }
+    lift_command_pending = pending_lift_command;
     descending_command = descending_command || pending_descent;
-    // 上升进入顶部放行区后释放云台，电机仍继续走顶部目标。
-    // 新升降请求和下降过程保持回零联锁。
+    // 主动升降全程保持归中；到位后恢复顶部功能许可。
     next.yaw_home_required = lift_calibrated &&
         (pending_lift_command || requested_direction == LIFT_DESCENDING ||
-         (requested_direction == LIFT_ASCENDING && !next.upper_zone));
+         requested_direction == LIFT_ASCENDING);
     // 安全快照先于云台控制更新，使新下降指令当周期就能抬起 Pitch。
     lift_pitch_nonnegative_required = remote != NULL &&
         remote->safety.online && feedback_online &&
@@ -666,6 +706,8 @@ void LiftControl_SafetyUpdate(const RemoteState_t *remote)
     next.descending = descent_mode_blocked;
     imu_ready = GimbalImu_Get(&imu);
     next.special_allowed = remote != NULL && remote->safety.online &&
+        remote->mode.chassis != REMOTE_MODE_DISABLED &&
+        !LiftControl_CommandBusy() &&
         next.upper_zone && !next.descending && !next.yaw_home_required &&
         cloud_terrace_home_state == CLOUD_TERRACE_HOME_DONE &&
         Motor4310_AllOnline() &&
@@ -728,7 +770,7 @@ void LiftControl_Update(const RemoteState_t *remote)
         keyboard_lift_seen = remote->event.lift_toggle_request_count;
     }
 
-    if (remote == NULL || !remote->safety.online)
+    if (remote == NULL || !remote->safety.online || remote->mode.chassis == REMOTE_MODE_DISABLED)
     {
         lift_wait_reason = LIFT_WAIT_REMOTE;
         yaw_stable_timing = false;
@@ -737,8 +779,8 @@ void LiftControl_Update(const RemoteState_t *remote)
         calibration_active = false;
         if (!lift_calibrated && !calibration_fault_latched)
         { calibration_armed = true; }
-        right_switch_seen = false;
         requested_direction = LIFT_STOPPED;
+        physical_lift_seen = remote != NULL ? remote->event.lift_motion_request_count : physical_lift_seen;
         lift_hold_target_valid = false;
         LiftControl_ResetStallCheck();
         if (!calibration_fault_latched) { lift_control_state = LIFT_STOPPED; }
@@ -749,6 +791,10 @@ void LiftControl_Update(const RemoteState_t *remote)
                   Motor2006_GetFeedback(&feedback);
     if (!motor_ready)
     {
+        // 反馈失效时消费待执行输入，恢复后等待新的升降操作。
+        physical_lift_seen = remote->event.lift_motion_request_count;
+        keyboard_lift_pending = false;
+        lift_command_pending = false;
         lift_wait_reason = calibration_fault_latched ? LIFT_WAIT_FAULT :
             LIFT_WAIT_MOTOR;
         yaw_stable_timing = false;
@@ -760,7 +806,6 @@ void LiftControl_Update(const RemoteState_t *remote)
             if (!calibration_fault_latched) { calibration_armed = true; }
         }
         requested_direction = LIFT_STOPPED;
-        right_switch_seen = false;
         if (lift_calibrated) { lift_hold_target_valid = false; }
         LiftControl_ResetStallCheck();
         if (lift_control_state != LIFT_STALLED &&
@@ -780,8 +825,8 @@ void LiftControl_Update(const RemoteState_t *remote)
     if (!safety_valid)
     {
         // 云台任务超期时不沿用旧目标；恢复后仍须新的换档/按键事件。
+        physical_lift_seen = remote->event.lift_motion_request_count;
         keyboard_lift_pending = false;
-        right_switch_seen = false;
         requested_direction = LIFT_STOPPED;
         if (lift_calibrated)
         {
@@ -803,6 +848,9 @@ void LiftControl_Update(const RemoteState_t *remote)
 
     if (!lift_calibrated)
     {
+        // 校准期间的方向输入不留到校准结束后执行。
+        physical_lift_seen = remote->event.lift_motion_request_count;
+        keyboard_lift_pending = false;
         if (!calibration_active && calibration_armed)
         {
             calibration_active = true;
@@ -843,7 +891,7 @@ void LiftControl_Update(const RemoteState_t *remote)
 
     if (!remote->safety.lift_enabled)
     {
-        right_switch_seen = false;
+        physical_lift_seen = remote->event.lift_motion_request_count;
         if (requested_direction != LIFT_STOPPED &&
             !(requested_direction == LIFT_ASCENDING && safety.upper_zone))
         { lift_hold_target_encoder_total = feedback.encoder_total; }
@@ -851,7 +899,6 @@ void LiftControl_Update(const RemoteState_t *remote)
     }
     else if (remote->input.keyboard_active)
     {
-        right_switch_seen = false;
         if (keyboard_lift_pending)
         {
             keyboard_lift_pending = false;
@@ -872,31 +919,18 @@ void LiftControl_Update(const RemoteState_t *remote)
             LiftControl_ResetStallCheck();
         }
     }
-    else if (!right_switch_seen)
+    else if (remote->event.lift_motion_request_count != physical_lift_seen)
     {
-        // 首次进入升降模式只记录档位，换档后才选新目标。
-        previous_right_switch = remote->input.lift_right_switch;
-        right_switch_seen = true;
-    }
-    else if (remote->input.lift_right_switch != previous_right_switch)
-    {
-        previous_right_switch = remote->input.lift_right_switch;
+        physical_lift_seen = remote->event.lift_motion_request_count;
         if (remote->input.lift_right_switch == COMM_RC_SW_DOWN)
         {
             requested_direction = LIFT_DESCENDING;
             lift_hold_target_encoder_total = lift_bottom_encoder_total;
         }
-        else if (remote->input.lift_right_switch == COMM_RC_SW_MID)
+        else if (remote->input.lift_right_switch == COMM_RC_SW_UP)
         {
             requested_direction = LIFT_ASCENDING;
             lift_hold_target_encoder_total = lift_top_encoder_total;
-        }
-        else if (!(requested_direction == LIFT_ASCENDING && safety.upper_zone))
-        {
-            // 中途停机保持当前位置；已经到位则保留原来的保持目标。
-            if (requested_direction != LIFT_STOPPED)
-            { lift_hold_target_encoder_total = feedback.encoder_total; }
-            requested_direction = LIFT_STOPPED;
         }
         LiftControl_ResetStallCheck();
     }

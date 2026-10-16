@@ -118,7 +118,7 @@ void Motor2006SpeedPidConfig_Init(volatile Motor2006SpeedPidConfig *config)
     config->ki = 5.0f; // 升降电机速度环积分增益。
     config->kd = 0.0f; // 升降电机速度环微分增益。
     config->integral_limit = 0.0f; // 速度环积分项限幅。
-    config->output_limit = 800.0f; // 速度环转矩输出限幅。
+    config->output_limit = 1000.0f; // 速度环转矩输出限幅。
 }
 
 // 加载升降电机电流保护、命令超时、转矩换算及速度环默认值。
@@ -160,9 +160,9 @@ void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 void DialContinuousSpeedPidConfig_Init(volatile DialContinuousSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.10f; // 连发速度环比例增益。
+    config->kp = 0.9f; // 连发速度环比例增益。
     config->ki = 0.1f; // 连发速度环积分增益。
-    config->kd = 0.0001f; // 连发速度环微分增益。
+    config->kd = 0.00005f; // 连发速度环微分增益。
 }
 
 // 加载拨盘电流保护、通信间隔、控制周期及位置、速度闭环默认值。

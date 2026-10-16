@@ -111,6 +111,11 @@ void FrictionConfig_Init(volatile FrictionConfig *config)
 {
     if (config == NULL) { return; }
     config->target_speed_rpm = 9000; // 摩擦轮目标转速幅值，rpm。
+    config->ready.enabled = true;
+    config->ready.tolerance_rpm = 150.0f;
+    config->ready.relative_tolerance = 0.03f;
+    config->ready.ripple_rpm = 200.0f;
+    config->ready.stable_ms = 100U;
     ShootSpeedConfig_Init(&config->adaptive);
     config->block_speed_rpm = 100; // 低于此转速才检查堵转。
     config->block_current_raw = 2000; // 排除低负载的慢速转动。
@@ -134,6 +139,8 @@ void DialFeedConfig_Init(volatile DialFeedConfig *config)
     config->block_speed_threshold_dps = 10; // 拨盘堵转低速阈值，度/s。
     config->block_confirm_ticks = 50U; // 堵转判据需连续满足的控制周期数。
     config->stuck_reverse_timeout_ms = 200U; // 堵转反向退让超时，ms。
+    config->stuck_reverse_speed_dps = 720.0f; // 按供弹反方向做速度退让。
+    config->recovery_max_attempts = 3U; // 恢复耗尽后等待释放发射请求。
     config->stuck_reload_timeout_ms = 200U; // 退让后重新上弹超时，ms。
     config->safe_stop_retry_ms = 20U; // 失联零电流帧重发间隔，ms。
 }
@@ -142,7 +149,7 @@ void DialFeedConfig_Init(volatile DialFeedConfig *config)
 void ShootConfig_Init(void)
 {
     shoot_config.control_period_ticks = 4U; // 发射任务控制周期，tick。
-    shoot_config.mouse_continuous_threshold_ms = 200U; // 鼠标按住转为连发的时间门槛，此前松开记为单发，ms。
+    shoot_config.mouse_continuous_threshold_ms = 200U; // 鼠标持续按下转为连发的时间门槛，ms。
     FrictionConfig_Init(&shoot_config.friction);
     DialFeedConfig_Init(&shoot_config.dial);
 }
@@ -184,6 +191,7 @@ void YawInertialRateConfig_Init(volatile YawInertialRateConfig *config)
 void YawInertialConfig_Init(volatile YawInertialConfig *config)
 {
     if (config == NULL) { return; }
+    config->target_lead_deg = 60.0f; // 仅限制手动输入的目标超前量，保持时保留原目标。
     YawInertialAngleConfig_Init(&config->angle);
     YawInertialRateConfig_Init(&config->rate);
 }
@@ -216,12 +224,22 @@ void YawMechanicalConfig_Init(volatile YawMechanicalConfig *config)
 void YawTurnConfig_Init(volatile YawTurnConfig *config)
 {
     if (config == NULL) { return; }
-    config->wheel_trigger_raw = 200; // 拨轮负向达到此阈值时触发调头，遥控原始值。
+    config->wheel_trigger_raw = 200; // 原始拨轮上拨超过此幅值时触发调头。
     config->wheel_rearm_raw = 50; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
     config->duration_s = 0.72f; // 调头时间，越短目标变化越快。
     config->tolerance_deg = 1.5f; // 调头目标角的到位误差，度。
     config->speed_raw_max = 25; // 调头到位允许的反馈速度绝对值，电机原始码。
     config->stable_cycles = 4U; // 调头位置与速度需连续合格的控制周期数。
+}
+
+// 加载惯性跟随松杆回正的开关与完成判据，闭环复用机械Yaw参数。
+void YawFollowCenterConfig_Init(volatile YawFollowCenterConfig *config)
+{
+    if (config == NULL) { return; }
+    config->enabled = true; // 允许惯性跟随松杆后参与最近车头回正。
+    config->tolerance_deg = 1.5f; // 回正完成误差，需覆盖机械软死区。
+    config->speed_raw_max = 25; // 回正完成时的电机相对速度码上限。
+    config->stable_cycles = 5U; // 位置、速度及发送需连续合格。
 }
 
 // 加载 Yaw 输入方向与机械零点，并组合加载各模式默认值。
@@ -235,14 +253,13 @@ void YawConfig_Init(volatile YawConfig *config)
     YawInertialConfig_Init(&config->inertial);
     YawMechanicalConfig_Init(&config->mechanical);
     YawTurnConfig_Init(&config->turn);
+    YawFollowCenterConfig_Init(&config->follow_center);
 }
 
-// 加载小陀螺拨轮触发、复位及故障后重新布防参数。
+// 加载小陀螺许可故障后重新布防参数。
 void GimbalSpinConfig_Init(volatile GimbalSpinConfig *config)
 {
     if (config == NULL) { return; }
-    config->wheel_trigger_raw = 200; // 拨轮切换小陀螺的触发阈值。
-    config->wheel_rearm_raw = 50; // 拨轮切换小陀螺的复位阈值。
     config->fault_rearm_ms = 100U; // 短暂许可波动立即停转，但不锁存；持续失效需重新拨档。
 }
 
@@ -319,6 +336,7 @@ void KeyboardSensitivityConfig_Init(void)
 // 启动时统一加载上板应用默认参数，供各控制模块初始化使用。
 void UpperApplicationConfig_InitAll(void)
 {
+    InputControlConfig_Init();
     UpperCommunicationTaskConfig_Init();
     LiftConfig_Init();
     ShootConfig_Init();
@@ -344,4 +362,17 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.offline_cooling_per_s = 10.0f; // 离线调试备用冷却速率。
     shoot_heat_config.referee_timeout_ms = 100U; // 板间热量快照有效期。
     shoot_heat_config.calibration_settle_ms = 500U; // 近期供弹热量的反馈保护时间。
+}
+
+volatile InputControlConfig input_control_config;
+// 加载控制来源去噪和复位组合保持时间。
+void InputControlConfig_Init(void)
+{
+    input_control_config.wheel.trigger_raw = 200; // 下拨发射或复位的幅值门槛，使用原始拨轮负方向。
+    input_control_config.wheel.rearm_raw = 50; // 下拨动作释放门槛，回中后允许下一次触发。
+    input_control_config.wheel.continuous_ms = 200U; // 拨轮发射持续超过此时间后转连发，ms。
+    input_control_config.reset_hold_ms = 500U; // 复位组合连续保持门槛，超过后触发，ms。
+    input_control_config.takeover_raw = 60; // 摇杆或拨轮接管的幅值门槛，需同时满足变化门槛。
+    input_control_config.change_raw = 30; // 相对最近有效操作基准的变化门槛，慢拨可累计。
+    input_control_config.mouse_raw = 2; // 鼠标单次位移超过此幅值时接管键鼠。
 }

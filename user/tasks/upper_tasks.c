@@ -33,8 +33,17 @@ static void UpperTasks_CommunicationStep(void)
     Communication_RcControl_t remote_control;
 
     board_link.process();
-    RemoteState_Update(&remote_control,
-                       board_link.rc_get(&remote_control));
+    bool online = board_link.rc_get(&remote_control);
+    RemoteState_SetOperationLock(LiftControl_CommandBusy());
+    RemoteState_ServiceControl(online && remote_control.control_valid ? remote_control.reset_phase : 0U,
+        online && remote_control.control_valid ? remote_control.reset_sequence : 0U);
+    RemoteState_Update(&remote_control, online);
+    {
+        RpResetState reset = control_reset_state;
+        Communication_CAN_SetControlState(LiftControl_CommandBusy(), RpReset_Ack(&reset, HAL_GetTick()), reset.sequence);
+        if (reset.phase == 3U && (uint32_t)(HAL_GetTick() - reset.since_ms) >= 50U)
+        { NVIC_SystemReset(); }
+    }
 }
 
 static void UpperTasks_ShootStep(void)
@@ -42,6 +51,7 @@ static void UpperTasks_ShootStep(void)
     static bool shoot_rearm_required = true; // 许可丢失后等待新的手动操作。
     static bool last_input_valid; // 上周期遥控输入有效。
     static bool last_keyboard_active; // 上周期输入来源。
+    static uint32_t arm_seen;
     static bool last_shoot_armed; // 上周期键鼠摩擦轮布防状态。
     static uint8_t last_right_switch; // 上周期物理右拨杆位置。
     bool friction_motors_online;
@@ -60,36 +70,35 @@ static void UpperTasks_ShootStep(void)
     dial_motor_online = dial_motor.online_check();
     RemoteState_Get(&remote);
 
-    shoot_allowed = LiftControl_SafetyGet(&safety) && safety.shoot_allowed &&
-                    (remote.mode.chassis != REMOTE_MODE_SPIN || remote.input.keyboard_active);
+    shoot_allowed = LiftControl_SafetyGet(&safety) && safety.shoot_allowed;
+    if (remote.safety.online)
+    { manual_rearm = remote.event.shoot_arm_request_count != arm_seen; }
     if (last_input_valid && remote.safety.online &&
         remote.input.keyboard_active == last_keyboard_active)
     {
         if (remote.input.keyboard_active)
-        { manual_rearm = !last_shoot_armed && remote.safety.shoot_armed; }
+        { manual_rearm = manual_rearm ||
+              (!last_shoot_armed && remote.safety.shoot_armed); }
         else
         {
             // 与遥控解析一致：许可恢复后重新拨动右杆，保险档不启动。
-            manual_rearm = remote.input.right_switch != last_right_switch &&
+            manual_rearm = manual_rearm || (remote.input.right_switch != last_right_switch &&
                            (remote.input.right_switch == COMM_RC_SW_MID ||
                             remote.input.right_switch == COMM_RC_SW_UP) &&
-                           remote.safety.shoot_armed;
+                           remote.safety.shoot_armed);
         }
     }
-    if (!shoot_allowed || !remote.safety.online ||
-        (last_input_valid &&
-         last_keyboard_active != remote.input.keyboard_active))
+    if (!shoot_allowed || !remote.safety.online) { shoot_rearm_required = true; }
+    else if (manual_rearm) { shoot_rearm_required = false; }
+    else if (last_input_valid && last_keyboard_active != remote.input.keyboard_active)
     { shoot_rearm_required = true; }
-    else if (manual_rearm)
-    { shoot_rearm_required = false; }
+    arm_seen = remote.event.shoot_arm_request_count;
     last_input_valid = remote.safety.online;
     last_keyboard_active = remote.input.keyboard_active;
     last_shoot_armed = remote.safety.shoot_armed;
     last_right_switch = remote.input.right_switch;
 
     if (!remote.safety.online) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_REMOTE; }
-    else if (remote.mode.chassis == REMOTE_MODE_SPIN && !remote.input.keyboard_active)
-    { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_SPIN; }
     else if (!shoot_allowed) { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_LIFT; }
     else if (!remote.safety.shoot_armed || shoot_rearm_required)
     { upper_shoot_block_reason = UPPER_SHOOT_BLOCK_REARM; }
@@ -107,23 +116,15 @@ static void UpperTasks_ShootStep(void)
 
     ShootControl_SetIdleHoldEnabled(remote.safety.online && dial_motor_online);
 
-    if (remote.input.keyboard_active)
+    // 拨轮和鼠标共用首发请求与单连发处理，避免长按切换时重复首发。
+    if (!dial_motor_online)
     {
-        if (!dial_motor_online)
-        {
-            ShootControl_ResetKeyboard(remote.event.shoot_single_request_count);
-            ShootControl_Update(shoot_mode, false);
-        }
-        else
-        {
-            ShootControl_UpdateKeyboard(shoot_mode,
-                                        remote.event.shoot_single_request_count);
-        }
+        ShootControl_ResetKeyboard(remote.event.shoot_single_request_count);
+        ShootControl_Update(shoot_mode, false);
     }
     else
     {
-        ShootControl_ResetKeyboard(remote.event.shoot_single_request_count);
-        ShootControl_Update(shoot_mode, remote.input.right_up);
+        ShootControl_UpdateKeyboard(shoot_mode, remote.event.shoot_single_request_count);
     }
 }
 
@@ -135,7 +136,9 @@ static void UpperTasks_ControlStep(void)
     (void)gimbal_imu_driver.update();
     motor2006.heartbeat();
     RemoteState_Get(&remote);
+    LiftControl_FilterRemote(&remote);
     LiftControl_SafetyUpdate(&remote);
+    LiftControl_FilterRemote(&remote);
     CloudTerrace_Update(&remote);
     LiftControl_Update(&remote);
 }

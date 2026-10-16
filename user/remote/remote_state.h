@@ -4,6 +4,7 @@
 #include "communication.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include "control_input.h"
 
 // 左拨杆或键鼠决定整车模式；断联时安全停止。
 typedef enum
@@ -34,21 +35,24 @@ typedef struct
     int16_t channel[5]; // 同一遥控快照内的五路通道。
     uint8_t lift_right_switch; // 升降模式下的右拨杆档位。
     uint8_t right_switch; // 物理右拨杆档位，供发射任务识别手动布防边沿。
-    bool keyboard_active; // V 键选择键鼠输入。
-    bool right_up; // 右拨杆上档或鼠标左键按下。
+    bool keyboard_active; // 最近一次有效操作选定键鼠输入。
+    bool right_up; // 发射拨轮或鼠标左键的有效按下状态。
 } RemoteInputState_t;
 
 typedef struct
 {
     bool online; // 遥控帧有效且未超时。
-    bool shoot_armed; // 右拨杆换档或键鼠 F 布防发射。
-    bool spin_enabled; // 右拨杆换档或键鼠 G 使能自旋。
+    bool reset_active; // 两板复位握手期间停止执行器。
+    bool shoot_armed; // 右中、右上档或键鼠 F/左键允许发射。
+    bool spin_enabled; // 右上档或键鼠 G 选中自旋。
     bool lift_enabled; // 左下档或键鼠机械模式允许升降。
 } RemoteSafetyState_t;
 
 typedef struct
 {
-    uint32_t shoot_single_request_count; // 鼠标短按产生的单发事件累计数。
+    uint32_t shoot_arm_request_count; // 新的鼠标或预热操作用于手动重新布防。
+    uint32_t shoot_single_request_count; // 拨轮或鼠标登记的首发事件序号。
+    uint32_t lift_motion_request_count; // 遥控拨杆新选定的升降方向序号。
     uint32_t lift_toggle_request_count; // B 键产生的升降切换事件累计数。
 } RemoteEventState_t;
 
@@ -62,6 +66,8 @@ typedef struct
 
 // 仅通信任务写入；断联时立即清零通道并切安全态。
 void RemoteState_Init(void);
+void RemoteState_SetOperationLock(bool locked); // 升降执行期间忽略模式和来源切换。
+void RemoteState_ServiceControl(uint8_t phase, uint8_t sequence); // 周期维护双板复位握手。
 void RemoteState_Update(const Communication_RcControl_t *control, bool online);
 // 控制任务原子读取同一份模式与通道快照。
 void RemoteState_Get(RemoteState_t *state);

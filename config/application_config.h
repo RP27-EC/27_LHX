@@ -1,6 +1,7 @@
 #ifndef UP_APPLICATION_CONFIG_H
 #define UP_APPLICATION_CONFIG_H
 
+#include "control_input.h"
 #include <stdint.h>
 #include "shoot_heat.h"
 #include "shoot_speed.h"
@@ -86,6 +87,13 @@ void LiftConfig_Init(void);
 typedef struct
 {
     int32_t target_speed_rpm; // 两轮共同目标速度幅值，rpm。
+    struct {
+        bool enabled; // 调车时可旁路转速就绪判定。
+        float tolerance_rpm; // 就绪判定的转速误差下限。
+        float relative_tolerance; // 相对当前目标转速的允许误差。
+        float ripple_rpm; // 相邻控制周期允许的转速变化。
+        uint32_t stable_ms; // 双轮连续满足条件后放行供弹。
+    } ready;
     ShootSpeedConfig adaptive; // 弹速反馈调速、余量和正常转速上限。
     int32_t block_speed_rpm; // 堵转时的低速门槛，转子 rpm。
     int32_t block_current_raw; // 堵转反馈电流门槛，原始码。
@@ -107,6 +115,8 @@ typedef struct
     int32_t block_speed_threshold_dps; // 堵转判据：|反馈速度|须小于此值，deg/s。
     uint32_t block_confirm_ticks; // 堵转判据需连续满足的控制周期数。
     uint32_t stuck_reverse_timeout_ms; // 堵转后反向退让的最长时间。
+    float stuck_reverse_speed_dps; // 反向退让的速度幅值，deg/s。
+    uint32_t recovery_max_attempts; // 连续堵转恢复次数，释放发射后清除。
     uint32_t stuck_reload_timeout_ms; // 退让后重试原目标的最长时间。
     uint32_t safe_stop_retry_ms; // 失联零电流帧重发间隔。
 } DialFeedConfig;
@@ -151,6 +161,7 @@ typedef struct
 typedef struct
 {
     YawInertialAngleConfig angle; // 角度环参数。
+    float target_lead_deg; // 手动输入时目标领先反馈的最大角度，松杆保持不改目标。
     YawInertialRateConfig rate; // 陀螺仪速度环参数。
 } YawInertialConfig;
 
@@ -176,7 +187,7 @@ typedef struct
 
 typedef struct
 {
-    int32_t wheel_trigger_raw; // 拨轮负向达到此阈值时触发调头，遥控原始值。
+    int32_t wheel_trigger_raw; // 原始拨轮上拨超过此幅值时触发调头。
     int32_t wheel_rearm_raw; // 拨轮回到复位范围后允许下一次调头，遥控原始值。
     float duration_s; // 调头目标轨迹时长，s；到位后再结束动作。
     float tolerance_deg; // Yaw 距反向车头目标的到位角差。
@@ -186,19 +197,26 @@ typedef struct
 
 typedef struct
 {
+    bool enabled; // 惯性跟随超过换头门槛后，松杆允许Yaw参与回正。
+    float tolerance_deg; // 回正完成的相对角误差，应大于机械软死区。
+    int32_t speed_raw_max; // 回正结束时允许的电机相对速度码幅值。
+    uint32_t stable_cycles; // 位置、速度及发送状态连续合格的周期数。
+} YawFollowCenterConfig;
+
+typedef struct
+{
     float command_rate_deg_s; // 满杆目标角变化率，按输入比例和控制周期累加，度/s。
     float rc_direction; // 摇杆方向系数；调用处已将 ch[0] 取反。
     float home_rad; // Yaw 指向车头的电机单圈角，rad。
     YawInertialConfig inertial; // 惯性模式参数。
     YawMechanicalConfig mechanical; // 机械模式参数。
     YawTurnConfig turn; // 调头参数。
+    YawFollowCenterConfig follow_center; // 惯性模式松杆后的就近回正。
     float front_switch_deg; // 用于选择更接近云台指向的车头或车尾，度。
 } YawConfig;
 
 typedef struct
 {
-    int32_t wheel_trigger_raw; // 拨轮正向越过此值切换小陀螺。
-    int32_t wheel_rearm_raw; // 拨轮回中位后才能再次切换。
     uint32_t fault_rearm_ms; // 自旋许可连续丢失超过此时间才锁存重新拨档。
 } GimbalSpinConfig;
 
@@ -280,6 +298,7 @@ void YawInertialConfig_Init(volatile YawInertialConfig *config);
 void YawMechanicalRateConfig_Init(volatile YawMechanicalRateConfig *config);
 void YawMechanicalConfig_Init(volatile YawMechanicalConfig *config);
 void YawTurnConfig_Init(volatile YawTurnConfig *config);
+void YawFollowCenterConfig_Init(volatile YawFollowCenterConfig *config);
 void YawConfig_Init(volatile YawConfig *config);
 void GimbalSpinConfig_Init(volatile GimbalSpinConfig *config);
 void PitchInertialAngleConfig_Init(volatile PitchInertialAngleConfig *config);

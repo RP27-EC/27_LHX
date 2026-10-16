@@ -68,6 +68,8 @@ extern volatile bool lift_pitch_nonnegative_required; // Pitch 是否需抬至�
 extern volatile LiftSafetyState_t lift_safety_state; // 调试器可直接查看整车安全快照。
 
 void LiftControl_Init(void);
+bool LiftControl_CommandBusy(void); // 主动升降、校准或等待回零请求仍在执行。
+void LiftControl_FilterRemote(RemoteState_t *remote); // 动作期间锁存升降请求，忽略模式切换。
 void LiftControl_Update(const RemoteState_t *remote);
 void LiftControl_SafetyUpdate(const RemoteState_t *remote); // 云台控制前按同一遥控快照计算。
 bool LiftControl_SafetyGet(LiftSafetyState_t *state); // 超时返回 false，调用方须停止特殊动作。
