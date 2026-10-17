@@ -192,7 +192,8 @@ void StartRcTask(void *argument)
           rc_task_frame_count++;
         }
         rc_forward_flags = (selected.input.keyboard_active ? 1U : 0U) |
-            ((uint8_t)selected.mode.chassis << 1) | (selected.safety.spin_enabled ? 8U : 0U);
+            ((uint8_t)selected.mode.chassis << 1) | (selected.safety.spin_enabled ? 8U : 0U) |
+            ((selected.input.right_action & RP_INPUT_RIGHT_ACTION_MASK) << RP_INPUT_RIGHT_ACTION_SHIFT);
         taskEXIT_CRITICAL();
       }
 

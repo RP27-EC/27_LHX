@@ -27,6 +27,7 @@ typedef struct
 {
     int16_t channel[5]; // 与模式同步的五路输入通道。
     bool keyboard_active; // 最近一次有效操作选定键鼠输入。
+    uint8_t right_action; // 当前左档内有效的右档，零表示等待右杆新变化。
 } RemoteInputState_t;
 
 typedef struct

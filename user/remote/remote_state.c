@@ -139,6 +139,7 @@ void RemoteState_Update(const RC_ctrl_t *control, bool online)
             RemoteState_MapKeyboard(&next, control);
         }
         next.input.keyboard_active = next.safety.online && input_selector.keyboard;
+        next.input.right_action = next.safety.online ? input_selector.right_action : 0U;
 
         if (!input_selector.keyboard)
         {
@@ -148,10 +149,12 @@ void RemoteState_Update(const RC_ctrl_t *control, bool online)
 
         // 与上板一致：切档时消费已按住的拨轮，回中后才接受新调头。
         if (operation_locked || (!input_selector.keyboard && (physical_changed ||
+            input_selector.right_action == 0U ||
             (control->rc.s[0] == RC_SW_DOWN && control->rc.s[1] != RC_SW_MID))))
         { machine.physical.turnaround_wheel_armed = false; }
         if (next.safety.online && !operation_locked && !input_selector.reset_gesture &&
-            (input_selector.keyboard || control->rc.s[0] != RC_SW_DOWN || control->rc.s[1] == RC_SW_MID))
+            (input_selector.keyboard || (input_selector.right_action != 0U &&
+             (control->rc.s[0] != RC_SW_DOWN || control->rc.s[1] == RC_SW_MID))))
         {
             if (next.input.channel[4] >= -chassis_config.turn.wheel_rearm_raw)
             {

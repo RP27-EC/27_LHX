@@ -5,6 +5,9 @@
 #include <string.h>
 
 #define RP_INPUT_METADATA_MAGIC 0xA7U // D3 控制来源扩展标识。
+#define RP_INPUT_RIGHT_ACTION_SHIFT 4U // D3 标志中有效右拨杆档位的起始位。
+#define RP_INPUT_RIGHT_ACTION_MASK 3U // 有效右拨杆档位占用两位，零表示未重新操作。
+#define RP_INPUT_CONTROL_FLAGS_MASK (0x0FU | (RP_INPUT_RIGHT_ACTION_MASK << RP_INPUT_RIGHT_ACTION_SHIFT)) // D3 允许使用的控制标志位。
 #define RP_KEY_RESET_MASK ((1U << 5) | (1U << 8)) // Ctrl + R 复位组合。
 
 typedef struct {
@@ -31,7 +34,9 @@ typedef struct {
 } RpInputSample;
 
 typedef struct {
-    bool seen, keyboard, spin, resetting, reset_fired, reset_gesture;
+    bool seen, keyboard, spin, resetting, reset_fired;
+    uint8_t reset_gesture; // 当前复位组合：位0键盘、位1遥控。
+    uint8_t right_action; // 当前左档内新操作的右档，零表示尚未重新拨动。
     bool was_locked; // 解锁时重新读取档位，但不重放按键。
     uint8_t mode; // 基础模式：1机械、2惯性；自旋单独保存。
     uint32_t reset_since, reset_requests;
@@ -56,9 +61,17 @@ static inline void RpInput_Update(RpInputSelector *s, const RpInputSample *p,
     bool resuming = s->was_locked && !locked;
     bool from_keyboard = s->keyboard;
     bool physical, keyboard;
+    uint8_t previous_gesture = s->reset_gesture;
     uint8_t reset_gesture = RpInput_ResetGesture(p, c);
+    bool left_changed = s->seen && p->left != s->previous.left;
+    bool right_changed = s->seen && p->right != s->previous.right;
+    if (!s->seen || left_changed || resuming || (from_keyboard && !right_changed))
+    { s->right_action = 0U; }
+    else if (right_changed && (!locked || p->left == 2U))
+    { s->right_action = p->right; }
+    if (s->right_action != p->right) { reset_gesture &= 1U; }
     s->was_locked = locked;
-    s->reset_gesture = reset_gesture != 0U;
+    s->reset_gesture = reset_gesture;
     if (!s->seen) {
         // 上电已按住复位组合时先等松开，避免重启后循环复位。
         s->reset_fired = s->reset_gesture;
@@ -67,12 +80,12 @@ static inline void RpInput_Update(RpInputSelector *s, const RpInputSample *p,
         memcpy(s->channel_reference, p->channel, sizeof(s->channel_reference));
         s->seen = true; s->previous = *p;
         s->mode = !locked && p->left == 1U ? 2U : 1U;
-        s->spin = !locked && p->left != 2U && p->right == 1U;
+        s->spin = false;
         return;
     }
     pressed = p->key & (uint16_t)~s->previous.key;
     if (s->reset_gesture) {
-        if (!s->resetting || reset_gesture != RpInput_ResetGesture(&s->previous, c))
+        if (!s->resetting || reset_gesture != previous_gesture)
         { s->resetting = true; s->reset_since = now; }
         if (!s->reset_fired && (uint32_t)(now - s->reset_since) > c->reset_hold_ms)
         { s->reset_fired = true; s->reset_requests++; }
@@ -101,13 +114,17 @@ static inline void RpInput_Update(RpInputSelector *s, const RpInputSample *p,
         } else {
             bool select = p->left != s->previous.left || p->right != s->previous.right || from_keyboard;
             if (resuming) { s->mode = p->left == 1U ? 2U : 1U; s->spin = false; }
+            else if (left_changed || (from_keyboard && !right_changed)) {
+                s->mode = p->left == 1U ? 2U : 1U; s->spin = false;
+            }
             else if (select) {
                 if (p->left == 2U) { s->mode = 1U; s->spin = false; }
-                else if (p->right == 1U) { s->spin = true; }
+                else if (s->right_action == 1U) { s->spin = true; }
                 else if (s->spin) { s->spin = false; s->mode = 2U; }
                 else { s->mode = p->left == 1U ? 2U : 1U; }
             }
         }
+        if (s->keyboard) { s->right_action = 0U; }
     } else if (locked) { s->mode = 1U; s->spin = false; }
     s->previous = *p;
 }
