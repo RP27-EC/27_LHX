@@ -167,6 +167,7 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
         uint16_t pressed = input_selector.seen ?
             control->key & (uint16_t)~input_selector.previous.key : 0U;
         bool previous_keyboard = input_selector.keyboard;
+        uint8_t previous_right_action = input_selector.right_action;
         bool physical_changed = !input_selector.seen || previous_keyboard ||
             control->rc.s[0] != input_selector.previous.left ||
             control->rc.s[1] != input_selector.previous.right;
@@ -190,6 +191,8 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             input_selector.keyboard = (control->control_flags & 1U) != 0U;
             input_selector.spin = ((control->control_flags >> 1) & 3U) == REMOTE_MODE_SPIN;
             input_selector.mode = input_selector.spin ? REMOTE_MODE_FOLLOW : (control->control_flags >> 1) & 3U;
+            input_selector.right_action = (control->control_flags >> RP_INPUT_RIGHT_ACTION_SHIFT) &
+                RP_INPUT_RIGHT_ACTION_MASK;
         }
 
         if (!previous_keyboard && input_selector.keyboard && new_mouse_press) { machine.keyboard.mouse_released = true; }
@@ -213,15 +216,18 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             (input_selector.keyboard || control->rc.s[0] == COMM_RC_SW_DOWN);
         if (control->control_valid) { next.safety.spin_enabled = !operation_locked && (control->control_flags & 8U) != 0U; }
         if (next.safety.lift_enabled && !input_selector.keyboard)
-        { next.input.lift_right_switch = control->rc.s[1]; }
+        { next.input.lift_right_switch = input_selector.right_action; }
 
         if (next.safety.online && !input_selector.keyboard)
         {
             bool changed = physical_changed;
+            bool new_right_action = input_selector.right_action != 0U &&
+                input_selector.right_action != previous_right_action;
             int16_t wheel = control->rc.ch[4];
             bool shoot_gear = control->rc.s[0] != COMM_RC_SW_DOWN &&
-                (control->rc.s[1] == COMM_RC_SW_MID || control->rc.s[1] == COMM_RC_SW_UP);
-            bool turn_gear = control->rc.s[0] != COMM_RC_SW_DOWN || control->rc.s[1] == COMM_RC_SW_MID;
+                (input_selector.right_action == COMM_RC_SW_MID || input_selector.right_action == COMM_RC_SW_UP);
+            bool turn_gear = input_selector.right_action != 0U &&
+                (control->rc.s[0] != COMM_RC_SW_DOWN || input_selector.right_action == COMM_RC_SW_MID);
             // 调头只发一次输入脉冲；升降中按住的拨轮须先回中。
             next.input.channel[4] = 0;
             if (changed || operation_locked || !turn_gear) { machine.physical.turn_ready = false; }
@@ -234,7 +240,7 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             if (changed || operation_locked || !shoot_gear || input_selector.reset_gesture)
             { machine.physical.wheel_active = false; machine.physical.wheel_ready = false; }
             // 升降期间只接收新的升降方向，其他动作继续忽略。
-            if (!input_selector.reset_gesture && control->rc.s[0] == COMM_RC_SW_DOWN && changed &&
+            if (!input_selector.reset_gesture && control->rc.s[0] == COMM_RC_SW_DOWN && new_right_action &&
                 (control->rc.s[1] == COMM_RC_SW_UP || control->rc.s[1] == COMM_RC_SW_DOWN))
             { machine.physical.lift_request_count++; }
             next.safety.spin_enabled = !operation_locked && next.mode.chassis == REMOTE_MODE_SPIN;

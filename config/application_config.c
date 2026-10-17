@@ -18,8 +18,8 @@ void LiftMotionConfig_Init(volatile LiftMotionConfig *config)
     config->down_direction = -1.0f; // 编码器计数减小表示下降。
     config->down_speed_rad_s = 1800.0f; // 正常下降的转子速度上限，rad/s。
     config->up_speed_rad_s = 1800.0f; // 正常上升的转子速度上限，rad/s。
-    config->up_duration_s = 2.5f; // 上升轨迹时间，s。
-    config->down_duration_s = 2.5f; // 下降轨迹时间，s。
+    config->up_duration_s = 2.3f; // 上升轨迹时间，s。
+    config->down_duration_s = 2.3f; // 下降轨迹时间，s。
     config->max_rotor_turns = 330.0f; // 上电后正、反向累计转数限制，圈。
     config->limit_stop_margin_counts = 200; // 行程边界前的停机余量，编码器计数。
     config->stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
@@ -136,17 +136,24 @@ void DialFeedConfig_Init(volatile DialFeedConfig *config)
     config->hold_encoder = 20000U; // 上线和停止供弹后统一回到该单圈位置。
     config->feed_direction = 1LL; // 供弹方向系数，改变符号反转方向。
     config->arrived_error_counts = 300LL; // 单发拨盘到位允许的编码器误差，计数。
-    config->single_move_timeout_ms = 500U; // 单发无有效前进时停止供弹，ms。
-    config->progress_min_counts = 100LL; // 剩余误差缩小到此步长后刷新进度计时。
-    config->block_current_threshold = 900; // 拨盘堵转电流阈值，原始码。
+    config->hold_deviation_timeout_ms = 800U; // 保持堵转条件持续满足后进入退让的时间，ms。
+    config->hold_block_error_counts = 3000LL; // 保持堵转的位置误差门槛，与到位容差分开设置。
+    config->hold_block_current_threshold = 100; // 保持堵转的反馈电流门槛，原始码。
+    config->single_move_timeout_ms = 400U; // 单发无有效前进时进入退让，ms。
+    config->continuous_move_timeout_ms = 400U; // 连发无正向进展时进入退让，暂停时间不计入。
+    config->progress_min_counts = 100LL; // 单发和回追误差缩小达到此步长后刷新计时。
+    config->continuous_progress_min_counts = 200LL; // 连发累计正向前进达到此步长后刷新计时。
+    config->block_current_threshold = 700; // 拨盘堵转电流阈值，原始码。
     config->block_speed_threshold_dps = 5; // 拨盘堵转低速阈值，度/s。
-    config->block_confirm_ticks = 50U; // 堵转判据需连续满足的控制周期数。
+    config->block_confirm_ticks = 20U; // 堵转判据需连续满足的控制周期数。
     config->stuck_reverse_timeout_ms = 500U; // 反向速度退让的时间上限，ms。
-    config->stuck_reverse_speed_dps = 2000.0f; // 按供弹反方向做速度退让。
-    config->stuck_reverse_angle_deg = 360.0f; // 实际反向退让达到此角度后再回追原目标。
+    config->stuck_reverse_speed_dps = 2500.0f; // 按供弹反方向做速度退让。
+    config->stuck_reverse_angle_deg = 720.0f; // 实际反向退让达到此角度后再回追原目标。
     config->stuck_reverse_grace_ms = 40U; // 回退开始后暂缓堵转检测，等待电机起转。
-    config->recovery_max_attempts = 3U; // 当前供弹动作允许执行的反向退让次数。
+    config->recovery_max_attempts = 3U; // 连续未恢复时允许执行的反向退让次数。
     config->stuck_reload_timeout_ms = 200U; // 重追原目标无有效前进时停止，ms。
+    config->stuck_reload_grace_ms = 100U; // 退让结束后的换向宽限，暂缓正向堵转检测。
+    config->recovery_clear_progress_counts = 65536LL; // 连发越过原堵点后继续前进此计数，清除连续重试次数。
     config->safe_stop_retry_ms = 20U; // 失联零电流帧重发间隔，ms。
 }
 

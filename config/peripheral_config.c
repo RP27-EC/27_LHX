@@ -79,9 +79,9 @@ volatile Motor3508Config motor3508_config; // 电机闭环与命令保护参数�
 void Motor3508SpeedPidConfig_Init(volatile Motor3508SpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 6.0f; // 转速误差直接换算为电流码，决定掉速后的纠偏力度。
+    config->kp = 12.0f; // 转速误差直接换算为电流码，决定掉速后的纠偏力度。
     config->ki = 3.0f; // 累积转速误差，补偿持续负载造成的稳态掉速。
-    config->kd = 0.0f; // 根据误差变化抑制超调，过大会放大轮速噪声。
+    config->kd = 0.02f; // 根据误差变化抑制超调，过大会放大轮速噪声。
     config->integral_limit = 3000.0f; // 转速误差积分的限幅，限制长时间误差积累。
     config->output_limit = 16384.0f; // 速度环总电流码限幅，输出还受驱动总限流约束。
 }

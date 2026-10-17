@@ -32,8 +32,19 @@ typedef enum
     SHOOT_DIAL_REASON_REVERSE_CONFIG, // 反转参数无效。
     SHOOT_DIAL_REASON_REVERSE_STOP, // 反转结束时停速命令未入队。
     SHOOT_DIAL_REASON_REVERSE_TIMEOUT, // 退让未达到要求角度。
-    SHOOT_DIAL_REASON_REVERSE_BLOCK // 反向退让也确认堵转。
+    SHOOT_DIAL_REASON_REVERSE_BLOCK, // 反向退让也确认堵转。
+    SHOOT_DIAL_REASON_CONTINUOUS_TIMEOUT, // 连发累计驱动但无正向进展。
+    SHOOT_DIAL_REASON_HOLD_TIMEOUT, // 保持堵转组合条件持续满足。
+    SHOOT_DIAL_REASON_REVERSE_SEND, // 反转命令持续无法入队。
+    SHOOT_DIAL_REASON_HOLD_CONFIG // 保持堵转参数无效。
 } ShootDialReason;
+
+typedef enum
+{
+    SHOOT_DIAL_FORWARD_WAIT = 0, // 等待确认回追进展。
+    SHOOT_DIAL_FORWARD_TURNING, // 换向宽限期间。
+    SHOOT_DIAL_FORWARD_MOVING // 已确认向原目标前进。
+} ShootDialForwardState_t;
 
 typedef struct
 {
@@ -41,8 +52,9 @@ typedef struct
     uint32_t state_start_ms; // 当前状态进入时间，ms。
     int64_t target; // 拨盘累计编码器目标。
     bool target_synced; // 已根据累计位置建立固定单圈供弹目标。
-    uint32_t progress_start_ms; // 最近一次有效前进的时间。
+    uint32_t progress_start_ms; // 进展计时基准，连发恢复时扣除暂停时长。
     int64_t progress_error_counts; // 最近进度检查点的剩余位置误差。
+    int64_t continuous_progress_encoder; // 连发最近一次有效正向进展的位置。
     int64_t single_origin; // 本组叠加单发开始前的累计位置。
     uint32_t single_reserved; // 当前累计目标已预留热量的单发数量。
     uint32_t single_completed; // 已跨过供弹相位的数量，退让时不回减。
@@ -54,10 +66,13 @@ typedef struct
     int64_t feed_target; // 退让前保存的供弹目标。
     int8_t motion_direction; // 堵转前方向，取值为 -1 或 1。
     bool continuous; // 堵转前处于连发模式。
+    bool hold_only; // 当前只恢复保持位置，不执行供弹。
+    bool reverse_command_sent; // 本次退让至少有一条反转命令成功入队。
+    ShootDialForwardState_t forward_state; // 回追换向与进展确认共用状态。
     bool fault; // 解堵失败后卸力，新的发射操作才解除。
     bool rearm_ready; // 故障后已释放发射，允许重新开启连发。
     uint32_t single_blocks; // 单发连续确认堵转次数，到位后清除。
-    uint32_t attempts; // 当前发射请求内已使用的解堵次数。
+    uint32_t attempts; // 当前连续未恢复的解堵次数。
     ShootDialReason reason; // 最近一次解堵或停机原因。
     int64_t reverse_start; // 本次反向退让开始时的累计位置。
     float reverse_travel_deg; // 实际沿退让方向转过的角度，走错方向时为负。
@@ -69,6 +84,16 @@ typedef struct
     bool stopped; // 失联零电流命令已成功入队。
     uint32_t last_stop_ms; // 最近一次零电流命令入队时间，ms。
 } ShootDialStopState_t;
+
+typedef struct
+{
+    bool active; // 当前正在执行位置保持。
+    bool timing; // 保持偏差、低速、受力和无进展条件满足，正在计时。
+    int64_t target; // 本次保持的累计位置目标。
+    int64_t error_counts; // 当前保持位置的绝对误差，编码器计数。
+    int64_t progress_error_counts; // 上次确认回正进展时的位置误差。
+    uint32_t deviation_start_ms; // 本次保持堵转条件持续满足的开始时刻，ms。
+} ShootDialHoldState_t;
 
 typedef struct
 {
@@ -91,9 +116,10 @@ typedef struct
 {
     uint32_t single; // 已完成的累计单发次数。
     uint32_t stuck; // 电流、低速和持续时间确认堵转的累计次数。
-    uint32_t motion_timeout; // 供弹或回追持续无进度的累计次数。
+    uint32_t motion_timeout; // 单发、连发或回追持续无进度的累计次数。
     uint32_t reverse_timeout; // 回退未达到要求角度的超时次数。
     uint32_t reverse_stuck; // 反向退让确认堵转的次数。
+    uint32_t hold_stuck; // 保持堵转组合条件确认的次数。
 } ShootCounterState_t;
 
 typedef enum
@@ -125,6 +151,7 @@ typedef struct
     int32_t previous_rpm[2]; // 前一周期的两轮反馈。
     float error_rpm[2]; // 各轮相对带方向目标的误差。
     bool paused; // 供弹因掉速暂停，保持当前拨盘位置。
+    uint32_t pause_start_ms; // 本次暂停开始时刻，用于扣除连发暂停时间。
     int64_t pause_target; // 暂停瞬间的累计位置。
 } ShootReadyState_t;
 
@@ -136,6 +163,7 @@ typedef struct
     ShootDialMotionState_t dial; // 拨盘位置目标与状态机。
     ShootDialRecoveryState_t recovery; // 堵转检测与恢复过程。
     ShootDialStopState_t stop; // 待机位置保持与失联零电流重发状态。
+    ShootDialHoldState_t hold; // 待机和判稳暂停时的位置偏离保护。
     ShootRemoteEdgeState_t remote; // 遥控拨杆边沿和模式记忆。
     ShootKeyboardSingleState_t keyboard; // 键鼠单发事件锁存。
     ShootCounterState_t count; // 调试器可查看的累计计数。

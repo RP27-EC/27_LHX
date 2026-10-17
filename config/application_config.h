@@ -112,8 +112,13 @@ typedef struct
     uint16_t hold_encoder; // 拨盘固定保持的单圈编码器位置。
     int64_t feed_direction; // 供弹方向系数，改变符号反转方向。
     int64_t arrived_error_counts; // 单发拨盘到位允许的编码器误差，计数。
-    uint32_t single_move_timeout_ms; // 单发持续无有效前进的超时时间，ms。
-    int64_t progress_min_counts; // 剩余位置误差缩小到此步长后刷新进度计时。
+    uint32_t hold_deviation_timeout_ms; // 保持堵转条件持续满足后进入退让的时间，ms。
+    int64_t hold_block_error_counts; // 保持堵转的位置误差门槛，与到位容差分开设置。
+    int32_t hold_block_current_threshold; // 保持堵转的反馈电流门槛，原始码。
+    uint32_t single_move_timeout_ms; // 单发持续无有效前进时进入退让的时间，ms。
+    uint32_t continuous_move_timeout_ms; // 连发累计驱动但无正向进展的超时时间，ms。
+    int64_t progress_min_counts; // 单发和回追误差缩小达到此步长后刷新计时。
+    int64_t continuous_progress_min_counts; // 连发沿供弹方向累计前进达到此步长后刷新计时。
     int32_t block_current_threshold; // 堵转判据：|反馈电流原始码|须大于此值。
     int32_t block_speed_threshold_dps; // 堵转判据：|反馈速度|须小于此值，deg/s。
     uint32_t block_confirm_ticks; // 堵转判据需连续满足的控制周期数。
@@ -121,8 +126,10 @@ typedef struct
     float stuck_reverse_speed_dps; // 反向退让的速度幅值，deg/s。
     float stuck_reverse_angle_deg; // 实际反向退让达到此角度后才回追原目标。
     uint32_t stuck_reverse_grace_ms; // 回退开始后暂缓堵转检测，等待电机起转。
-    uint32_t recovery_max_attempts; // 当前供弹动作允许执行的反向退让次数。
+    uint32_t recovery_max_attempts; // 连续未恢复时允许执行的反向退让次数。
     uint32_t stuck_reload_timeout_ms; // 重追原目标时持续无有效前进的超时时间，ms。
+    uint32_t stuck_reload_grace_ms; // 退让结束后等待电机换向，期间不判正向堵转，ms。
+    int64_t recovery_clear_progress_counts; // 连发越过原堵点后继续前进此计数，清除连续重试次数。
     uint32_t safe_stop_retry_ms; // 失联零电流帧重发间隔。
 } DialFeedConfig;
 

@@ -120,6 +120,14 @@ static void UpperTasks_ShootStep(void)
     if (!dial_motor_online && shoot_mode != REMOTE_SHOOT_OFF)
     { shoot_mode = REMOTE_SHOOT_READY; }
 
+    // 遥控自旋按发射需求开轮，短按松开后仍完成已登记的单发。
+    if (!remote.input.keyboard_active && remote.safety.spin_enabled &&
+        shoot_mode == REMOTE_SHOOT_READY && !remote.input.right_up &&
+        remote.event.shoot_single_request_count == shoot_control_state.keyboard.single_seen &&
+        shoot_control_state.keyboard.single_pending == 0U &&
+        !shoot_control_state.keyboard.single_active)
+    { shoot_mode = REMOTE_SHOOT_OFF; }
+
     ShootControl_SetIdleHoldEnabled(remote.safety.online && dial_motor_online);
 
     // 拨轮和鼠标共用首发请求与单连发处理，避免长按切换时重复首发。

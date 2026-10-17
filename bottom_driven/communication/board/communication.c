@@ -64,7 +64,11 @@ static bool Communication_RC_D3PaddingIsZero(
     uint32_t index;
 
     if (data[2] == RP_INPUT_METADATA_MAGIC)
-    { return (data[3] & 0xF0U) == 0U && data[4] <= 4U && data[6] == 0U && data[7] == 0U; }
+    {
+        // 控制字段共用输入协议掩码，新增有效位不会被当作填充字节丢弃。
+        return (data[3] & (uint8_t)~RP_INPUT_CONTROL_FLAGS_MASK) == 0U &&
+            data[4] <= 4U && data[6] == 0U && data[7] == 0U;
+    }
     for (index = 2U; index < COMM_CAN_FRAME_SIZE; index++)
     {
         if (data[index] != 0U)

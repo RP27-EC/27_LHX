@@ -81,7 +81,7 @@ typedef struct
     } mouse;
     uint16_t key; // DBUS 键盘按下位图。
     bool control_valid; // D3 含下板统一仲裁结果。
-    uint8_t control_flags; // bit0键鼠，bit1~2模式，bit3自旋使能。
+    uint8_t control_flags; // bit0键鼠，bit1~2模式，bit3自旋，bit4~5有效右档。
     uint8_t reset_phase, reset_sequence; // 下板复位阶段及事件序号。
 } Communication_RcControl_t;
 
