@@ -112,38 +112,78 @@ static inline void RpInput_Update(RpInputSelector *s, const RpInputSample *p,
     s->previous = *p;
 }
 
+#define RP_RESET_STOP_WAIT_MS 100U // 等待控制任务停机后应答。
+#define RP_RESET_WAIT_TIMEOUT_MS 2000U // 提交前等待对板的最长时间。
+#define RP_RESET_ABORT_SEND_MS 100U // 取消状态重复发送的时间。
+#define RP_RESET_PEER_TIMEOUT_MS 2500U // 上板等待下一握手阶段的最长时间。
+
 typedef struct {
-    uint8_t phase, sequence; // 0空闲、1停机准备、2预提交、3提交重启、4握手超时。
+    uint8_t phase, sequence; // 0空闲、1停机准备、2预提交、3提交重启、4取消握手。
+    uint8_t failed_phase; // 最近一次取消前所处的阶段。
     uint32_t since_ms, request_seen;
+    uint32_t abort_count; // 本次上电后未提交即取消的次数。
 } RpResetState;
 extern volatile RpResetState control_reset_state;
+
+static inline void RpReset_Abort(RpResetState *s, uint32_t now)
+{
+    s->failed_phase = s->phase;
+    s->abort_count++;
+    s->phase = 4U;
+    s->since_ms = now;
+}
 
 // 下板协调：先等上板停机，再确认提交准备，最后重复发送重启提交。
 static inline void RpReset_Coordinator(RpResetState *s, uint32_t requests,
     uint8_t ack, uint8_t sequence, uint32_t now)
 {
     if (requests != s->request_seen) {
-        s->request_seen = requests; s->sequence++; s->phase = 1U; s->since_ms = now;
+        s->request_seen = requests;
+        // 握手中的新事件只消费，不能打断已提交的重启。
+        if (s->phase == 0U) {
+            s->sequence++; s->phase = 1U; s->since_ms = now;
+        }
     }
     if (sequence == s->sequence && ((s->phase == 1U && ack == 1U) ||
         (s->phase == 2U && ack == 2U))) { s->phase++; s->since_ms = now; }
-    if ((s->phase == 1U || s->phase == 2U) && (uint32_t)(now - s->since_ms) > 2000U)
-    { s->phase = 4U; }
+    if ((s->phase == 1U || s->phase == 2U) &&
+        ((uint32_t)(now - s->since_ms) > RP_RESET_WAIT_TIMEOUT_MS ||
+         (sequence == s->sequence && ack == 4U)))
+    { RpReset_Abort(s, now); }
+    else if (s->phase == 4U && (uint32_t)(now - s->since_ms) >= RP_RESET_ABORT_SEND_MS)
+    { s->phase = 0U; }
 }
 
-// 上板拒绝无准备阶段的旧提交，避免重启后被残留报文连续复位。
+// 只接受完整准备链；对板取消或重新上电后撤销未提交的停机锁存。
 static inline void RpReset_Responder(RpResetState *s, uint8_t phase,
     uint8_t sequence, uint32_t now)
 {
+    if (s->phase == 3U) { return; }
+    if (phase == 0U) {
+        if (s->phase == 1U || s->phase == 2U) { RpReset_Abort(s, now); }
+        if (s->phase == 4U) { s->phase = 0U; }
+        return;
+    }
+    if (phase == 4U && sequence == s->sequence &&
+        (s->phase == 1U || s->phase == 2U))
+    { RpReset_Abort(s, now); return; }
+    if (s->phase == 4U) {
+        if ((uint32_t)(now - s->since_ms) >= RP_RESET_ABORT_SEND_MS) { s->phase = 0U; }
+        return;
+    }
+    if ((s->phase == 1U || s->phase == 2U) &&
+        (uint32_t)(now - s->since_ms) > RP_RESET_PEER_TIMEOUT_MS)
+    { RpReset_Abort(s, now); return; }
     if (phase == 1U && (s->phase == 0U || sequence != s->sequence))
     { s->phase = 1U; s->sequence = sequence; s->since_ms = now; }
     else if (sequence == s->sequence && ((phase == 2U && s->phase == 1U &&
-        (uint32_t)(now - s->since_ms) >= 100U) || (phase == 3U && s->phase == 2U)))
+        (uint32_t)(now - s->since_ms) >= RP_RESET_STOP_WAIT_MS) ||
+        (phase == 3U && s->phase == 2U)))
     { s->phase = phase; s->since_ms = now; }
 }
 
 static inline uint8_t RpReset_Ack(const RpResetState *s, uint32_t now)
 {
-    return s->phase == 1U && (uint32_t)(now - s->since_ms) < 100U ? 0U : s->phase;
+    return s->phase == 1U && (uint32_t)(now - s->since_ms) < RP_RESET_STOP_WAIT_MS ? 0U : s->phase;
 }
 #endif

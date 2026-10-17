@@ -7,6 +7,8 @@
 #include "communication.h"
 #include <math.h>
 
+#define SHOOT_SINGLE_APPEND_PER_CYCLE 16U // 限制单周期追加目标和计热的工作量。
+
 // 集中保存拨盘、堵转、停机及键鼠单发状态，便于调试观察。
 volatile ShootControlState_t shoot_control_state = {
     .dial.state = SHOOT_DIAL_IDLE,
@@ -209,6 +211,13 @@ static bool Shoot_DialArrived(const DialMotor_Feedback_t *feedback)
 static bool Shoot_DialBlockCheck(const DialMotor_Feedback_t *feedback,
                                  bool moving)
 {
+    if (shoot_config.dial.block_confirm_ticks == 0U ||
+        shoot_config.dial.block_speed_threshold_dps <= 0 ||
+        shoot_config.dial.block_current_threshold < 0)
+    {
+        shoot_control_state.recovery.block_tick = 0U;
+        return false;
+    }
     bool blocked = moving &&
         Shoot_AbsInt32((int32_t)feedback->speed_dps) <
             shoot_config.dial.block_speed_threshold_dps &&
@@ -231,17 +240,96 @@ static bool Shoot_DialBlockCheck(const DialMotor_Feedback_t *feedback,
            shoot_config.dial.block_confirm_ticks;
 }
 
-static void Shoot_DialEnterStuckRecovery(
-    const DialMotor_Feedback_t *feedback, bool continuous)
+// 只累计没有向目标靠近的时间，慢速前进和判稳暂停分别处理。
+static void Shoot_DialProgressRefresh(const DialMotor_Feedback_t *feedback,
+                                       uint32_t now)
+{
+    shoot_control_state.dial.progress_start_ms = now;
+    shoot_control_state.dial.progress_error_counts =
+        Shoot_AbsInt64(shoot_control_state.dial.target - feedback->encoder_total);
+}
+
+static bool Shoot_DialMotionTimedOut(const DialMotor_Feedback_t *feedback,
+                                      uint32_t now, uint32_t timeout_ms)
+{
+    int64_t error = Shoot_AbsInt64(shoot_control_state.dial.target - feedback->encoder_total);
+    if (shoot_config.dial.progress_min_counts <= 0 || timeout_ms == 0U)
+    { return true; }
+    if (shoot_control_state.dial.progress_error_counts - error >=
+        shoot_config.dial.progress_min_counts)
+    { Shoot_DialProgressRefresh(feedback, now); }
+    return (uint32_t)(now - shoot_control_state.dial.progress_start_ms) >= timeout_ms;
+}
+
+// 暂停供弹时锁住当前位置，保留原发射目标和解堵次数。
+static void Shoot_DialPause(void)
+{
+    DialMotor_Feedback_t feedback;
+    shoot_control_state.recovery.block_tick = 0U;
+    if (DialMotor_GetFeedback(&feedback))
+    {
+        Shoot_DialProgressRefresh(&feedback, HAL_GetTick());
+        if (!shoot_control_state.ready.paused)
+        {
+            shoot_control_state.ready.pause_target = feedback.encoder_total;
+            shoot_control_state.ready.paused = true;
+        }
+    }
+    if (shoot_control_state.ready.paused)
+    { (void)DialMotor_PositionControl(shoot_control_state.ready.pause_target); }
+}
+
+// 清掉旧位置和待发请求，零电流失败时由后续周期重发。
+static void Shoot_DialLatchFault(void)
+{
+    shoot_control_state.recovery.fault = true;
+    shoot_control_state.recovery.rearm_ready = false;
+    shoot_control_state.recovery.block_tick = 0U;
+    shoot_control_state.remote.single_pending = false;
+    shoot_control_state.ready.paused = false;
+    shoot_control_state.dial.state = SHOOT_DIAL_IDLE;
+    shoot_control_state.dial.target_synced = false;
+    shoot_control_state.dial.single_reserved = 0U;
+    shoot_control_state.dial.single_completed = 0U;
+    shoot_control_state.stop.holding = false;
+    shoot_control_state.stop.stopped = false;
+    continuous_tracking = false;
+    DialMotor_ResetControl();
+    Shoot_DialIdleHold();
+}
+
+static void Shoot_DialMotionTimeout(ShootDialReason reason)
+{
+    shoot_control_state.recovery.reason = reason;
+    shoot_control_state.count.motion_timeout++;
+    Shoot_DialLatchFault();
+}
+
+static void Shoot_DialStartReverse(const DialMotor_Feedback_t *feedback,
+                                    bool continuous, ShootDialReason reason)
 {
     int64_t error = shoot_control_state.dial.target - feedback->encoder_total;
 
-    if (shoot_control_state.recovery.attempts >= shoot_config.dial.recovery_max_attempts ||
-        !(shoot_config.dial.stuck_reverse_speed_dps > 0.0f && isfinite(shoot_config.dial.stuck_reverse_speed_dps)) ||
+    shoot_control_state.recovery.reason = reason;
+    if (reason == SHOOT_DIAL_REASON_BLOCK)
+    {
+        shoot_control_state.count.stuck++;
+        if (!continuous && shoot_control_state.recovery.single_blocks < UINT32_MAX)
+        { shoot_control_state.recovery.single_blocks++; }
+    }
+    else { shoot_control_state.count.motion_timeout++; }
+    if (shoot_control_state.recovery.attempts >= shoot_config.dial.recovery_max_attempts)
+    { Shoot_DialLatchFault(); return; }
+    if (!(shoot_config.dial.stuck_reverse_speed_dps > 0.0f && isfinite(shoot_config.dial.stuck_reverse_speed_dps)) ||
+        !(shoot_config.dial.stuck_reverse_angle_deg > 0.0f && isfinite(shoot_config.dial.stuck_reverse_angle_deg)) ||
         shoot_config.dial.stuck_reverse_timeout_ms == 0U)
-    { shoot_control_state.recovery.fault = true; (void)DialMotor_SetTorqueCurrent(0); return; }
+    {
+        shoot_control_state.recovery.reason = SHOOT_DIAL_REASON_REVERSE_CONFIG;
+        Shoot_DialLatchFault(); return;
+    }
     shoot_control_state.recovery.attempts++;
     shoot_control_state.recovery.reverse_start = feedback->encoder_total;
+    shoot_control_state.recovery.reverse_travel_deg = 0.0f;
 
     shoot_control_state.recovery.continuous = continuous;
     // 保存原供弹目标；连发退让后直接恢复速度闭环。
@@ -249,14 +337,55 @@ static void Shoot_DialEnterStuckRecovery(
         feedback->encoder_total : shoot_control_state.dial.target;
     shoot_control_state.recovery.motion_direction = continuous ?
         (int8_t)shoot_config.dial.feed_direction : (error < 0 ? -1 : 1);
-    shoot_control_state.dial.target = feedback->encoder_total -
-        (int64_t)shoot_control_state.recovery.motion_direction *
-        SHOOT_DIAL_ONE_BULLET_COUNTS;
     shoot_control_state.dial.state = SHOOT_DIAL_STUCK_REVERSE;
     shoot_control_state.dial.state_start_ms = HAL_GetTick();
     shoot_control_state.recovery.block_tick = 0U;
-    shoot_control_state.count.stuck++;
     DialMotor_ResetControl();
+}
+
+static void Shoot_DialEnterStuckRecovery(
+    const DialMotor_Feedback_t *feedback, bool continuous)
+{
+    Shoot_DialStartReverse(feedback, continuous, SHOOT_DIAL_REASON_BLOCK);
+}
+
+// 已通过的供弹相位只计一次，解堵后重新经过时不重复累计。
+static void Shoot_DialSingleProgress(const DialMotor_Feedback_t *feedback)
+{
+    int64_t progress = shoot_config.dial.feed_direction *
+        (feedback->encoder_total - shoot_control_state.dial.single_origin);
+    uint32_t completed;
+    if (progress < -shoot_config.dial.arrived_error_counts) { return; }
+    progress = (progress + shoot_config.dial.arrived_error_counts) / SHOOT_DIAL_ONE_BULLET_COUNTS;
+    completed = progress >= shoot_control_state.dial.single_reserved ?
+        shoot_control_state.dial.single_reserved : (uint32_t)progress;
+    if (completed > shoot_control_state.dial.single_completed)
+    {
+        shoot_control_state.count.single += completed - shoot_control_state.dial.single_completed;
+        shoot_control_state.dial.single_completed = completed;
+    }
+}
+
+// 追加目标不清 PID，也不重置无进度计时，避免连续输入掩盖真实堵转。
+static void Shoot_DialAppendSingles(void)
+{
+    uint32_t appended = 0U;
+    while (shoot_control_state.keyboard.single_active && shoot_control_state.keyboard.single_pending > 0U &&
+           appended < SHOOT_SINGLE_APPEND_PER_CYCLE)
+    {
+        if (!Shoot_HeatCanStart() || shoot_control_state.dial.single_reserved == UINT32_MAX)
+        {
+            shoot_control_state.keyboard.single_pending = 0U;
+            break;
+        }
+        Shoot_HeatReserve();
+        shoot_control_state.keyboard.single_pending--;
+        shoot_control_state.dial.single_reserved++;
+        shoot_control_state.dial.target += shoot_config.dial.feed_direction * SHOOT_DIAL_ONE_BULLET_COUNTS;
+        shoot_control_state.recovery.feed_target = shoot_control_state.dial.target;
+        shoot_control_state.dial.progress_error_counts += SHOOT_DIAL_ONE_BULLET_COUNTS;
+        appended++;
+    }
 }
 
 static void Shoot_DialUpdate(bool single_rising, bool continuous)
@@ -281,17 +410,41 @@ static void Shoot_DialUpdate(bool single_rising, bool continuous)
         DialMotor_ResetControl();
     }
 
-    if (continuous && !continuous_tracking && Shoot_HeatCanStart())
+    if (shoot_control_state.dial.state == SHOOT_DIAL_FEED ||
+        shoot_control_state.dial.state == SHOOT_DIAL_STUCK_RELOAD ||
+        (shoot_control_state.dial.state == SHOOT_DIAL_STUCK_REVERSE && !shoot_control_state.recovery.continuous))
     {
+        Shoot_DialSingleProgress(&feedback);
+        if (!continuous) { Shoot_DialAppendSingles(); }
+    }
+
+    if (continuous && !continuous_tracking &&
+        (Shoot_HeatCanStart() || shoot_control_state.dial.state == SHOOT_DIAL_FEED ||
+         shoot_control_state.dial.state == SHOOT_DIAL_STUCK_REVERSE ||
+         shoot_control_state.dial.state == SHOOT_DIAL_STUCK_RELOAD))
+    {
+        bool carry_single = shoot_control_state.dial.state == SHOOT_DIAL_FEED ||
+            shoot_control_state.dial.state == SHOOT_DIAL_STUCK_REVERSE ||
+            shoot_control_state.dial.state == SHOOT_DIAL_STUCK_RELOAD;
         continuous_tracking = true;
-        // 以供弹固定相位建立圈数基准，末发终点同时作为保持相位。
-        continuous_origin = Shoot_DialHoldTarget(&feedback);
-        if (shoot_config.dial.feed_direction * (feedback.encoder_total - continuous_origin) <
-            -shoot_config.dial.arrived_error_counts)
-        { continuous_origin -= shoot_config.dial.feed_direction * SHOOT_DIAL_ONE_BULLET_COUNTS; }
-        continuous_reserved = 1U;
-        Shoot_HeatReserve();
-        shoot_control_state.dial.state = SHOOT_DIAL_CONTINUOUS;
+        if (carry_single)
+        {
+            // 单发转连发沿用本发相位和热量，退让中的动作先完成限时反转。
+            continuous_origin = shoot_control_state.dial.single_origin;
+            continuous_reserved = shoot_control_state.dial.single_reserved;
+            shoot_control_state.recovery.continuous = true;
+        }
+        else
+        {
+            continuous_origin = Shoot_DialHoldTarget(&feedback);
+            if (shoot_config.dial.feed_direction * (feedback.encoder_total - continuous_origin) <
+                -shoot_config.dial.arrived_error_counts)
+            { continuous_origin -= shoot_config.dial.feed_direction * SHOOT_DIAL_ONE_BULLET_COUNTS; }
+            Shoot_HeatReserve();
+            continuous_reserved = 1U;
+        }
+        if (shoot_control_state.dial.state != SHOOT_DIAL_STUCK_REVERSE)
+        { shoot_control_state.dial.state = SHOOT_DIAL_CONTINUOUS; }
     }
 
     switch (shoot_control_state.dial.state)
@@ -301,34 +454,41 @@ static void Shoot_DialUpdate(bool single_rising, bool continuous)
         if (single_rising && Shoot_HeatCanStart())
         {
             Shoot_HeatReserve();
+            shoot_control_state.dial.single_origin = shoot_control_state.dial.target;
+            shoot_control_state.dial.single_reserved = 1U;
+            shoot_control_state.dial.single_completed = 0U;
             // 本车拨盘逆时针为上弹方向，对应编码器正方向。
             shoot_control_state.dial.target +=
                 shoot_config.dial.feed_direction *
                 SHOOT_DIAL_ONE_BULLET_COUNTS;
             shoot_control_state.recovery.feed_target =
                 shoot_control_state.dial.target;
+            Shoot_DialAppendSingles();
             shoot_control_state.dial.state = SHOOT_DIAL_FEED;
             shoot_control_state.dial.state_start_ms = now;
+            Shoot_DialProgressRefresh(&feedback, now);
             shoot_control_state.recovery.block_tick = 0U;
             DialMotor_ResetControl();
         }
         break;
 
     case SHOOT_DIAL_FEED:
-        (void)DialMotor_PositionControl(shoot_control_state.dial.target);
         if (Shoot_DialBlockCheck(&feedback,
                 !Shoot_DialArrived(&feedback)))
         {
             Shoot_DialEnterStuckRecovery(&feedback, false);
         }
-        else if (Shoot_DialArrived(&feedback) ||
-                 (uint32_t)(now - shoot_control_state.dial.state_start_ms) >=
-                     shoot_config.dial.single_move_timeout_ms)
+        else if (Shoot_DialArrived(&feedback))
         {
+            (void)DialMotor_PositionControl(shoot_control_state.dial.target);
             shoot_control_state.dial.state = SHOOT_DIAL_IDLE;
             shoot_control_state.recovery.block_tick = 0U;
-            shoot_control_state.count.single++;
+            shoot_control_state.recovery.single_blocks = 0U;
+            shoot_control_state.recovery.attempts = 0U;
         }
+        else if (Shoot_DialMotionTimedOut(&feedback, now, shoot_config.dial.single_move_timeout_ms))
+        { Shoot_DialMotionTimeout(SHOOT_DIAL_REASON_FEED_TIMEOUT); }
+        else { (void)DialMotor_PositionControl(shoot_control_state.dial.target); }
         break;
 
     case SHOOT_DIAL_CONTINUOUS:
@@ -381,30 +541,68 @@ static void Shoot_DialUpdate(bool single_rising, bool continuous)
     }
 
     case SHOOT_DIAL_STUCK_REVERSE:
-        (void)DialMotor_SpeedControl(-shoot_control_state.recovery.motion_direction *
-            shoot_config.dial.stuck_reverse_speed_dps);
-        if (Shoot_AbsInt64(feedback.encoder_total - shoot_control_state.recovery.reverse_start) >=
-                SHOOT_DIAL_ONE_BULLET_COUNTS ||
-            (uint32_t)(now - shoot_control_state.dial.state_start_ms) >=
-                shoot_config.dial.stuck_reverse_timeout_ms)
+    {
+        uint32_t elapsed = now - shoot_control_state.dial.state_start_ms;
+        bool retreated;
+        bool blocked = false;
+        shoot_control_state.recovery.reverse_travel_deg =
+            (float)(shoot_control_state.recovery.motion_direction *
+            (shoot_control_state.recovery.reverse_start - feedback.encoder_total)) *
+            (360.0f / (float)SHOOT_DIAL_ONE_BULLET_COUNTS);
+        retreated = shoot_control_state.recovery.reverse_travel_deg >= shoot_config.dial.stuck_reverse_angle_deg;
+        if (elapsed >= shoot_config.dial.stuck_reverse_grace_ms)
+        { blocked = Shoot_DialBlockCheck(&feedback, !retreated); }
+        else { shoot_control_state.recovery.block_tick = 0U; }
+        if (!(shoot_config.dial.stuck_reverse_speed_dps > 0.0f &&
+              isfinite(shoot_config.dial.stuck_reverse_speed_dps)) ||
+            !(shoot_config.dial.stuck_reverse_angle_deg > 0.0f &&
+              isfinite(shoot_config.dial.stuck_reverse_angle_deg)) ||
+            shoot_config.dial.stuck_reverse_timeout_ms == 0U)
+        {
+            shoot_control_state.recovery.reason = SHOOT_DIAL_REASON_REVERSE_CONFIG;
+            Shoot_DialLatchFault();
+        }
+        else if (blocked)
+        {
+            shoot_control_state.count.reverse_stuck++;
+            shoot_control_state.recovery.reason = SHOOT_DIAL_REASON_REVERSE_BLOCK;
+            Shoot_DialLatchFault();
+        }
+        else if (retreated || elapsed >= shoot_config.dial.stuck_reverse_timeout_ms)
         {
             // 连发直接恢复速度环，单发继续原目标；解堵沿用原热量预留。
-            (void)DialMotor_SpeedControl(0.0f);
+            DialMotor_ResetControl();
+            if (DialMotor_SpeedControl(0.0f) != HAL_OK)
+            {
+                shoot_control_state.recovery.reason = SHOOT_DIAL_REASON_REVERSE_STOP;
+                Shoot_DialLatchFault();
+                break;
+            }
+            if (!retreated)
+            {
+                shoot_control_state.count.reverse_timeout++;
+                shoot_control_state.recovery.reason = SHOOT_DIAL_REASON_REVERSE_TIMEOUT;
+                Shoot_DialLatchFault();
+                break;
+            }
             shoot_control_state.dial.target =
                 shoot_control_state.recovery.feed_target;
             shoot_control_state.dial.state = shoot_control_state.recovery.continuous ?
                 SHOOT_DIAL_CONTINUOUS : SHOOT_DIAL_STUCK_RELOAD;
             shoot_control_state.dial.state_start_ms = now;
-            DialMotor_ResetControl();
+            Shoot_DialProgressRefresh(&feedback, now);
+            shoot_control_state.recovery.block_tick = 0U;
         }
+        else
+        { (void)DialMotor_SpeedControl(-shoot_control_state.recovery.motion_direction *
+              shoot_config.dial.stuck_reverse_speed_dps); }
         break;
+    }
 
     case SHOOT_DIAL_STUCK_RELOAD:
-        (void)DialMotor_PositionControl(shoot_control_state.dial.target);
-        if (Shoot_DialArrived(&feedback) ||
-            (uint32_t)(now - shoot_control_state.dial.state_start_ms) >=
-                shoot_config.dial.stuck_reload_timeout_ms)
+        if (Shoot_DialArrived(&feedback))
         {
+            (void)DialMotor_PositionControl(shoot_control_state.dial.target);
             shoot_control_state.dial.state =
                 shoot_control_state.recovery.continuous ?
                 SHOOT_DIAL_CONTINUOUS : SHOOT_DIAL_IDLE;
@@ -415,9 +613,15 @@ static void Shoot_DialUpdate(bool single_rising, bool continuous)
             }
             else
             {
-                shoot_control_state.count.single++;
+                shoot_control_state.recovery.single_blocks = 0U;
+                shoot_control_state.recovery.attempts = 0U;
             }
         }
+        else if (Shoot_DialBlockCheck(&feedback, true))
+        { Shoot_DialEnterStuckRecovery(&feedback, shoot_control_state.recovery.continuous); }
+        else if (Shoot_DialMotionTimedOut(&feedback, now, shoot_config.dial.stuck_reload_timeout_ms))
+        { Shoot_DialStartReverse(&feedback, false, SHOOT_DIAL_REASON_RELOAD_TIMEOUT); }
+        else { (void)DialMotor_PositionControl(shoot_control_state.dial.target); }
         break;
 
     default:
@@ -437,7 +641,8 @@ void ShootControl_SetIdleHoldEnabled(bool enabled)
 static void Shoot_DialIdleHold(void)
 {
     DialMotor_Feedback_t feedback;
-    bool hold = idle_hold_enabled && DialMotor_OnlineCheck() &&
+    bool hold = !shoot_control_state.recovery.fault &&
+        idle_hold_enabled && DialMotor_OnlineCheck() &&
         DialMotor_GetFeedback(&feedback) && feedback.initialized;
     if (hold) {
         if (!shoot_control_state.stop.holding) {
@@ -451,7 +656,7 @@ static void Shoot_DialIdleHold(void)
         (void)DialMotor_PositionControl(shoot_control_state.dial.target);
         return;
     }
-    // 只有失联时发零电流，不沿用旧位置目标。
+    // 失联或解堵失败时给零电流，故障期间不恢复位置保持。
     if (shoot_control_state.stop.holding) { DialMotor_ResetControl(); }
     shoot_control_state.stop.holding = false;
     shoot_control_state.dial.target_synced = false;
@@ -470,6 +675,9 @@ void ShootControl_Init(void)
     shoot_control_state.ready = (ShootReadyState_t){0};
     shoot_control_state.recovery.attempts = 0U;
     shoot_control_state.recovery.fault = false;
+    shoot_control_state.recovery.rearm_ready = false;
+    shoot_control_state.recovery.single_blocks = 0U;
+    shoot_control_state.recovery.reason = SHOOT_DIAL_REASON_NONE;
     shoot_control_state.remote.single_pending = false;
     ShootHeat_Init(HAL_GetTick());
     ShootSpeed_Init(&shoot_control_state.speed);
@@ -481,6 +689,16 @@ void ShootControl_Init(void)
     shoot_control_state.dial.state = SHOOT_DIAL_IDLE;
     shoot_control_state.count.single = 0U;
     shoot_control_state.count.stuck = 0U;
+    shoot_control_state.count.motion_timeout = 0U;
+    shoot_control_state.count.reverse_timeout = 0U;
+    shoot_control_state.count.reverse_stuck = 0U;
+    shoot_control_state.recovery.reverse_start = 0;
+    shoot_control_state.recovery.reverse_travel_deg = 0.0f;
+    shoot_control_state.dial.progress_start_ms = HAL_GetTick();
+    shoot_control_state.dial.progress_error_counts = 0;
+    shoot_control_state.dial.single_origin = 0;
+    shoot_control_state.dial.single_reserved = 0U;
+    shoot_control_state.dial.single_completed = 0U;
     shoot_control_state.recovery.block_tick = 0U;
     shoot_control_state.dial.target = 0;
     shoot_control_state.recovery.feed_target = 0;
@@ -492,8 +710,10 @@ void ShootControl_Init(void)
     shoot_control_state.stop.last_stop_ms = 0U;
     shoot_control_state.remote.last_right_up = false;
     shoot_control_state.remote.last_mode = REMOTE_SHOOT_OFF;
+    shoot_control_state.remote.continuous_requested = false;
     shoot_control_state.keyboard.single_seen = 0U;
     shoot_control_state.keyboard.single_pending = false;
+    shoot_control_state.keyboard.single_dropped = 0U;
     shoot_control_state.keyboard.single_active = false;
     shoot_control_state.keyboard.single_started = false;
     Motor3508_ResetSpeedPID();
@@ -504,6 +724,8 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
 {
     bool single_rising;
     bool friction_ready;
+    bool trigger_released;
+    bool new_continuous;
     ShootHeatConfig heat_config = shoot_heat_config;
     Shoot_HeatUpdate();
 
@@ -514,6 +736,11 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
     }
     single_rising = right_up && !shoot_control_state.remote.last_right_up &&
                     mode == REMOTE_SHOOT_SINGLE;
+    new_continuous = mode == REMOTE_SHOOT_CONTINUOUS &&
+        !shoot_control_state.remote.continuous_requested;
+    shoot_control_state.remote.continuous_requested = mode == REMOTE_SHOOT_CONTINUOUS;
+    trigger_released = !right_up &&
+        (mode == REMOTE_SHOOT_OFF || mode == REMOTE_SHOOT_READY);
 
     if (!shoot_heat_state.config_valid ||
         (shoot_heat_state.referee_valid && !shoot_heat_state.output_allowed) ||
@@ -543,13 +770,43 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
             motor3508_config.max_speed_rpm, received ? &feedback : NULL, ready, now);
     }
     // 恢复期间停拨盘，避免继续供弹；群组电流仍在拨盘命令之后发送。
-    if (mode != REMOTE_SHOOT_OFF && !friction_ready) { mode = REMOTE_SHOOT_READY; }
+    if (shoot_control_state.recovery.fault && trigger_released)
+    { shoot_control_state.recovery.rearm_ready = true; }
+
+    // 新单发边沿或释放后的连发重新接管；保持原输入不能自动解锁。
+    if (shoot_control_state.recovery.fault &&
+        ((mode == REMOTE_SHOOT_SINGLE && single_rising) ||
+         (mode == REMOTE_SHOOT_CONTINUOUS && shoot_control_state.recovery.rearm_ready)))
+    {
+        shoot_control_state.recovery.fault = false;
+        shoot_control_state.recovery.rearm_ready = false;
+        shoot_control_state.recovery.single_blocks = 0U;
+        shoot_control_state.recovery.attempts = 0U;
+        shoot_control_state.dial.state = SHOOT_DIAL_IDLE;
+        shoot_control_state.dial.target_synced = false;
+        DialMotor_ResetControl();
+    }
+
+    // 新连发操作建立重试预算，摩擦轮掉速产生的内部待发不能刷新预算。
+    if (new_continuous && !shoot_control_state.recovery.fault &&
+        shoot_control_state.dial.state != SHOOT_DIAL_STUCK_REVERSE &&
+        shoot_control_state.dial.state != SHOOT_DIAL_STUCK_RELOAD)
+    {
+        shoot_control_state.recovery.attempts = 0U;
+        shoot_control_state.recovery.single_blocks = 0U;
+    }
 
     if (mode == REMOTE_SHOOT_OFF || mode == REMOTE_SHOOT_READY)
     {
         shoot_control_state.remote.single_pending = false;
-        shoot_control_state.recovery.attempts = 0U;
-        shoot_control_state.recovery.fault = false;
+        shoot_control_state.dial.single_reserved = 0U;
+        shoot_control_state.dial.single_completed = 0U;
+        if (trigger_released && !shoot_control_state.recovery.fault &&
+            shoot_control_state.recovery.continuous)
+        {
+            shoot_control_state.recovery.attempts = 0U;
+            shoot_control_state.recovery.single_blocks = 0U;
+        }
         shoot_control_state.ready.paused = false;
         if (mode == REMOTE_SHOOT_OFF)
         { shoot_control_state.ready = (ShootReadyState_t){0}; }
@@ -571,7 +828,10 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
 
     shoot_control_state.stop.holding = false;
     shoot_control_state.stop.stopped = false;
-    if (mode != shoot_control_state.remote.last_mode)
+    if (mode != shoot_control_state.remote.last_mode &&
+        shoot_control_state.dial.state != SHOOT_DIAL_STUCK_REVERSE &&
+        shoot_control_state.dial.state != SHOOT_DIAL_STUCK_RELOAD &&
+        !(mode == REMOTE_SHOOT_CONTINUOUS && shoot_control_state.dial.state == SHOOT_DIAL_FEED))
     {
         shoot_control_state.remote.single_pending = false;
         continuous_tracking = false;
@@ -583,15 +843,16 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
     if (single_rising) { shoot_control_state.remote.single_pending = true; }
     if (!Shoot_HeatCanStart()) { shoot_control_state.remote.single_pending = false; }
     if (shoot_control_state.recovery.fault)
-    { (void)DialMotor_SetTorqueCurrent(0); }
-    else if (!Shoot_FricAtSpeed())
+    { Shoot_DialIdleHold(); }
+    else if (shoot_control_state.dial.state == SHOOT_DIAL_STUCK_REVERSE)
     {
-        DialMotor_Feedback_t feedback;
-        if (!shoot_control_state.ready.paused && DialMotor_GetFeedback(&feedback))
-        { shoot_control_state.ready.pause_target = feedback.encoder_total; shoot_control_state.ready.paused = true; }
-        if (shoot_control_state.ready.paused)
-        { (void)DialMotor_PositionControl(shoot_control_state.ready.pause_target); }
+        // 退让独立计时，摩擦轮判稳只拦截正向供弹。
+        Shoot_DialUpdate(false, mode == REMOTE_SHOOT_CONTINUOUS);
     }
+    else if (!friction_ready)
+    { Shoot_DialPause(); }
+    else if (!Shoot_FricAtSpeed())
+    { Shoot_DialPause(); }
     else
     {
         if (shoot_control_state.ready.paused) { DialMotor_ResetControl(); shoot_control_state.ready.paused = false; }
@@ -607,7 +868,7 @@ void ShootControl_Update(RemoteShoot_t mode, bool right_up)
 void ShootControl_ResetKeyboard(uint32_t single_request_count)
 {
     shoot_control_state.keyboard.single_seen = single_request_count;
-    shoot_control_state.keyboard.single_pending = false;
+    shoot_control_state.keyboard.single_pending = 0U;
     shoot_control_state.keyboard.single_active = false;
     shoot_control_state.keyboard.single_started = false;
 }
@@ -622,10 +883,40 @@ void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
         return;
     }
 
+    // 连发优先接管，排队单发并入本次连发，松开后不补旧请求。
+    if (mode == REMOTE_SHOOT_CONTINUOUS)
+    {
+        ShootControl_ResetKeyboard(single_request_count);
+        ShootControl_Update(mode, false);
+        return;
+    }
+
     if (single_request_count != shoot_control_state.keyboard.single_seen)
     {
+        uint32_t added = single_request_count - shoot_control_state.keyboard.single_seen;
+        uint32_t limit = shoot_config.single_queue_limit;
+        uint32_t pending = shoot_control_state.keyboard.single_pending;
+        uint32_t active = shoot_control_state.keyboard.single_active ?
+            (shoot_control_state.keyboard.single_started ?
+             shoot_control_state.dial.single_reserved - shoot_control_state.dial.single_completed : 1U) : 0U;
         shoot_control_state.keyboard.single_seen = single_request_count;
-        shoot_control_state.keyboard.single_pending = true;
+        if (limit < UINT32_MAX) { limit++; }
+        limit = active >= limit ? 0U : limit - active;
+        if (added < 0x80000000U)
+        {
+            if (pending > limit)
+            {
+                shoot_control_state.keyboard.single_dropped += pending - limit;
+                pending = limit;
+            }
+            if (added > limit - pending)
+            {
+                shoot_control_state.keyboard.single_dropped += added - (limit - pending);
+                added = limit - pending;
+            }
+            shoot_control_state.keyboard.single_pending = pending + added;
+        }
+        else { shoot_control_state.keyboard.single_pending = 0U; }
     }
 
     if (shoot_control_state.keyboard.single_active ||
@@ -635,12 +926,22 @@ void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
         {
             shoot_control_state.keyboard.single_active = true;
             shoot_control_state.keyboard.single_started = false;
-            shoot_control_state.keyboard.single_pending = false;
+            shoot_control_state.keyboard.single_pending--;
+            shoot_control_state.remote.last_right_up = false;
         }
 
         // 松键后的单发不能立即退回 READY，否则拨盘刚起动就会被 Stop。
         ShootControl_Update(REMOTE_SHOOT_SINGLE,
                             !shoot_control_state.keyboard.single_started);
+        if (shoot_control_state.recovery.fault)
+        {
+            shoot_control_state.keyboard.single_active = false;
+            shoot_control_state.keyboard.single_pending = 0U;
+            shoot_control_state.keyboard.single_started = false;
+            return;
+        }
+        if (!Shoot_HeatCanStart())
+        { shoot_control_state.keyboard.single_pending = 0U; }
         if (shoot_control_state.dial.state != SHOOT_DIAL_IDLE)
         { shoot_control_state.keyboard.single_started = true; }
         else if (shoot_control_state.keyboard.single_started)
@@ -650,7 +951,7 @@ void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
             if (!Shoot_HeatCanStart())
             {
                 shoot_control_state.keyboard.single_active = false;
-                shoot_control_state.keyboard.single_pending = false;
+                shoot_control_state.keyboard.single_pending = 0U;
                 return;
             }
             // 反馈暂未就绪时允许下周期重新尝试单发上升沿。
@@ -659,7 +960,5 @@ void ShootControl_UpdateKeyboard(RemoteShoot_t mode,
         return;
     }
 
-    if (mode == REMOTE_SHOOT_CONTINUOUS)
-    { shoot_control_state.keyboard.single_pending = false; }
     ShootControl_Update(mode, false);
 }

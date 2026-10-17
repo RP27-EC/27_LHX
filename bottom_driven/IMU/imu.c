@@ -32,6 +32,7 @@
 #define IMU_RAD_TO_DEG                 57.2957795131f
 #define IMU_SPI_TIMEOUT_MS             2U
 #define IMU_BURST_MAX_BYTES            6U
+#define IMU_REGISTER_SETTLE_MS         1U // 初始化写寄存器后的稳定等待。
 
 static float gyro_bias[3]; // 标定得到的三轴陀螺仪零偏。
 static QuaternionEkf attitude_filter; // 四元数、在线零偏及固定矩阵工作区。
@@ -41,22 +42,6 @@ static float yaw_last_deg; // 上一周期单圈 Yaw 角，用于跨圈判断。
 static int32_t yaw_rounds; // Yaw 跨越正负 180 度的累计圈数。
 
 volatile GimbalImu_Data_t gimbal_imu; // 云台 IMU 数据。
-
-static void imu_delay_us(uint32_t us)
-{
-    uint32_t start;
-    uint32_t ticks;
-
-    if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) == 0U)
-    {
-        CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-        DWT->CYCCNT = 0U;
-        DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    }
-    start = DWT->CYCCNT;
-    ticks = (SystemCoreClock / 1000000U) * us;
-    while ((uint32_t)(DWT->CYCCNT - start) < ticks) { }
-}
 
 static void imu_select(GPIO_TypeDef *port, uint16_t pin, bool selected)
 {
@@ -82,7 +67,8 @@ static bool imu_write(GPIO_TypeDef *port, uint16_t pin,
     uint8_t rx[2];
     bool ok = imu_transfer(port, pin, tx, rx, sizeof(tx));
 
-    imu_delay_us(150U);
+    // 写入只发生在启动配置阶段，统一使用 HAL 时基等待传感器稳定。
+    HAL_Delay(IMU_REGISTER_SETTLE_MS);
     return ok;
 }
 

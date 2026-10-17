@@ -16,10 +16,10 @@ void LiftMotionConfig_Init(volatile LiftMotionConfig *config)
 {
     if (config == NULL) { return; }
     config->down_direction = -1.0f; // 编码器计数减小表示下降。
-    config->down_speed_rad_s = 2000.0f; // 正常下降的转子速度上限，rad/s。
-    config->up_speed_rad_s = 2000.0f; // 正常上升的转子速度上限，rad/s。
-    config->up_duration_s = 2.0f; // 上升轨迹时间，s。
-    config->down_duration_s = 2.0f; // 下降轨迹时间，s。
+    config->down_speed_rad_s = 1800.0f; // 正常下降的转子速度上限，rad/s。
+    config->up_speed_rad_s = 1800.0f; // 正常上升的转子速度上限，rad/s。
+    config->up_duration_s = 2.5f; // 上升轨迹时间，s。
+    config->down_duration_s = 2.5f; // 下降轨迹时间，s。
     config->max_rotor_turns = 330.0f; // 上电后正、反向累计转数限制，圈。
     config->limit_stop_margin_counts = 200; // 行程边界前的停机余量，编码器计数。
     config->stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
@@ -105,7 +105,7 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
     config->deadband_m_s = 0.8f; // 小幅弹速波动保持当前转速。
     config->fallback_limit_m_s = 25.0f; // 无裁判弹速上限时的调试上限。
     config->feedback_timeout_ms = 100U; // 板间测速帧有效期。
-    config->settle_time_ms = 200U; // 调速后等待轮速稳定。
+    config->settle_time_ms = 50U; // 调速后等待轮速稳定。
 }
 
 // 加载摩擦轮目标转速、堵转检测及正向脉冲恢复参数。
@@ -113,11 +113,11 @@ void FrictionConfig_Init(volatile FrictionConfig *config)
 {
     if (config == NULL) { return; }
     config->target_speed_rpm = 9000; // 摩擦轮目标转速幅值，rpm。
-    config->ready.enabled = true;
-    config->ready.tolerance_rpm = 150.0f;
-    config->ready.relative_tolerance = 0.03f;
-    config->ready.ripple_rpm = 200.0f;
-    config->ready.stable_ms = 100U;
+    config->ready.enabled = true; // 开启双轮轮速判稳，稳定后才允许供弹。
+    config->ready.tolerance_rpm = 150.0f; // 允许的转速误差下限，rpm。
+    config->ready.relative_tolerance = 0.03f; // 按目标转速计算误差范围，与固定误差取较大值。
+    config->ready.ripple_rpm = 200.0f; // 相邻控制周期允许的轮速变化，rpm。
+    config->ready.stable_ms = 50U; // 两轮误差和波动连续合格的时间，ms。
     ShootSpeedConfig_Init(&config->adaptive);
     config->block_speed_rpm = 100; // 低于此转速才检查堵转。
     config->block_current_raw = 2000; // 排除低负载的慢速转动。
@@ -135,15 +135,18 @@ void DialFeedConfig_Init(volatile DialFeedConfig *config)
     if (config == NULL) { return; }
     config->hold_encoder = 20000U; // 上线和停止供弹后统一回到该单圈位置。
     config->feed_direction = 1LL; // 供弹方向系数，改变符号反转方向。
-    config->arrived_error_counts = 150LL; // 单发拨盘到位允许的编码器误差，计数。
-    config->single_move_timeout_ms = 500U; // 单发动作超时，ms。
-    config->block_current_threshold = 700; // 拨盘堵转电流阈值，原始码。
-    config->block_speed_threshold_dps = 10; // 拨盘堵转低速阈值，度/s。
+    config->arrived_error_counts = 300LL; // 单发拨盘到位允许的编码器误差，计数。
+    config->single_move_timeout_ms = 500U; // 单发无有效前进时停止供弹，ms。
+    config->progress_min_counts = 100LL; // 剩余误差缩小到此步长后刷新进度计时。
+    config->block_current_threshold = 900; // 拨盘堵转电流阈值，原始码。
+    config->block_speed_threshold_dps = 5; // 拨盘堵转低速阈值，度/s。
     config->block_confirm_ticks = 50U; // 堵转判据需连续满足的控制周期数。
-    config->stuck_reverse_timeout_ms = 300U; // 堵转反向退让超时，ms。
-    config->stuck_reverse_speed_dps = 1200.0f; // 按供弹反方向做速度退让。
-    config->recovery_max_attempts = 3U; // 恢复耗尽后等待释放发射请求。
-    config->stuck_reload_timeout_ms = 200U; // 退让后重新上弹超时，ms。
+    config->stuck_reverse_timeout_ms = 500U; // 反向速度退让的时间上限，ms。
+    config->stuck_reverse_speed_dps = 2000.0f; // 按供弹反方向做速度退让。
+    config->stuck_reverse_angle_deg = 360.0f; // 实际反向退让达到此角度后再回追原目标。
+    config->stuck_reverse_grace_ms = 40U; // 回退开始后暂缓堵转检测，等待电机起转。
+    config->recovery_max_attempts = 3U; // 当前供弹动作允许执行的反向退让次数。
+    config->stuck_reload_timeout_ms = 200U; // 重追原目标无有效前进时停止，ms。
     config->safe_stop_retry_ms = 20U; // 失联零电流帧重发间隔，ms。
 }
 
@@ -152,6 +155,7 @@ void ShootConfig_Init(void)
 {
     shoot_config.control_period_ticks = 4U; // 发射任务控制周期，tick。
     shoot_config.mouse_continuous_threshold_ms = 200U; // 鼠标持续按下转为连发的时间门槛，ms。
+    shoot_config.single_queue_limit = 16U; // 当前一发之外允许叠加的未完成单发数量。
     FrictionConfig_Init(&shoot_config.friction);
     DialFeedConfig_Init(&shoot_config.dial);
 }
@@ -373,7 +377,7 @@ void InputControlConfig_Init(void)
     input_control_config.wheel.trigger_raw = 200; // 下拨发射或复位的幅值门槛，使用原始拨轮负方向。
     input_control_config.wheel.rearm_raw = 50; // 下拨动作释放门槛，回中后允许下一次触发。
     input_control_config.wheel.continuous_ms = 200U; // 拨轮发射持续超过此时间后转连发，ms。
-    input_control_config.reset_hold_ms = 500U; // 复位组合连续保持门槛，超过后触发，ms。
+    input_control_config.reset_hold_ms = 2000U; // 复位组合连续保持门槛，超过后触发，ms。
     input_control_config.takeover_raw = 60; // 摇杆或拨轮接管的幅值门槛，需同时满足变化门槛。
     input_control_config.change_raw = 30; // 相对最近有效操作基准的变化门槛，慢拨可累计。
     input_control_config.mouse_raw = 2; // 鼠标单次位移超过此幅值时接管键鼠。

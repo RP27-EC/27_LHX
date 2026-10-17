@@ -54,7 +54,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+volatile UpperBootState upper_boot_state; // 启动阶段与初始化错误标志。
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -86,14 +86,14 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  upper_boot_state.stage = UPPER_BOOT_CLOCK;
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  upper_boot_state.stage = UPPER_BOOT_PERIPHERALS;
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -104,37 +104,44 @@ int main(void)
   /* USER CODE BEGIN 2 */
   UpperPeripheralConfig_InitAll();
   UpperApplicationConfig_InitAll();
+  upper_boot_state.stage = UPPER_BOOT_IMU;
   if (gimbal_imu_driver.init() != HAL_OK)
   {
     /* Yaw 依赖上板 IMU 稳向，初始化失败时不允许进入电机控制。 */
     Error_Handler();
   }
 
+  upper_boot_state.stage = UPPER_BOOT_MOTOR4310;
   if (motor4310.init() != HAL_OK)
   {
     Error_Handler();
   }
 
+  upper_boot_state.stage = UPPER_BOOT_MOTOR3508;
   if (motor3508.init() != HAL_OK)
   {
     Error_Handler();
   }
 
+  upper_boot_state.stage = UPPER_BOOT_MOTOR2006;
   if (motor2006.init() != HAL_OK)
   {
     Error_Handler();
   }
 
+  upper_boot_state.stage = UPPER_BOOT_DIAL;
   if (dial_motor.init() != HAL_OK)
   {
     Error_Handler();
   }
 
+  upper_boot_state.stage = UPPER_BOOT_LINK;
   if (board_link.can_init() != HAL_OK)
   {
     Error_Handler();
   }
 
+  upper_boot_state.stage = UPPER_BOOT_RTOS;
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -235,7 +242,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  upper_boot_state.failed = 1U;
   __disable_irq();
   while (1)
   {

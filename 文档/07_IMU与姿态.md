@@ -14,6 +14,8 @@
 
 ## 接口与排查补充
 
+启动写寄存器后使用 HAL 时基等待稳定，移植时需先初始化 HAL 时基并允许其中断。上板在 IMU 初始化及静止标定完成后才启动电机驱动和板间通信，错误码可结合 `upper_boot_state.stage` 查看。
+
 机械 Yaw 使用 IMU 角速度作速度反馈；Pitch 惯性内环使用 Roll 补偿后的陀螺仪投影。短暂读取失败在允许时限内可保留快照，持续失败使惯性控制退出。
 
 ## 常用观察变量
@@ -25,7 +27,7 @@
 | `gimbal_imu.online` | bool | 驱动判定的传感器在线状态。 |
 | `gimbal_imu.calibrated` | bool | 启动静止零偏标定已完成。 |
 | `gimbal_imu.update_count` | 次 | 成功更新姿态的累计次数。 |
-| `gimbal_imu.init_error` | 次 | 初始化检测错误累计数。 |
+| `gimbal_imu.init_error` | 错误码 | 0正常；0x80～0x82为加速度计ID、复位或配置错误；0x40～0x42为陀螺仪对应错误；0x83为标定读取失败；0x84为SPI未就绪。 |
 | `gimbal_imu.roll_deg` | deg | 横滚角。 |
 | `gimbal_imu.pitch_deg` | deg | 俯仰角。 |
 | `gimbal_imu.yaw_deg` | deg | 单圈航向角。 |

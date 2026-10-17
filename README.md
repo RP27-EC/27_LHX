@@ -125,7 +125,15 @@ infantry_up/
 
 正常升降已加入五次S曲线，上升、下降时间分别在 `lift_config.motion.up_duration_s`、`down_duration_s` 设置，轨迹及观察量见 [升降S曲线](文档/04_升降与安全联锁.md#五次s曲线升降)。
 
+单发指令直接叠加累计位置目标，长按转连发直接接管并沿用已计热发数。堵转最多执行配置次数的反向退让；实际退够角度才回追原目标，回退堵转或超时则卸力。见 [发射机构](文档/05_发射机构.md#单发与连发)。
+
+拨盘运动超时按无有效前进计时，正常前进刷新计时。触发原因看 `shoot_control_state.recovery.reason`，实际退让量看 `recovery.reverse_travel_deg`，叠加目标看 `dial.target`。
+
+双板复位已加入提交前超时取消和遥控恢复，诊断看 `control_reset_state.phase`、`abort_count`，流程见 [双板复位](文档/14_比赛操作与双板复位.md#双板复位)。本轮两板需同步更新。
+
 ## 编译与验证
+
+独立启动的 IMU 初始化延时使用 HAL 时基，复位长按门槛与下板统一为两秒。启动进度查看 `upper_boot_state.stage`，失败标志查看 `upper_boot_state.failed`，阶段说明见 [启动排查](文档/01_启动与任务.md#独立上电与软复位排查)。
 
 打开 `MDK-ARM/infantry_up.uvprojx`，使用工程指定的ARM Compiler 5配置。源码改动后编译并查看错误/警告；编译通过不能代替电机方向、机械行程和实车安全验证。
 

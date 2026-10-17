@@ -36,7 +36,25 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+typedef enum
+{
+    UPPER_BOOT_START = 0,
+    UPPER_BOOT_CLOCK,
+    UPPER_BOOT_PERIPHERALS,
+    UPPER_BOOT_IMU,
+    UPPER_BOOT_MOTOR4310,
+    UPPER_BOOT_MOTOR3508,
+    UPPER_BOOT_MOTOR2006,
+    UPPER_BOOT_DIAL,
+    UPPER_BOOT_LINK,
+    UPPER_BOOT_RTOS
+} UpperBootStage;
 
+typedef struct
+{
+    UpperBootStage stage; // 当前启动阶段，出错时保留。
+    uint8_t failed; // 已进入 Error_Handler。
+} UpperBootState;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -53,7 +71,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern volatile UpperBootState upper_boot_state;
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

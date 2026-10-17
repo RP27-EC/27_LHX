@@ -41,6 +41,12 @@ static void UpperTasks_CommunicationStep(void)
     {
         RpResetState reset = control_reset_state;
         Communication_CAN_SetControlState(LiftControl_CommandBusy(), RpReset_Ack(&reset, HAL_GetTick()), reset.sequence);
+        if (reset.phase != 0U)
+        {
+            // 复位应答由通信任务重发，云台归中和电机状态不阻塞握手。
+            (void)Communication_CAN_SendYawState(0.0f, false, false, false,
+                                                  false, false, true);
+        }
         if (reset.phase == 3U && (uint32_t)(HAL_GetTick() - reset.since_ms) >= 50U)
         { NVIC_SystemReset(); }
     }

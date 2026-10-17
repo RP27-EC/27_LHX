@@ -112,14 +112,17 @@ typedef struct
     uint16_t hold_encoder; // 拨盘固定保持的单圈编码器位置。
     int64_t feed_direction; // 供弹方向系数，改变符号反转方向。
     int64_t arrived_error_counts; // 单发拨盘到位允许的编码器误差，计数。
-    uint32_t single_move_timeout_ms; // 单发未到位时最多等待的时长。
+    uint32_t single_move_timeout_ms; // 单发持续无有效前进的超时时间，ms。
+    int64_t progress_min_counts; // 剩余位置误差缩小到此步长后刷新进度计时。
     int32_t block_current_threshold; // 堵转判据：|反馈电流原始码|须大于此值。
     int32_t block_speed_threshold_dps; // 堵转判据：|反馈速度|须小于此值，deg/s。
     uint32_t block_confirm_ticks; // 堵转判据需连续满足的控制周期数。
-    uint32_t stuck_reverse_timeout_ms; // 堵转后反向退让的最长时间。
+    uint32_t stuck_reverse_timeout_ms; // 反向速度退让的时间上限，ms。
     float stuck_reverse_speed_dps; // 反向退让的速度幅值，deg/s。
-    uint32_t recovery_max_attempts; // 连续堵转恢复次数，释放发射后清除。
-    uint32_t stuck_reload_timeout_ms; // 退让后重试原目标的最长时间。
+    float stuck_reverse_angle_deg; // 实际反向退让达到此角度后才回追原目标。
+    uint32_t stuck_reverse_grace_ms; // 回退开始后暂缓堵转检测，等待电机起转。
+    uint32_t recovery_max_attempts; // 当前供弹动作允许执行的反向退让次数。
+    uint32_t stuck_reload_timeout_ms; // 重追原目标时持续无有效前进的超时时间，ms。
     uint32_t safe_stop_retry_ms; // 失联零电流帧重发间隔。
 } DialFeedConfig;
 
@@ -129,6 +132,7 @@ typedef struct
     FrictionConfig friction; // 摩擦轮参数。
     DialFeedConfig dial; // 拨盘参数。
     uint32_t mouse_continuous_threshold_ms; // 鼠标按住转为连发的时间门槛，此前松开记为单发，ms。
+    uint32_t single_queue_limit; // 当前一发之外允许叠加的未完成单发数量。
 } ShootConfig;
 extern volatile ShootConfig shoot_config; // 发射动作和堵转恢复参数。
 void ShootConfig_Init(void);
