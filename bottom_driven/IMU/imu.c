@@ -34,6 +34,7 @@
 #define BMI088_GYRO_SENSITIVITY        0.0010652644360f
 #define IMU_RAD_TO_DEG                 57.2957795131f
 #define IMU_GRAVITY                    9.80665f
+#define IMU_REGISTER_SETTLE_MS         1U // 初始化写寄存器后的稳定等待。
 
 static SPI_HandleTypeDef imu_spi; // 下板 BMI088 使用的独立 SPI 句柄。
 static float gyro_bias[3]; // 标定完成后的三轴陀螺仪零偏。
@@ -45,20 +46,6 @@ static float yaw_last_deg; // 上周期单圈 Yaw 角，用于跨圈判断。
 static int32_t yaw_rounds; // Yaw 跨越正负 180 度的累计圈数。
 
 volatile ChassisImu_Data_t chassis_imu; // 底盘 IMU 数据。
-
-static void imu_delay_us(uint32_t us)
-{
-    uint32_t start, ticks;
-    if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) == 0U)
-    {
-        CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-        DWT->CYCCNT = 0U;
-        DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    }
-    start = DWT->CYCCNT;
-    ticks = (SystemCoreClock / 1000000U) * us;
-    while ((uint32_t)(DWT->CYCCNT - start) < ticks) { }
-}
 
 static uint8_t imu_spi_byte(uint8_t value)
 {
@@ -79,7 +66,8 @@ static void imu_write(GPIO_TypeDef *port, uint16_t pin,
     (void)imu_spi_byte(reg);
     (void)imu_spi_byte(value);
     imu_select(port, pin, false);
-    imu_delay_us(150U);
+    // 写入只发生在启动配置阶段，统一使用 HAL 时基等待传感器稳定。
+    HAL_Delay(IMU_REGISTER_SETTLE_MS);
 }
 
 static uint8_t imu_read_reg(GPIO_TypeDef *port, uint16_t pin,

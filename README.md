@@ -121,7 +121,11 @@ DBUS→遥控状态→安全与模式判定→麦轮目标→速度PID→单轮�
 
 陀螺仪模式下底盘按 `chassis_config.front_switch_deg` 选择最近的0°或±180°跟随，上板Yaw保持现有松杆回正及惯性保持。见 [底盘与麦轮](文档/03_底盘与麦轮.md)。
 
+双板复位已加入提交前超时取消和遥控恢复，诊断看 `control_reset_state.phase`、`abort_count`，流程见 [双板复位](文档/14_比赛操作与双板复位.md#双板复位)。本轮两板需同步更新。
+
 ## 编译与验证
+
+复位长按门槛与上板统一为两秒，由本板发起双板握手。IMU 初始化延时改用 HAL 时基；配置位置仍为 `input_control_config.reset_hold_ms`。
 
 打开 `MDK-ARM/infantry _down.uvprojx`，使用工程指定的ARM Compiler 5配置。源码改动后编译并查看错误/警告；编译通过不能代替电机方向、机械行程和实车安全验证。
 

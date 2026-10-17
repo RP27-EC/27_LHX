@@ -139,7 +139,7 @@ void InputControlConfig_Init(void)
     input_control_config.wheel.trigger_raw = 200; // 下拨发射或复位的幅值门槛，使用原始拨轮负方向。
     input_control_config.wheel.rearm_raw = 50; // 下拨动作释放门槛，回中后允许下一次触发。
     input_control_config.wheel.continuous_ms = 200U; // 拨轮发射持续超过此时间后转连发，ms。
-    input_control_config.reset_hold_ms = 500U; // 复位组合连续保持门槛，超过后触发，ms。
+    input_control_config.reset_hold_ms = 2000U; // 复位组合连续保持门槛，超过后触发，ms。
     input_control_config.takeover_raw = 60; // 摇杆或拨轮接管的幅值门槛，需同时满足变化门槛。
     input_control_config.change_raw = 30; // 相对最近有效操作基准的变化门槛，慢拨可累计。
     input_control_config.mouse_raw = 2; // 鼠标单次位移超过此幅值时接管键鼠。

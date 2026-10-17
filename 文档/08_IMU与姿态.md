@@ -14,6 +14,8 @@
 
 ## 接口与排查补充
 
+启动写寄存器后使用 HAL 时基等待稳定，移植时需先初始化 HAL 时基并允许其中断。初始化过程不使用 DWT 周期计数器。
+
 世界系线加速度已扣除重力，当前平移控制使用轮速目标。板间 D4 使用底盘 IMU 的 Yaw 角速度。
 
 ## 常用观察变量
@@ -25,7 +27,7 @@
 | `chassis_imu.online` | bool | 驱动判定的传感器在线状态。 |
 | `chassis_imu.calibrated` | bool | 启动静止零偏标定已完成。 |
 | `chassis_imu.update_count` | 次 | 成功更新姿态的累计次数。 |
-| `chassis_imu.init_error` | 次 | 初始化检测错误累计数。 |
+| `chassis_imu.init_error` | 错误码 | 0正常；0x80～0x82为加速度计ID、复位或配置错误；0x40～0x42为陀螺仪对应错误；0x83为初始传感器读取失败。 |
 | `chassis_imu.roll_deg` | deg | 横滚角。 |
 | `chassis_imu.pitch_deg` | deg | 俯仰角。 |
 | `chassis_imu.yaw_deg` | deg | 单圈航向角。 |
