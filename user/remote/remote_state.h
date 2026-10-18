@@ -44,7 +44,7 @@ typedef struct
     bool online; // 遥控帧有效且未超时。
     bool reset_active; // 两板复位握手期间停止执行器。
     bool shoot_armed; // 右中、右上档或键鼠 F/左键允许发射。
-    bool spin_enabled; // 右上档或键鼠 G 选中自旋。
+    bool spin_enabled; // 拨轮开关或键鼠 G 选中自旋。
     bool lift_enabled; // 左下档或键鼠机械模式允许升降。
 } RemoteSafetyState_t;
 

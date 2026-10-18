@@ -160,7 +160,7 @@ void DialSpeedPidConfig_Init(volatile DialSpeedPidConfig *config)
 void DialContinuousSpeedPidConfig_Init(volatile DialContinuousSpeedPidConfig *config)
 {
     if (config == NULL) { return; }
-    config->kp = 0.20f; // 连发速度环比例增益。
+    config->kp = 0.15f; // 连发速度环比例增益。
     config->ki = 0.08f; // 连发速度环积分增益。
     config->kd = 0.0005f; // 连发速度环微分增益。
 }

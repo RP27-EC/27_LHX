@@ -120,8 +120,10 @@ static void UpperTasks_ShootStep(void)
     if (!dial_motor_online && shoot_mode != REMOTE_SHOOT_OFF)
     { shoot_mode = REMOTE_SHOOT_READY; }
 
-    // 遥控自旋按发射需求开轮，短按松开后仍完成已登记的单发。
-    if (!remote.input.keyboard_active && remote.safety.spin_enabled &&
+    // 右中档首次发射开轮后保持；右上档和自旋按发射需求开停轮。
+    if (!remote.input.keyboard_active &&
+        (remote.input.right_switch == COMM_RC_SW_UP || remote.safety.spin_enabled ||
+         (remote.input.right_switch == COMM_RC_SW_MID && !shoot_control_state.friction.enabled)) &&
         shoot_mode == REMOTE_SHOOT_READY && !remote.input.right_up &&
         remote.event.shoot_single_request_count == shoot_control_state.keyboard.single_seen &&
         shoot_control_state.keyboard.single_pending == 0U &&

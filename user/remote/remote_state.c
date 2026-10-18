@@ -227,8 +227,8 @@ void RemoteState_Update(const Communication_RcControl_t *control, bool online)
             bool shoot_gear = control->rc.s[0] != COMM_RC_SW_DOWN &&
                 (input_selector.right_action == COMM_RC_SW_MID || input_selector.right_action == COMM_RC_SW_UP);
             bool turn_gear = input_selector.right_action != 0U &&
-                (control->rc.s[0] != COMM_RC_SW_DOWN || input_selector.right_action == COMM_RC_SW_MID);
-            // 调头只发一次输入脉冲；升降中按住的拨轮须先回中。
+                control->rc.s[0] == COMM_RC_SW_DOWN && input_selector.right_action == COMM_RC_SW_MID;
+            // 遥控调头仅保留升降待机档；正常档拨轮切换小陀螺。
             next.input.channel[4] = 0;
             if (changed || operation_locked || !turn_gear) { machine.physical.turn_ready = false; }
             if (!operation_locked && turn_gear && !input_selector.reset_gesture)

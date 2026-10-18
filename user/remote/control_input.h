@@ -18,6 +18,10 @@ typedef struct {
 
 typedef struct {
     InputWheelConfig wheel; // 遥控拨轮阈值与单连发时间。
+    struct {
+        int16_t trigger_raw; // 原调头侧拨轮超过此正向幅值时切换小陀螺。
+        int16_t rearm_raw; // 拨轮回到此幅值以下后允许再次切换。
+    } spin_wheel; // 小陀螺切换的触发和回中门槛。
     uint32_t reset_hold_ms; // 复位组合连续保持时间，超过后触发，ms。
     int16_t takeover_raw; // 摇杆或拨轮接管的幅值门槛，需同时满足变化门槛。
     int16_t change_raw; // 新遥控操作相对最近有效操作基准的变化门槛。
@@ -38,6 +42,7 @@ typedef struct {
     uint8_t reset_gesture; // 当前复位组合：位0键盘、位1遥控。
     uint8_t right_action; // 当前左档内新操作的右档，零表示尚未重新拨动。
     bool was_locked; // 解锁时重新读取档位，但不重放按键。
+    bool spin_wheel_ready; // 小陀螺拨轮已释放，等待下一次越过门槛。
     uint8_t mode; // 基础模式：1机械、2惯性；自旋单独保存。
     uint32_t reset_since, reset_requests;
     int16_t channel_reference[5]; // 最近有效操作的摇杆基准，累计识别缓慢拨杆。
@@ -65,6 +70,9 @@ static inline void RpInput_Update(RpInputSelector *s, const RpInputSample *p,
     uint8_t reset_gesture = RpInput_ResetGesture(p, c);
     bool left_changed = s->seen && p->left != s->previous.left;
     bool right_changed = s->seen && p->right != s->previous.right;
+    // 切档、锁定和输入来源变化时，消费仍按住的拨轮。
+    if (!s->seen || locked || resuming || left_changed || right_changed || from_keyboard)
+    { s->spin_wheel_ready = false; }
     if (!s->seen || left_changed || resuming || (from_keyboard && !right_changed))
     { s->right_action = 0U; }
     else if (right_changed && (!locked || p->left == 2U))
@@ -119,13 +127,28 @@ static inline void RpInput_Update(RpInputSelector *s, const RpInputSample *p,
             }
             else if (select) {
                 if (p->left == 2U) { s->mode = 1U; s->spin = false; }
-                else if (s->right_action == 1U) { s->spin = true; }
-                else if (s->spin) { s->spin = false; s->mode = 2U; }
-                else { s->mode = p->left == 1U ? 2U : 1U; }
+                else if (s->right_action == 2U && s->spin) { s->spin = false; s->mode = 2U; }
+                else if (!s->spin) { s->mode = p->left == 1U ? 2U : 1U; }
+            }
+            // 正常档把原调头拨轮作为自旋开关，退出后保持惯性模式。
+            if (!resuming && !left_changed && !right_changed && !from_keyboard &&
+                (p->left == 1U || p->left == 3U) &&
+                (s->right_action == 1U || s->right_action == 3U) &&
+                c->spin_wheel.trigger_raw > c->spin_wheel.rearm_raw &&
+                c->spin_wheel.rearm_raw >= 0) {
+                if (p->channel[4] <= c->spin_wheel.rearm_raw) { s->spin_wheel_ready = true; }
+                else if (s->spin_wheel_ready && p->channel[4] > c->spin_wheel.trigger_raw) {
+                    s->spin_wheel_ready = false;
+                    s->spin = !s->spin;
+                    s->mode = 2U;
+                }
             }
         }
-        if (s->keyboard) { s->right_action = 0U; }
-    } else if (locked) { s->mode = 1U; s->spin = false; }
+        if (s->keyboard) { s->right_action = 0U; s->spin_wheel_ready = false; }
+    } else {
+        s->spin_wheel_ready = false;
+        if (locked) { s->mode = 1U; s->spin = false; }
+    }
     s->previous = *p;
 }
 
