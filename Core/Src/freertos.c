@@ -349,7 +349,7 @@ void motor3508_speed_control(void *argument)
       }
       else if (remote.mode.chassis == REMOTE_MODE_SPIN)
       {
-        // 小陀螺按云台朝向平移，右上档自旋。
+        // 小陀螺按云台朝向平移，拨轮或键鼠切换自旋。
         Chassis_FollowReset();
         Chassis_SpinUpdate(remote.input.channel[3] * chassis_config.motion.forward_scale,
                            remote.input.channel[2] * chassis_config.motion.left_scale,

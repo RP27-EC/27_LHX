@@ -34,7 +34,7 @@ typedef struct
 {
     bool online; // 遥控器当前是否在线。
     bool reset_active; // 两板复位握手期间停止执行器。
-    bool spin_enabled; // 右上档或键鼠 G 选中自旋。
+    bool spin_enabled; // 拨轮开关或键鼠 G 选中自旋。
 } RemoteSafetyState_t;
 
 typedef struct
