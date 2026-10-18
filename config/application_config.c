@@ -18,8 +18,8 @@ void LiftMotionConfig_Init(volatile LiftMotionConfig *config)
     config->down_direction = -1.0f; // 编码器计数减小表示下降。
     config->down_speed_rad_s = 1800.0f; // 正常下降的转子速度上限，rad/s。
     config->up_speed_rad_s = 1800.0f; // 正常上升的转子速度上限，rad/s。
-    config->up_duration_s = 2.3f; // 上升轨迹时间，s。
-    config->down_duration_s = 2.3f; // 下降轨迹时间，s。
+    config->up_duration_s = 2.2f; // 上升轨迹时间，s。
+    config->down_duration_s = 2.2f; // 下降轨迹时间，s。
     config->max_rotor_turns = 330.0f; // 上电后正、反向累计转数限制，圈。
     config->limit_stop_margin_counts = 200; // 行程边界前的停机余量，编码器计数。
     config->stop_retry_ms = 50U; // 普通停机命令重发间隔，ms。
@@ -99,10 +99,10 @@ void ShootSpeedConfig_Init(volatile ShootSpeedConfig *config)
 {
     if (config == NULL) { return; }
     config->enabled = true; // 使用枪管测速调整摩擦轮。
-    config->step_rpm = 100; // 单次转速调整步长。
-    config->max_speed_rpm = 6500; // 正常转速上限，还受驱动上限约束。
+    config->step_rpm = 50; // 单次转速调整步长。
+    config->max_speed_rpm = 6300; // 正常转速上限，还受驱动上限约束。
     config->margin_m_s = 2.0f; // 预留弹速余量。
-    config->deadband_m_s = 0.8f; // 小幅弹速波动保持当前转速。
+    config->deadband_m_s = 0.5f; // 小幅弹速波动保持当前转速。
     config->fallback_limit_m_s = 25.0f; // 无裁判弹速上限时的调试上限。
     config->feedback_timeout_ms = 100U; // 板间测速帧有效期。
     config->settle_time_ms = 50U; // 调速后等待轮速稳定。
@@ -114,7 +114,7 @@ void FrictionConfig_Init(volatile FrictionConfig *config)
     if (config == NULL) { return; }
     config->target_speed_rpm = 9000; // 摩擦轮目标转速幅值，rpm。
     config->ready.enabled = true; // 开启双轮轮速判稳，稳定后才允许供弹。
-    config->ready.tolerance_rpm = 150.0f; // 允许的转速误差下限，rpm。
+    config->ready.tolerance_rpm = 100.0f; // 允许的转速误差下限，rpm。
     config->ready.relative_tolerance = 0.03f; // 按目标转速计算误差范围，与固定误差取较大值。
     config->ready.ripple_rpm = 200.0f; // 相邻控制周期允许的轮速变化，rpm。
     config->ready.stable_ms = 50U; // 两轮误差和波动连续合格的时间，ms。
@@ -143,16 +143,16 @@ void DialFeedConfig_Init(volatile DialFeedConfig *config)
     config->continuous_move_timeout_ms = 400U; // 连发无正向进展时进入退让，暂停时间不计入。
     config->progress_min_counts = 100LL; // 单发和回追误差缩小达到此步长后刷新计时。
     config->continuous_progress_min_counts = 200LL; // 连发累计正向前进达到此步长后刷新计时。
-    config->block_current_threshold = 700; // 拨盘堵转电流阈值，原始码。
-    config->block_speed_threshold_dps = 5; // 拨盘堵转低速阈值，度/s。
-    config->block_confirm_ticks = 20U; // 堵转判据需连续满足的控制周期数。
+    config->block_current_threshold = 1100; // 拨盘堵转电流阈值，原始码。
+    config->block_speed_threshold_dps = 25; // 拨盘堵转低速阈值，度/s。
+    config->block_confirm_ticks = 15U; // 堵转判据需连续满足的控制周期数。
     config->stuck_reverse_timeout_ms = 500U; // 反向速度退让的时间上限，ms。
-    config->stuck_reverse_speed_dps = 2500.0f; // 按供弹反方向做速度退让。
-    config->stuck_reverse_angle_deg = 720.0f; // 实际反向退让达到此角度后再回追原目标。
-    config->stuck_reverse_grace_ms = 40U; // 回退开始后暂缓堵转检测，等待电机起转。
+    config->stuck_reverse_speed_dps = 2000.0f; // 按供弹反方向做速度退让。
+    config->stuck_reverse_angle_deg = 360.0f; // 实际反向退让达到此角度后再回追原目标。
+    config->stuck_reverse_grace_ms = 150U; // 回退开始后暂缓堵转检测，等待电机起转。
     config->recovery_max_attempts = 3U; // 连续未恢复时允许执行的反向退让次数。
     config->stuck_reload_timeout_ms = 200U; // 重追原目标无有效前进时停止，ms。
-    config->stuck_reload_grace_ms = 100U; // 退让结束后的换向宽限，暂缓正向堵转检测。
+    config->stuck_reload_grace_ms = 150U; // 退让结束后的换向宽限，暂缓正向堵转检测。
     config->recovery_clear_progress_counts = 65536LL; // 连发越过原堵点后继续前进此计数，清除连续重试次数。
     config->safe_stop_retry_ms = 20U; // 失联零电流帧重发间隔，ms。
 }
@@ -366,9 +366,9 @@ void ShootHeatConfig_Init(void)
     shoot_heat_config.allow_offline = false; // 脱离裁判调车时才允许打开。
     shoot_heat_config.heat_per_shot = 20.0f; // 每次新供弹预留的热量。
     shoot_heat_config.stop_remaining = 30.0f; // 剩余量到此阈值停止供弹。
-    shoot_heat_config.low_remaining = 70.0f; // 低射频档剩余量上界。
-    shoot_heat_config.high_remaining = 125.0f; // 高射频档剩余量下界。
-    shoot_heat_config.low_rate_hz = 12.0f; // 低余量档射频。
+    shoot_heat_config.low_remaining = 50.0f; // 低射频档剩余量上界。
+    shoot_heat_config.high_remaining = 90.0f; // 高射频档剩余量下界。
+    shoot_heat_config.low_rate_hz = 10.0f; // 低余量档射频。
     shoot_heat_config.middle_rate_hz = 15.0f; // 中余量档射频。
     shoot_heat_config.high_rate_hz = 18.0f; // 高余量档射频。
     shoot_heat_config.offline_heat_limit = 100.0f; // 离线调试尚无裁判数据时的上限。

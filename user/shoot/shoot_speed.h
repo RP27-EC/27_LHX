@@ -3,6 +3,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define SHOOT_SPEED_STATISTICS_CAPACITY 100U // 滑动窗口保留的有效弹速数量。
+
+typedef struct {
+    float mean_m_s; // 窗口内的平均弹速，m/s。
+    float variance_m2_s2; // 窗口内弹速的总体方差，(m/s)^2。
+    uint16_t count; // 当前窗口的有效发数。
+    uint16_t next; // 下一次写入的位置，满窗后覆盖最早样本。
+    float samples_m_s[SHOOT_SPEED_STATISTICS_CAPACITY]; // 最近的有效弹速。
+} ShootSpeedStatistics;
+
 typedef struct {
     bool enabled; // 弹速自适应开关。
     int32_t step_rpm; // 每次有效反馈调整的转速幅值。
@@ -33,9 +43,12 @@ typedef struct {
     bool config_valid; // 调速参数通过范围检查。
     int32_t manual_speed_rpm; // 上次读取的基础转速，手动修改后重新起调。
     bool initialized; // 已建立基础转速。
+    ShootSpeedStatistics statistics; // 实测弹速滑动统计，独立于自适应开关。
 } ShootSpeedState;
 
 void ShootSpeed_Init(volatile ShootSpeedState *state); // 清空自适应状态。
+void ShootSpeed_UpdateStatistics(volatile ShootSpeedStatistics *statistics,
+    float speed_m_s); // 加入一发有效弹速，更新最近窗口的均值和方差。
 void ShootSpeed_Update(volatile ShootSpeedState *state, const ShootSpeedConfig *config,
     int32_t base_rpm, float driver_max_rpm, const ShootSpeedFeedback *feedback,
     bool ready, uint32_t now_ms); // 新测速反馈按步长修正正常目标转速。

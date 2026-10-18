@@ -1,12 +1,34 @@
 #include "shoot_speed.h"
+#include <math.h>
 #include <string.h>
 
 #define SHOOT_SPEED_MAX_SAMPLE_AGE_MS 1000U // 枪管测速结果可用于调整的最长时间。
 #define SHOOT_SPEED_MAX_RPM 32767 // 速度命令的正向范围。
 
+// 上电清空调速状态和弹速统计窗口。
 void ShootSpeed_Init(volatile ShootSpeedState *state)
 {
     if (state != NULL) { memset((void *)state, 0, sizeof(*state)); }
+}
+
+// 仅新测速调用；两遍计算避免平方均值相减带来的精度损失。
+void ShootSpeed_UpdateStatistics(volatile ShootSpeedStatistics *statistics, float speed_m_s)
+{
+    uint16_t i;
+    float sum = 0.0f, squared_error = 0.0f, mean, origin;
+    if (statistics == NULL || !(speed_m_s > 0.0f) || !isfinite(speed_m_s)) { return; }
+    statistics->samples_m_s[statistics->next] = speed_m_s;
+    statistics->next = (uint16_t)((statistics->next + 1U) % SHOOT_SPEED_STATISTICS_CAPACITY);
+    if (statistics->count < SHOOT_SPEED_STATISTICS_CAPACITY) { statistics->count++; }
+    origin = statistics->samples_m_s[0];
+    for (i = 0U; i < statistics->count; i++) { sum += statistics->samples_m_s[i] - origin; }
+    mean = origin + sum / statistics->count;
+    for (i = 0U; i < statistics->count; i++) {
+        float error = statistics->samples_m_s[i] - mean;
+        squared_error += error * error;
+    }
+    statistics->mean_m_s = mean;
+    statistics->variance_m2_s2 = squared_error / statistics->count;
 }
 
 void ShootSpeed_Update(volatile ShootSpeedState *state, const ShootSpeedConfig *config,
@@ -56,6 +78,12 @@ void ShootSpeed_Update(volatile ShootSpeedState *state, const ShootSpeedConfig *
             new_shot = true;
             state->sequence = feedback->sequence;
             state->sequence_seen = true;
+            // 转发序号去重，开轮和学习许可不影响实测统计。
+            if (feedback->valid &&
+                (uint32_t)(now_ms - feedback->received_ms) < SHOOT_SPEED_MAX_SAMPLE_AGE_MS &&
+                (uint32_t)(now_ms - feedback->sample_ms) < SHOOT_SPEED_MAX_SAMPLE_AGE_MS) {
+                ShootSpeed_UpdateStatistics(&state->statistics, feedback->actual_m_s);
+            }
         }
     }
     ready = ready && config->enabled && state->config_valid;
